@@ -1,0 +1,93 @@
+# ============================================================
+# SENSITIVE — never commit these
+# ============================================================
+
+# Environment files contain API keys and database passwords
+.env
+backend/.env
+frontend/.env
+
+# Private investigation files — real names, case data, identifying info
+private/
+
+
+# ============================================================
+# PYTHON
+# ============================================================
+
+# Bytecode cache — generated automatically when Python runs
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Test and coverage cache
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Python virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Package build artifacts
+*.egg-info/
+dist/
+build/
+
+
+# ============================================================
+# BACKEND — runtime data
+# ============================================================
+
+# Uploaded documents — these are user data, not code
+backend/uploads/
+
+# Alembic compiled files
+backend/alembic/versions/__pycache__/
+
+
+# ============================================================
+# FRONTEND
+# ============================================================
+
+# Dependencies — reinstalled from package.json with npm install
+frontend/node_modules/
+
+# Built output — generated from source with npm run build
+frontend/dist/
+frontend/.vite/
+
+
+# ============================================================
+# DOCKER
+# ============================================================
+
+# Docker override files (local dev customizations)
+docker-compose.override.yml
+
+
+# ============================================================
+# TOOLING
+# ============================================================
+
+# Visual companion brainstorming session files
+.superpowers/
+
+# macOS folder metadata
+.DS_Store
+
+# Windows thumbnail cache
+Thumbs.db
+
+# VS Code workspace settings (optional — remove this line if you want
+# to share VS Code settings with teammates)
+.vscode/settings.json
+
+# JetBrains IDE files
+.idea/
+
+# Claude Code local settings (machine-specific permissions)
+.claude/settings.local.json
