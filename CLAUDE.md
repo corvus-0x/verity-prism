@@ -14,12 +14,6 @@ Private/sensitive case files: `private/` (gitignored — never commit)
 
 ---
 
-## Developer Context
-
-This is simultaneously a **learning project and a viable commercial product**. The developer just finished their IBM Full Stack certificate. Write code and explanations that a junior developer can understand and own completely. Prefer clarity over cleverness. Explain the WHY when it isn't obvious from the code.
-
----
-
 ## Tech Stack
 
 | Layer | Technology |
