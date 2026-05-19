@@ -541,11 +541,273 @@ def seed_deed_schema(db):
     return schema
 
 
+# ── IRS Form 990 schema ───────────────────────────────────────────────────────
+# Fields map directly to IRS XML element paths.
+# The description includes the XML path so the extraction engine
+# (or a direct XML parser) knows exactly where to find each value.
+
+F990_HEADER = [
+    {"name": "tax_year",              "type": "text",      "description": "ReturnHeader/TaxYr — 4-digit tax year", "required": True},
+    {"name": "tax_period_begin",      "type": "date",      "description": "ReturnHeader/TaxPeriodBeginDt", "required": False},
+    {"name": "tax_period_end",        "type": "date",      "description": "ReturnHeader/TaxPeriodEndDt", "required": True},
+    {"name": "return_type",           "type": "text",      "description": "ReturnHeader/ReturnTypeCd — 990, 990EZ, 990PF, 990T", "required": True},
+    {"name": "filed_timestamp",       "type": "date",      "description": "ReturnHeader/ReturnTs — ISO datetime when the return was submitted", "required": False},
+    {"name": "ein",                   "type": "id_number", "description": "ReturnHeader/Filer/EIN", "required": True},
+    {"name": "org_name",              "type": "name",      "description": "ReturnHeader/Filer/BusinessName/BusinessNameLine1Txt", "required": True},
+    {"name": "org_address",           "type": "address",   "description": "ReturnHeader/Filer/USAddress/AddressLine1Txt", "required": False},
+    {"name": "org_city",              "type": "text",      "description": "ReturnHeader/Filer/USAddress/CityNm", "required": False},
+    {"name": "org_state",             "type": "text",      "description": "ReturnHeader/Filer/USAddress/StateAbbreviationCd", "required": False},
+    {"name": "org_zip",               "type": "text",      "description": "ReturnHeader/Filer/USAddress/ZIPCd", "required": False},
+    {"name": "org_phone",             "type": "text",      "description": "ReturnHeader/Filer/PhoneNum", "required": False},
+    {"name": "principal_officer",     "type": "name",      "description": "ReturnHeader/BusinessOfficerGrp/PersonNm — name of officer who signed", "required": False},
+    {"name": "officer_title",         "type": "text",      "description": "ReturnHeader/BusinessOfficerGrp/PersonTitleTxt", "required": False},
+    {"name": "officer_sign_date",     "type": "date",      "description": "ReturnHeader/BusinessOfficerGrp/SignatureDt", "required": False},
+    {"name": "preparer_name",         "type": "name",      "description": "ReturnHeader/PreparerPersonGrp/PreparerPersonNm", "required": False},
+    {"name": "preparer_ptin",         "type": "id_number", "description": "ReturnHeader/PreparerPersonGrp/PTIN", "required": False},
+    {"name": "preparer_firm_name",    "type": "text",      "description": "ReturnHeader/PreparerFirmGrp/PreparerFirmName/BusinessNameLine1Txt", "required": False},
+    {"name": "preparer_firm_ein",     "type": "id_number", "description": "ReturnHeader/PreparerFirmGrp/PreparerFirmEIN", "required": False},
+    {"name": "preparer_firm_city",    "type": "text",      "description": "ReturnHeader/PreparerFirmGrp/PreparerUSAddress/CityNm", "required": False},
+    {"name": "preparer_firm_state",   "type": "text",      "description": "ReturnHeader/PreparerFirmGrp/PreparerUSAddress/StateAbbreviationCd", "required": False},
+]
+
+F990_REVENUE = [
+    {"name": "gross_receipts",               "type": "currency", "description": "IRS990/GrossReceiptsAmt — total gross receipts (not net revenue)", "required": False},
+    {"name": "contributions_cy",             "type": "currency", "description": "IRS990/CYContributionsGrantsAmt — contributions and grants current year", "required": False},
+    {"name": "contributions_py",             "type": "currency", "description": "IRS990/PYContributionsGrantsAmt — prior year", "required": False},
+    {"name": "government_grants_cy",         "type": "currency", "description": "IRS990/GovernmentGrantsAmt — government grants included in contributions", "required": False},
+    {"name": "program_service_revenue_cy",   "type": "currency", "description": "IRS990/CYProgramServiceRevenueAmt — program service revenue current year", "required": False},
+    {"name": "program_service_revenue_py",   "type": "currency", "description": "IRS990/PYProgramServiceRevenueAmt", "required": False},
+    {"name": "gross_ubi",                    "type": "currency", "description": "IRS990/TotalGrossUBIAmt — total gross unrelated business income (taxable activity)", "required": False},
+    {"name": "investment_income_cy",         "type": "currency", "description": "IRS990/CYInvestmentIncomeAmt", "required": False},
+    {"name": "other_revenue_cy",             "type": "currency", "description": "IRS990/CYOtherRevenueAmt", "required": False},
+    {"name": "total_revenue_cy",             "type": "currency", "description": "IRS990/CYTotalRevenueAmt — total revenue current year", "required": True},
+    {"name": "total_revenue_py",             "type": "currency", "description": "IRS990/PYTotalRevenueAmt — prior year total for year-over-year comparison", "required": False},
+]
+
+F990_EXPENSES = [
+    {"name": "grants_paid_cy",               "type": "currency", "description": "IRS990/CYGrantsAndSimilarPaidAmt", "required": False},
+    {"name": "member_benefits_cy",           "type": "currency", "description": "IRS990/CYBenefitsPaidToMembersAmt", "required": False},
+    {"name": "salaries_cy",                  "type": "currency", "description": "IRS990/CYSalariesCompEmpBnftPaidAmt", "required": False},
+    {"name": "salaries_py",                  "type": "currency", "description": "IRS990/PYSalariesCompEmpBnftPaidAmt", "required": False},
+    {"name": "fundraising_expenses_cy",      "type": "currency", "description": "IRS990/CYTotalFundraisingExpenseAmt", "required": False},
+    {"name": "total_expenses_cy",            "type": "currency", "description": "IRS990/CYTotalExpensesAmt", "required": True},
+    {"name": "total_expenses_py",            "type": "currency", "description": "IRS990/PYTotalExpensesAmt", "required": False},
+    {"name": "net_income_cy",                "type": "currency", "description": "IRS990/CYRevenuesLessExpensesAmt — revenue minus expenses", "required": False},
+    {"name": "net_income_py",                "type": "currency", "description": "IRS990/PYRevenuesLessExpensesAmt", "required": False},
+    {"name": "program_service_expenses",     "type": "currency", "description": "IRS990/TotalProgramServiceExpensesAmt", "required": False},
+    # Expense line items from Part IX
+    {"name": "exp_salaries_wages",           "type": "currency", "description": "IRS990/OtherSalariesAndWagesGrp/TotalAmt", "required": False},
+    {"name": "exp_payroll_taxes",            "type": "currency", "description": "IRS990/PayrollTaxesGrp/TotalAmt", "required": False},
+    {"name": "exp_legal_fees",               "type": "currency", "description": "IRS990/FeesForServicesLegalGrp/TotalAmt", "required": False},
+    {"name": "exp_accounting_fees",          "type": "currency", "description": "IRS990/FeesForServicesAccountingGrp/TotalAmt", "required": False},
+    {"name": "exp_advertising",              "type": "currency", "description": "IRS990/AdvertisingGrp/TotalAmt", "required": False},
+    {"name": "exp_occupancy",                "type": "currency", "description": "IRS990/OccupancyGrp/TotalAmt", "required": False},
+    {"name": "exp_travel",                   "type": "currency", "description": "IRS990/TravelGrp/TotalAmt", "required": False},
+    {"name": "exp_depreciation",             "type": "currency", "description": "IRS990/DepreciationDepletionGrp/TotalAmt", "required": False},
+    {"name": "exp_insurance",                "type": "currency", "description": "IRS990/InsuranceGrp/TotalAmt", "required": False},
+]
+
+F990_BALANCE_SHEET = [
+    {"name": "total_assets_boy",             "type": "currency", "description": "IRS990/TotalAssetsBOYAmt — total assets beginning of year", "required": False},
+    {"name": "total_assets_eoy",             "type": "currency", "description": "IRS990/TotalAssetsEOYAmt — total assets end of year", "required": True},
+    {"name": "cash_eoy",                     "type": "currency", "description": "IRS990/CashNonInterestBearingGrp/EOYAmt", "required": False},
+    {"name": "land_bldg_cost_basis",         "type": "currency", "description": "IRS990/LandBldgEquipCostOrOtherBssAmt — gross cost of land, buildings, equipment", "required": False},
+    {"name": "land_bldg_accum_depreciation", "type": "currency", "description": "IRS990/LandBldgEquipAccumDeprecAmt", "required": False},
+    {"name": "land_bldg_net_boy",            "type": "currency", "description": "IRS990/LandBldgEquipBasisNetGrp/BOYAmt — net book value of real property beginning of year", "required": False},
+    {"name": "land_bldg_net_eoy",            "type": "currency", "description": "IRS990/LandBldgEquipBasisNetGrp/EOYAmt — net book value end of year", "required": False},
+    {"name": "total_liabilities_boy",        "type": "currency", "description": "IRS990/TotalLiabilitiesGrp/BOYAmt", "required": False},
+    {"name": "total_liabilities_eoy",        "type": "currency", "description": "IRS990/TotalLiabilitiesEOYAmt", "required": False},
+    {"name": "net_assets_boy",               "type": "currency", "description": "IRS990/NetAssetsOrFundBalancesBOYAmt", "required": False},
+    {"name": "net_assets_eoy",               "type": "currency", "description": "IRS990/NetAssetsOrFundBalancesEOYAmt", "required": True},
+]
+
+F990_ORG = [
+    {"name": "mission_description",          "type": "text",    "description": "IRS990/ActivityOrMissionDesc or IRS990/MissionDesc — stated mission", "required": False},
+    {"name": "program_description",          "type": "text",    "description": "IRS990/Desc — primary program service description", "required": False},
+    {"name": "org_type_501c3",               "type": "boolean", "description": "IRS990/Organization501c3Ind — X if 501(c)(3)", "required": False},
+    {"name": "num_board_members",            "type": "text",    "description": "IRS990/VotingMembersGoverningBodyCnt", "required": False},
+    {"name": "num_independent_members",      "type": "text",    "description": "IRS990/VotingMembersIndependentCnt — 0 means all insiders, a major governance red flag", "required": False},
+    {"name": "total_employees",              "type": "text",    "description": "IRS990/TotalEmployeeCnt", "required": False},
+    {"name": "total_volunteers",             "type": "text",    "description": "IRS990/TotalVolunteersCnt", "required": False},
+    {"name": "unrelated_business_income",    "type": "boolean", "description": "IRS990/UnrelatedBusIncmOverLimitInd — true if UBI exceeds threshold requiring 990T filing", "required": False},
+    {"name": "form_990t_filed",              "type": "boolean", "description": "IRS990/Form990TFiledInd — whether 990T was filed for unrelated business income tax", "required": False},
+]
+
+F990_GOVERNANCE = [
+    {"name": "gov_conflict_of_interest",     "type": "boolean", "description": "IRS990/ConflictOfInterestPolicyInd — does org have conflict of interest policy?", "required": False},
+    {"name": "gov_whistleblower",            "type": "boolean", "description": "IRS990/WhistleblowerPolicyInd", "required": False},
+    {"name": "gov_document_retention",       "type": "boolean", "description": "IRS990/DocumentRetentionPolicyInd", "required": False},
+    {"name": "gov_ceo_compensation_process", "type": "boolean", "description": "IRS990/CompensationProcessCEOInd — independent process to set CEO pay?", "required": False},
+    {"name": "gov_financial_audit",          "type": "boolean", "description": "IRS990/FSAuditedInd — financial statements independently audited?", "required": False},
+    {"name": "gov_related_entity",           "type": "boolean", "description": "IRS990/RelatedEntityInd — does org have related entities? False when known related entities exist = SR-025 signal", "required": False},
+    {"name": "gov_business_rln_org_members", "type": "boolean", "description": "IRS990/BusinessRlnWithOrgMemInd", "required": False},
+    {"name": "gov_business_rln_family",      "type": "boolean", "description": "IRS990/BusinessRlnWithFamMemInd", "required": False},
+    {"name": "gov_excess_benefit",           "type": "boolean", "description": "IRS990/EngagedInExcessBenefitTransInd", "required": False},
+    {"name": "gov_loan_to_officer",          "type": "boolean", "description": "IRS990/LoanOutstandingInd", "required": False},
+    {"name": "gov_grant_to_related",         "type": "boolean", "description": "IRS990/GrantToRelatedPersonInd", "required": False},
+    {"name": "gov_transfer_non_charitable",  "type": "boolean", "description": "IRS990/TrnsfrExmptNonChrtblRltdOrgInd — transferred funds to non-charitable related org?", "required": False},
+    {"name": "gov_990_provided_to_board",    "type": "boolean", "description": "IRS990/Form990ProvidedToGvrnBodyInd", "required": False},
+]
+
+# Officers — up to 10 (Part VII Section A)
+F990_OFFICERS = _repeating("officer", 10, [
+    ("name",              "name",     "IRS990/Form990PartVIISectionAGrp/PersonNm"),
+    ("title",             "text",     "IRS990/Form990PartVIISectionAGrp/TitleTxt"),
+    ("comp_from_org",     "currency", "IRS990/Form990PartVIISectionAGrp/ReportableCompFromOrgAmt — $0 on all officers is unusual for an org this size"),
+    ("comp_from_related", "currency", "IRS990/Form990PartVIISectionAGrp/ReportableCompFromRltdOrgAmt"),
+    ("hours_per_week",    "text",     "IRS990/Form990PartVIISectionAGrp/AverageHoursPerWeekRt"),
+])
+
+# Program service revenue lines — up to 8 (Part VIII)
+F990_PROGRAM_REVENUE = _repeating("program_revenue", 8, [
+    ("desc",              "text",     "IRS990/ProgramServiceRevenueGrp/Desc"),
+    ("total",             "currency", "IRS990/ProgramServiceRevenueGrp/TotalRevenueColumnAmt"),
+    ("ubi_amount",        "currency", "IRS990/ProgramServiceRevenueGrp/UnrelatedBusinessRevenueAmt — UBI portion triggers 990T"),
+    ("related_amount",    "currency", "IRS990/ProgramServiceRevenueGrp/RelatedOrExemptFuncIncomeAmt"),
+])
+
+# Schedule A — public support
+F990_SCHEDULE_A = [
+    {"name": "sched_a_public_support_pct_cy", "type": "text",     "description": "IRS990ScheduleA/PublicSupportCY509Pct — 1.0 = 100% public support", "required": False},
+    {"name": "sched_a_public_support_pct_py", "type": "text",     "description": "IRS990ScheduleA/PublicSupportPY509Pct", "required": False},
+    {"name": "sched_a_public_support_total",  "type": "currency", "description": "IRS990ScheduleA/PublicSupportTotal509Amt", "required": False},
+    {"name": "sched_a_type_509a2",            "type": "boolean",  "description": "IRS990ScheduleA/PubliclySupportedOrg509a2Ind — 509(a)(2) org derives support from program revenue", "required": False},
+]
+
+# Schedule D — supplemental financial statements (Part X detail)
+F990_SCHEDULE_D = [
+    {"name": "sched_d_land_book_value",       "type": "currency", "description": "IRS990ScheduleD/LandGrp/BookValueAmt", "required": False},
+    {"name": "sched_d_buildings_cost",        "type": "currency", "description": "IRS990ScheduleD/OtherLandBuildingsGrp/OtherCostOrOtherBasisAmt", "required": False},
+    {"name": "sched_d_buildings_depreciation","type": "currency", "description": "IRS990ScheduleD/OtherLandBuildingsGrp/DepreciationAmt", "required": False},
+    {"name": "sched_d_buildings_book_value",  "type": "currency", "description": "IRS990ScheduleD/OtherLandBuildingsGrp/BookValueAmt", "required": False},
+    {"name": "sched_d_total_buildings",       "type": "currency", "description": "IRS990ScheduleD/TotalBookValueLandBuildingsAmt", "required": False},
+]
+
+# Schedule L — related party transactions (up to 5)
+F990_SCHEDULE_L = _repeating("related_txn", 5, [
+    ("name",         "name",     "IRS990ScheduleL/TransactionsRelatedOrgGrp/NameOfInterested"),
+    ("relationship", "text",     "IRS990ScheduleL/TransactionsRelatedOrgGrp/RelationshipWithOrganizationTxt"),
+    ("description",  "text",     "IRS990ScheduleL/TransactionsRelatedOrgGrp/Desc"),
+    ("amount",       "currency", "IRS990ScheduleL/TransactionsRelatedOrgGrp/TransactionAmt"),
+])
+
+# Schedule R — related organizations (up to 5)
+F990_SCHEDULE_R = _repeating("related_org", 5, [
+    ("name",         "name",     "IRS990ScheduleR — related organization name"),
+    ("ein",          "id_number","IRS990ScheduleR — related organization EIN"),
+    ("org_type",     "text",     "exempt, partnership, or corporation"),
+    ("description",  "text",     "IRS990ScheduleR — primary activities or relationship description"),
+])
+
+# Schedule O — supplemental explanations (up to 10)
+F990_SCHEDULE_O = _repeating("schedule_o", 10, [
+    ("reference",    "text", "IRS990ScheduleO/SupplementalInformationDetail/FormAndLineReferenceDesc"),
+    ("explanation",  "text", "IRS990ScheduleO/SupplementalInformationDetail/ExplanationTxt"),
+])
+
+
+F990_EXTRACTION_PROMPT = """Extract structured data from this IRS Form 990 XML filing.
+
+This is structured XML data — not a scanned document. Every value is in a clearly labeled XML element.
+Read element names and their text content directly. Do not guess or infer values.
+
+CRITICAL RULES:
+
+XML structure:
+- The document is wrapped in <Return xmlns="http://www.irs.gov/efile">
+- Filing metadata is in <ReturnHeader>
+- Financial and governance data is in <ReturnData><IRS990>
+- Schedules are in <ReturnData><IRS990ScheduleA>, <IRS990ScheduleD>, etc.
+
+Amounts:
+- All dollar amounts are integers (no decimal points) in the XML
+- A value of 2250487 means $2,250,487
+- Extract the raw integer value, not formatted
+
+Booleans:
+- XML values are "true" or "false" (lowercase)
+- Convert to true/false for boolean fields
+- "X" in a field typically means "checked/yes" — treat as true
+
+Officers (Part VII Section A):
+- There are multiple <Form990PartVIISectionAGrp> elements
+- Extract each one as officer_1, officer_2, etc. in document order
+- $0 compensation for all officers at an org with millions in revenue is a signal
+
+Program service revenue (Part VIII):
+- There are multiple <ProgramServiceRevenueGrp> elements
+- Extract each as program_revenue_1, program_revenue_2, etc.
+- The UnrelatedBusinessRevenueAmt is the portion that triggers 990T filing
+
+Related entities:
+- RelatedEntityInd = false when known related entities exist = FALSE DISCLOSURE signal (SR-025)
+- Schedule R lists related organizations — extract all entries
+- Empty Schedule R combined with false RelatedEntityInd is a critical flag
+
+Schedule O:
+- Contains supplemental explanations for form lines
+- Extract all <SupplementalInformationDetail> entries
+- These often contain the most candid disclosures
+
+Missing schedules:
+- If a schedule element does not appear in the XML, leave those fields null
+- Do not fabricate values for absent schedules
+
+990T filings:
+- Form 990T is the Unrelated Business Income Tax return
+- It has a different structure from Form 990
+- For 990T files, extract only header fields (tax_year, ein, org_name, return_type, etc.)
+- Financial fields specific to Form 990 will be null for 990T filings"""
+
+
+def seed_990_schema(db):
+    """Insert the IRS Form 990 schema if it doesn't already exist."""
+    existing = db.query(DocumentSchema).filter(
+        DocumentSchema.document_type == "990"
+    ).first()
+
+    if existing:
+        print("990 schema already exists — skipping.")
+        return existing
+
+    schema_fields = _fields(
+        F990_HEADER,
+        F990_REVENUE,
+        F990_EXPENSES,
+        F990_BALANCE_SHEET,
+        F990_ORG,
+        F990_GOVERNANCE,
+        F990_OFFICERS,
+        F990_PROGRAM_REVENUE,
+        F990_SCHEDULE_A,
+        F990_SCHEDULE_D,
+        F990_SCHEDULE_L,
+        F990_SCHEDULE_R,
+        F990_SCHEDULE_O,
+    )
+
+    schema = DocumentSchema(
+        document_type="990",
+        display_name="IRS Form 990 — Annual Return of Exempt Organization",
+        vertical="fraud",
+        schema_fields=schema_fields,
+        extraction_prompt=F990_EXTRACTION_PROMPT,
+        version=1,
+        is_active=True,
+    )
+    db.add(schema)
+    db.commit()
+    db.refresh(schema)
+    print(f"990 schema created — {len(schema_fields)} fields.")
+    return schema
+
+
 def main():
     db = SessionLocal()
     try:
         seed_parcel_record_schema(db)
         seed_deed_schema(db)
+        seed_990_schema(db)
     finally:
         db.close()
 
