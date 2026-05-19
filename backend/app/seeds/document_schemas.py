@@ -1073,6 +1073,90 @@ def seed_ucc_schema(db):
     return schema
 
 
+# ── BUILDING-PERMIT schema ────────────────────────────────────────────────────
+
+PERMIT_FIELDS = [
+    {"name": "permit_number",    "type": "id_number", "description": "Official permit number (e.g. DA-2018-02488-C or 20201809)", "required": True},
+    {"name": "permit_date",      "type": "date",      "description": "Date the permit was issued", "required": True},
+    {"name": "permit_type",      "type": "text",      "description": "Commercial or Residential", "required": True},
+    {"name": "county",           "type": "text",      "description": "County where the permit was issued", "required": False},
+    {"name": "year_month",       "type": "text",      "description": "Source period label (e.g. AUGUST 2018) — derived from the spreadsheet sheet name", "required": False},
+    {"name": "owner_name",       "type": "name",      "description": "Property owner name — first part of the OWNER OR BUILDER field before the slash separator", "required": False},
+    {"name": "contractor_name",  "type": "name",      "description": "Contractor or builder name — second part of the OWNER OR BUILDER field after the slash. Repeated appearance of the same contractor across an entity's permits is a network signal.", "required": False},
+    {"name": "property_address", "type": "address",   "description": "Street address of the permitted construction", "required": False},
+    {"name": "city_township",    "type": "text",      "description": "City or township abbreviation (e.g. OSGOOD, GV CORP, PATTERSON)", "required": False},
+    {"name": "work_description", "type": "text",      "description": "Full description of the permitted work — verbatim from the TYPE column", "required": False},
+    {"name": "estimated_value",  "type": "currency",  "description": "Estimated construction value in dollars. Compare to organization's annual revenue to detect SR-026 CONSTRUCTION_OVERAGE signal.", "required": False},
+    {"name": "square_footage",   "type": "text",      "description": "Square footage of the permitted work", "required": False},
+    {"name": "use_group",        "type": "text",      "description": "IBC use group code: A=Assembly, B=Business, E=Educational, F=Factory, I=Institutional, M=Mercantile, R=Residential, S=Storage, U=Utility. For residential sheets this field contains a sequence count.", "required": False},
+]
+
+PERMIT_EXTRACTION_PROMPT = """Extract structured data from this building permit record.
+
+Building permit records come in two formats:
+
+SPREADSHEET FORMAT (Excel): Each row is one permit with columns:
+  DATE | PERMIT # | OWNER OR BUILDER | ADDRESS | CITY / TWP | TYPE | EST. VALUE | SQ. FT. | USE GROUP
+
+  For the OWNER OR BUILDER field: split on the "/" character.
+  - Everything before "/" is the owner_name
+  - Everything after "/" is the contractor_name
+  - If there is no "/" the entire field is the owner_name
+
+PDF FORMAT (individual permit): A single-page official permit document with labeled fields.
+  Extract all labeled fields present on the form.
+
+FIELD NOTES:
+
+permit_type: If this came from a commercial permit spreadsheet, set to "Commercial".
+  If from a residential spreadsheet, set to "Residential".
+
+estimated_value: Extract as a plain integer (no $ sign or commas).
+  This value is used to compute the SR-026 CONSTRUCTION_OVERAGE signal:
+  if estimated_value > total organization revenue for the same year, the signal fires.
+
+work_description: Copy the complete TYPE field verbatim — do not summarize.
+  "NEW RESTAURANT & COMM. OUTREACH FACILITY" is more investigatively useful
+  than "new construction."
+
+contractor_name: The construction company is often the investigative link.
+  If the same contractor appears on multiple permits for the same owner,
+  extract it consistently so the relationship is queryable.
+
+use_group: IBC codes — A=Assembly, B=Business, E=Educational, F=Factory/Industrial,
+  I=Institutional, M=Mercantile, R=Residential, S=Storage, U=Utility/Misc.
+  R-1 and R-2 are specific residential subtypes. For residential permit spreadsheets,
+  this column contains a sequential count number rather than an IBC code.
+
+If a field is not present, leave it null."""
+
+
+def seed_building_permit_schema(db):
+    """Insert the BUILDING-PERMIT schema if it doesn't already exist."""
+    existing = db.query(DocumentSchema).filter(
+        DocumentSchema.document_type == "BUILDING-PERMIT"
+    ).first()
+
+    if existing:
+        print("BUILDING-PERMIT schema already exists — skipping.")
+        return existing
+
+    schema = DocumentSchema(
+        document_type="BUILDING-PERMIT",
+        display_name="Building Permit",
+        vertical="fraud",
+        schema_fields=PERMIT_FIELDS,
+        extraction_prompt=PERMIT_EXTRACTION_PROMPT,
+        version=1,
+        is_active=True,
+    )
+    db.add(schema)
+    db.commit()
+    db.refresh(schema)
+    print(f"BUILDING-PERMIT schema created — {len(PERMIT_FIELDS)} fields.")
+    return schema
+
+
 def main():
     db = SessionLocal()
     try:
@@ -1081,6 +1165,7 @@ def main():
         seed_990_schema(db)
         seed_sos_filing_schema(db)
         seed_ucc_schema(db)
+        seed_building_permit_schema(db)
     finally:
         db.close()
 
