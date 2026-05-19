@@ -334,10 +334,218 @@ def seed_parcel_record_schema(db):
     return schema
 
 
+# ── DEED schema ───────────────────────────────────────────────────────────────
+
+DEED_RECORDING = [
+    {"name": "instrument_number",   "type": "id_number", "description": "Official instrument/recording number assigned by the county recorder", "required": True},
+    {"name": "book",                "type": "id_number", "description": "Official Records book or volume number", "required": False},
+    {"name": "page",                "type": "id_number", "description": "Page number within the book", "required": False},
+    {"name": "pages",               "type": "text",      "description": "Total number of pages in the instrument", "required": False},
+    {"name": "recording_date",      "type": "date",      "description": "Date the instrument was recorded with the county recorder", "required": True},
+    {"name": "recording_time",      "type": "text",      "description": "Time of recording (e.g. 10:46 AM)", "required": False},
+    {"name": "recording_fee",       "type": "currency",  "description": "Fee paid to the recorder to file this instrument", "required": False},
+    {"name": "recorder_name",       "type": "name",      "description": "Name of the county recorder who accepted the filing", "required": False},
+    {"name": "recording_county",    "type": "text",      "description": "County where the deed was recorded", "required": True},
+    {"name": "recording_state",     "type": "text",      "description": "State where the deed was recorded", "required": False},
+]
+
+DEED_AUDITOR = [
+    {"name": "auditor_name",                  "type": "name",      "description": "County auditor name from the transfer stamp", "required": False},
+    {"name": "auditor_signatory",             "type": "name",      "description": "Deputy who signed the auditor stamp line (e.g. Paula Schrader)", "required": False},
+    {"name": "auditor_review_date",           "type": "date",      "description": "Date the auditor reviewed and stamped the deed", "required": False},
+    {"name": "engineer_review_date",          "type": "date",      "description": "Date the county engineer reviewed the deed", "required": False},
+    {"name": "engineer_signatory",            "type": "text",      "description": "Initials or name on the county engineer review stamp", "required": False},
+    {"name": "conveyance_fee_amount",         "type": "currency",  "description": "Conveyance fee paid to the county auditor. Use this to compute implied sale price.", "required": False},
+    {"name": "conveyance_fee_exempt",         "type": "boolean",   "description": "True if the conveyance fee was waived/exempt (stamp shows Exempt)", "required": False},
+    {"name": "conveyance_fee_exemption_code", "type": "text",      "description": "Specific ORC exemption code applied (e.g. EL). Identifies the legal basis for the exemption.", "required": False},
+    {"name": "implied_sale_price",            "type": "currency",  "description": "Computed sale price based on conveyance fee. Darke County rate: $0.005 per dollar ($5/$1,000). Mercer County may differ.", "required": False},
+]
+
+DEED_TYPE = [
+    {"name": "deed_type",     "type": "text", "description": "Type of deed instrument: WARRANTY DEED, QUITCLAIM DEED, FIDUCIARY DEED, EXECUTOR DEED, CORRECTION DEED, etc.", "required": True},
+    {"name": "warranty_type", "type": "text", "description": "Level of title warranty: general warranty, limited warranty, fiduciary covenants, or none (quitclaim)", "required": False},
+]
+
+DEED_DATES = [
+    {"name": "execution_date",      "type": "date", "description": "Date the grantor signed the deed", "required": False},
+    {"name": "acknowledgment_date", "type": "date", "description": "Date the notary took the acknowledgment — may differ from execution date", "required": False},
+]
+
+DEED_GRANTOR = [
+    {"name": "grantor_name",              "type": "name", "description": "Full legal name of the grantor (seller/transferor)", "required": True},
+    {"name": "grantor_entity_type",       "type": "text", "description": "Type of grantor entity: individual, LLC, nonprofit corporation, trust, revocable living trust, etc.", "required": False},
+    {"name": "grantor_state",             "type": "text", "description": "State where the grantor entity is organized", "required": False},
+    {"name": "grantor_signatory",         "type": "name", "description": "Name of the person who physically signed on behalf of the grantor", "required": False},
+    {"name": "grantor_signatory_capacity","type": "text", "description": "Capacity in which the signatory signed: managing member, president, trustee, manager, etc.", "required": False},
+    {"name": "grantor_entity_correction", "type": "boolean", "description": "True if this deed corrects an entity type error in a prior recorded instrument", "required": False},
+]
+
+DEED_GRANTEE = [
+    {"name": "grantee_name",         "type": "name",    "description": "Full legal name of the grantee (buyer/recipient)", "required": True},
+    {"name": "grantee_entity_type",  "type": "text",    "description": "Type of grantee entity: individual, LLC, nonprofit corporation, trust, etc.", "required": False},
+    {"name": "grantee_state",        "type": "text",    "description": "State where the grantee entity is organized", "required": False},
+    {"name": "grantee_mailing_address","type": "address","description": "Tax mailing address for the grantee as stated in the deed body", "required": False},
+    {"name": "grantee_vesting_type", "type": "text",    "description": "How grantee(s) take title: joint tenancy, tenants in common, survivorship, etc.", "required": False},
+]
+
+DEED_CONSIDERATION = [
+    {"name": "consideration_stated",  "type": "boolean", "description": "True if a dollar amount is explicitly stated in the deed body. Usually false — Ohio practice is to use 'valuable consideration paid' without stating the price.", "required": False},
+    {"name": "consideration_amount",  "type": "currency","description": "Dollar amount if explicitly stated in the body. Usually null — use implied_sale_price from conveyance fee instead.", "required": False},
+    {"name": "consideration_text",    "type": "text",    "description": "Verbatim consideration language from the deed body (e.g. 'for valuable consideration paid')", "required": False},
+]
+
+DEED_PROPERTY = [
+    {"name": "property_county",              "type": "text",      "description": "County where the property is located (may differ from recording county for cross-county deeds)", "required": False},
+    {"name": "property_municipality",        "type": "text",      "description": "Village, city, or township where the property is located", "required": False},
+    {"name": "property_address",             "type": "address",   "description": "Street address of the property if stated in the deed", "required": False},
+    {"name": "legal_description",            "type": "text",      "description": "Full verbatim legal description of the property being conveyed", "required": True},
+    {"name": "subdivision_name",             "type": "text",      "description": "Subdivision or addition name from the legal description (e.g. Do Good Subdivision, Brewer Addition, Marion Acres)", "required": False},
+    {"name": "engineer_parcel_id",           "type": "id_number", "description": "County engineer parcel ID from the deed — may use different format than auditor parcel number", "required": False},
+    {"name": "prior_deed_volume",            "type": "id_number", "description": "Volume/book of the prior deed in the chain of title", "required": False},
+    {"name": "prior_deed_page",              "type": "id_number", "description": "Page of the prior deed in the chain of title", "required": False},
+    {"name": "prior_deed_instrument_number", "type": "id_number", "description": "Instrument number of the prior deed (Mercer County and other counties that use instrument numbers instead of book/page)", "required": False},
+    {"name": "subject_to_clause",            "type": "text",      "description": "Full text of any subject-to or exceptions clause (easements, highways, restrictions, etc.)", "required": False},
+]
+
+DEED_SURVEY = [
+    {"name": "surveyor_name",          "type": "name", "description": "Registered surveyor who prepared the legal description or survey exhibit", "required": False},
+    {"name": "survey_date",            "type": "date", "description": "Date the survey was performed", "required": False},
+    {"name": "survey_plat_reference",  "type": "text", "description": "Plat book, volume, page, or instrument number where the survey is recorded", "required": False},
+]
+
+DEED_AUTHORIZATION = [
+    {"name": "resolution_reference", "type": "text", "description": "Corporate board resolution number authorizing the transfer — blank if not filled in, which may indicate an invalid authorization", "required": False},
+    {"name": "resolution_date",      "type": "date", "description": "Date of the board resolution authorizing the transfer", "required": False},
+]
+
+DEED_ACKNOWLEDGMENT = [
+    {"name": "acknowledgment_state",  "type": "text", "description": "State where the notarial acknowledgment was taken — flag if different from recording county", "required": False},
+    {"name": "acknowledgment_county", "type": "text", "description": "County where the notarial acknowledgment was taken", "required": False},
+]
+
+DEED_NOTARY = [
+    {"name": "notary_name",                  "type": "name",      "description": "Name of the notary public who took the acknowledgment", "required": False},
+    {"name": "notary_registration",          "type": "id_number", "description": "Notary registration or attorney registration number", "required": False},
+    {"name": "notary_commission_expiration", "type": "date",      "description": "Expiration date of the notary's commission", "required": False},
+]
+
+DEED_PREPARER = [
+    {"name": "preparer_name",             "type": "name",    "description": "Name of the attorney or person who prepared the instrument", "required": False},
+    {"name": "preparer_firm",             "type": "text",    "description": "Law firm or organization of the preparer", "required": False},
+    {"name": "preparer_address",          "type": "address", "description": "Address of the preparer", "required": False},
+    {"name": "preparer_registration",     "type": "id_number","description": "Attorney registration number of the preparer", "required": False},
+    {"name": "title_search_disclaimer",   "type": "boolean", "description": "True if deed contains 'without benefit of a title search' disclaimer — indicates no title review was done", "required": False},
+    {"name": "preparer_note",             "type": "text",    "description": "Any other disclaimer or note on the preparer line", "required": False},
+    {"name": "deed_delivery_person",      "type": "text",    "description": "Person or service who physically delivered the deed to the recorder (appears on some county records)", "required": False},
+]
+
+DEED_EXTRACTION_PROMPT = """Extract structured data from this recorded deed instrument. Deeds are legal instruments that transfer real property title from one party to another.
+
+DEED TYPES AND WHAT THEY MEAN:
+- WARRANTY DEED: Grantor guarantees clear title. Strongest form.
+- QUITCLAIM DEED: Grantor transfers whatever interest they have, no title guarantee.
+- FIDUCIARY DEED: A trustee conveying trust property. Look for trust names and trustee capacities.
+- EXECUTOR / ADMINISTRATOR DEED: Estate conveying property after death.
+- CORRECTION DEED: Corrects an error in a prior recorded instrument.
+- EXEMPT TRANSFER: A $0 transfer between exempt organizations — conveyance fee is exempt.
+
+CRITICAL RULES:
+
+Parties:
+- grantor = the seller/transferor (the party GIVING the property)
+- grantee = the buyer/recipient (the party RECEIVING the property)
+- grantor_signatory = the person who physically signed — for LLCs this is a member or manager, for nonprofits a president or officer, for trusts a trustee
+- grantor_signatory_capacity = their title/role when signing
+- grantee_vesting_type: look for language like "for their joint lives with remainder to the survivor" (joint tenancy/survivorship) or "as tenants in common"
+
+Consideration and sale price:
+- consideration_stated: true ONLY if a dollar amount appears in the deed body — rare in Ohio
+- consideration_text: copy the exact language ("for valuable consideration paid", "for $10 and other valuable consideration", etc.)
+- implied_sale_price: compute from conveyance_fee_amount. Darke County rate: divide fee by 0.005. Example: $260 fee ÷ 0.005 = $52,000. If conveyance_fee_exempt is true, implied_sale_price = 0.
+- conveyance_fee_exemption_code: extract the specific code if shown (e.g. "EL"). This identifies WHY the transfer is exempt.
+
+Recording information:
+- instrument_number: the unique number assigned when filed — appears in the top stamp block
+- book and page: the Official Records volume and page — may not appear in Mercer County format
+- recording_date: the date stamped by the recorder, not the execution date
+- recording_county: where the deed was physically filed
+
+Property:
+- legal_description: copy the full verbatim description — do not summarize or abbreviate
+- engineer_parcel_id: appears as "Engineer's I.D.#" or "Parcel Number" or "Tax ID" — extract exactly as written
+- prior_deed_volume / prior_deed_page: the deed that gave the grantor their title — the chain of title reference
+- subject_to_clause: copy all subject-to language verbatim
+
+Dates:
+- execution_date: when the grantor signed
+- acknowledgment_date: when the notary took the acknowledgment — may be the same or different from execution date
+- recording_date: when the recorder filed it
+
+Acknowledgment geography:
+- acknowledgment_county: where the notary took the acknowledgment — flag mentally if different from recording_county (indicates signatories are based elsewhere)
+
+Corporate deeds:
+- resolution_reference: if the deed says "authorized under Resolution [number]" extract the number. If blank, note that it is blank.
+- resolution_date: the date of the authorizing board resolution
+
+Preparer:
+- title_search_disclaimer: true if the instrument contains "without benefit of a title search" or similar language
+- deed_delivery_person: some counties note who dropped off the deed — extract if present
+
+Multi-page deeds:
+- Some deeds have exhibit pages (surveys, legal descriptions) attached. Extract all information from all pages.
+- survey information appears on exhibit pages — extract surveyor_name, survey_date, survey_plat_reference from exhibits.
+
+If a field is not present in this document, leave it null."""
+
+
+def seed_deed_schema(db):
+    """Insert the DEED schema if it doesn't already exist."""
+    existing = db.query(DocumentSchema).filter(
+        DocumentSchema.document_type == "DEED"
+    ).first()
+
+    if existing:
+        print("DEED schema already exists — skipping.")
+        return existing
+
+    schema_fields = _fields(
+        DEED_RECORDING,
+        DEED_AUDITOR,
+        DEED_TYPE,
+        DEED_DATES,
+        DEED_GRANTOR,
+        DEED_GRANTEE,
+        DEED_CONSIDERATION,
+        DEED_PROPERTY,
+        DEED_SURVEY,
+        DEED_AUTHORIZATION,
+        DEED_ACKNOWLEDGMENT,
+        DEED_NOTARY,
+        DEED_PREPARER,
+    )
+
+    schema = DocumentSchema(
+        document_type="DEED",
+        display_name="Recorded Deed Instrument",
+        vertical="fraud",
+        schema_fields=schema_fields,
+        extraction_prompt=DEED_EXTRACTION_PROMPT,
+        version=1,
+        is_active=True,
+    )
+    db.add(schema)
+    db.commit()
+    db.refresh(schema)
+    print(f"DEED schema created — {len(schema_fields)} fields.")
+    return schema
+
+
 def main():
     db = SessionLocal()
     try:
         seed_parcel_record_schema(db)
+        seed_deed_schema(db)
     finally:
         db.close()
 
