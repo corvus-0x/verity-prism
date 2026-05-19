@@ -16,7 +16,7 @@
 | Task 5: Entities + Relationships | CRUD, soft delete, relationship links | ✅ Done |
 | Task 6: Signal Types + Findings | Signal type seed data, findings CRUD | ✅ Done |
 | Task 7: Transactions + Leads + Notes | Financial transactions CRUD, investigation leads CRUD, notes on any entity | ✅ Done |
-| Task 2.5: Document Schema Seeds | PARCEL-RECORD (340) + DEED (64) + 990 (235) + SOS-FILING (47) seeded. | ✅ Done |
+| Task 2.5: Document Schema Seeds | PARCEL-RECORD (340) + DEED (64) + 990 (235) + SOS-FILING (47) + UCC (46) seeded. | ✅ Done |
 | Task 8: Document Pipeline | SHA-256 hash → OCR → AI extraction → FTS index | ⬜ Next |
 | Task 9: NLP Search | Plain-English query → SQL/FTS results | ⬜ |
 | Task 10: AI Chat | Claude with full workspace context | ⬜ |

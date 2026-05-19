@@ -944,6 +944,135 @@ def seed_sos_filing_schema(db):
     return schema
 
 
+# ── UCC schema ────────────────────────────────────────────────────────────────
+
+UCC_CORE = [
+    {"name": "filing_number",         "type": "id_number", "description": "The document's own SR number or filing number assigned by the SOS", "required": True},
+    {"name": "original_fs_number",    "type": "id_number", "description": "The underlying original financing statement number (e.g. OH00220042448) — all amendments chain back to this", "required": True},
+    {"name": "filing_type",           "type": "text",      "description": "UCC1 (original financing statement), UCC3 Amendment, Continuation, Termination, Assignment", "required": True},
+    {"name": "amendment_type",        "type": "text",      "description": "For UCC3 amendments: Debtor Add, Debtor Delete, Secured Party Change, Collateral Change, Continuation, Termination, Assignment — empty for UCC1 originals", "required": False},
+    {"name": "filing_date",           "type": "date",      "description": "Date the filing was received and stamped by the SOS", "required": True},
+    {"name": "filing_time",           "type": "text",      "description": "Exact time of filing (HH:MM:SS) — CRITICAL for detecting UCC_BURST pattern where multiple amendments are filed within minutes of each other", "required": False},
+    {"name": "lapse_date",            "type": "date",      "description": "Date this financing statement expires if not continued (5 years from original filing for standard UCC1)", "required": False},
+    {"name": "packet_number",         "type": "id_number", "description": "Internal packet number assigned by the filing agent (Diligenz, CSC) — sequential numbers confirm batch submissions", "required": False},
+    {"name": "state",                 "type": "text",      "description": "State where the financing statement was filed", "required": False},
+    {"name": "agriculture_lien",      "type": "boolean",   "description": "True if the Agriculture Lien checkbox is marked on the UCC1", "required": False},
+    {"name": "public_finance",        "type": "boolean",   "description": "True if Public Finance Transaction checkbox is marked", "required": False},
+    {"name": "manufactured_home",     "type": "boolean",   "description": "True if Manufactured Home Transaction checkbox is marked", "required": False},
+]
+
+# Debtors — up to 6 (agricultural filings can have many co-obligors)
+UCC_DEBTORS = _repeating("debtor", 6, [
+    ("name",    "name",    "Full legal name of the debtor as it appears on the filing"),
+    ("address", "address", "Debtor's address — street, city, state, zip"),
+    ("type",    "text",    "individual or organization"),
+])
+
+# Secured parties — up to 3
+UCC_SECURED = _repeating("secured_party", 3, [
+    ("name",    "name",    "Full legal name of the secured party (lender/lienholder)"),
+    ("address", "address", "Secured party's address"),
+    ("type",    "text",    "individual or organization"),
+])
+
+UCC_COLLATERAL = [
+    {"name": "collateral_description", "type": "text", "description": "Complete verbatim collateral description from the financing statement — extract in full, do not abbreviate", "required": False},
+    {"name": "collateral_type",        "type": "text", "description": "Derived category: agricultural (crops/livestock/equipment), all-assets (blanket lien), equipment, real-property-fixtures, accounts-receivable, specific-items", "required": False},
+]
+
+UCC_FILER = [
+    {"name": "filer_name",    "type": "name",    "description": "Name of the person or organization that submitted this filing", "required": False},
+    {"name": "filer_org",     "type": "text",    "description": "Filing agent organization (e.g. Diligenz, Corporation Service Company, Farm Credit Mid-America PCA) — repeated filer names across amendments confirm coordinated batch activity", "required": False},
+    {"name": "filer_email",   "type": "text",    "description": "Filer contact email — employee names in email addresses can identify individuals at the creditor organization", "required": False},
+    {"name": "filer_phone",   "type": "text",    "description": "Filer contact phone number", "required": False},
+    {"name": "filer_address", "type": "address", "description": "Filer's mailing address", "required": False},
+]
+
+
+UCC_EXTRACTION_PROMPT = """Extract structured data from this UCC (Uniform Commercial Code) financing statement or amendment filed with a state Secretary of State.
+
+UCC FILING TYPES:
+
+UCC1 — Original Financing Statement: Creates a new security interest.
+  - Has its own FS number (e.g. OH00220042448)
+  - Lists debtors, secured parties, and collateral
+  - Check the filing type checkboxes: Agriculture Lien, Public Finance, Manufactured Home
+  - The lapse date is 5 years from filing unless the financing statement says otherwise
+
+UCC3 — Amendment: Modifies an existing financing statement.
+  - References the original FS number it is amending
+  - Amendment types: Continuation (extends lapse), Termination (releases lien), Debtor Add/Delete (changes who is bound), Collateral Change, Assignment
+  - Most amendments do NOT restate the full collateral — they only show what changed
+
+CRITICAL FIELDS:
+
+filing_time: Extract the EXACT time (HH:MM:SS) from the timestamp — not just the date.
+  Multiple amendments filed within seconds or minutes of each other indicate a coordinated batch
+  submission (the UCC_BURST signal SR-004). The time gap between sequential filings is investigatively
+  significant. Format: HH:MM:SS as it appears in the document.
+
+original_fs_number: For amendments, this is the FS number of the underlying financing statement
+  being modified — NOT the SR/document number of this amendment itself. Always extract the original FS
+  number separately from the document's own filing number.
+
+packet_number: The internal number assigned by the filing agent (Diligenz, CSC). Sequential packet
+  numbers on multiple amendments confirm they were submitted as a batch rather than independently.
+
+Debtors and secured parties:
+  - Extract ALL named debtors — agricultural filings frequently list multiple family members
+  - Record each person's name exactly as it appears, including middle initials
+  - Note whether each debtor is an individual or an organization
+  - For amendments that ADD a debtor: extract the new debtor under the debtor fields
+  - For amendments that DELETE a debtor: note this in the amendment_type field
+
+Collateral:
+  - For UCC1 originals: extract the COMPLETE verbatim collateral description
+  - For UCC3 amendments: note that collateral is in the original if not shown here
+  - Agricultural collateral (livestock, crops, equipment) vs. blanket all-assets lien are very different
+
+Filer information:
+  - The filer may be the secured party itself (bank employee filing directly) or a commercial filing
+    service (Diligenz, CSC) acting as an agent
+  - Employee names in email addresses (e.g. brenda.mescher@e-farmcredit.com) identify individuals
+    at the creditor — extract the email even if it reveals a name
+
+If a field is not present in this document type (e.g. collateral on a continuation amendment), leave it null."""
+
+
+def seed_ucc_schema(db):
+    """Insert the UCC schema if it doesn't already exist."""
+    existing = db.query(DocumentSchema).filter(
+        DocumentSchema.document_type == "UCC"
+    ).first()
+
+    if existing:
+        print("UCC schema already exists — skipping.")
+        return existing
+
+    schema_fields = _fields(
+        UCC_CORE,
+        UCC_DEBTORS,
+        UCC_SECURED,
+        UCC_COLLATERAL,
+        UCC_FILER,
+    )
+
+    schema = DocumentSchema(
+        document_type="UCC",
+        display_name="UCC Financing Statement",
+        vertical="fraud",
+        schema_fields=schema_fields,
+        extraction_prompt=UCC_EXTRACTION_PROMPT,
+        version=1,
+        is_active=True,
+    )
+    db.add(schema)
+    db.commit()
+    db.refresh(schema)
+    print(f"UCC schema created — {len(schema_fields)} fields.")
+    return schema
+
+
 def main():
     db = SessionLocal()
     try:
@@ -951,6 +1080,7 @@ def main():
         seed_deed_schema(db)
         seed_990_schema(db)
         seed_sos_filing_schema(db)
+        seed_ucc_schema(db)
     finally:
         db.close()
 
