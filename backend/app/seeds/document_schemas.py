@@ -802,12 +802,155 @@ def seed_990_schema(db):
     return schema
 
 
+# ── SOS-FILING schema ─────────────────────────────────────────────────────────
+
+SOS_CORE = [
+    {"name": "entity_name",        "type": "name",      "description": "Legal entity name exactly as filed with the Secretary of State", "required": True},
+    {"name": "entity_number",      "type": "id_number", "description": "SOS charter or registration number assigned to the entity", "required": True},
+    {"name": "document_id",        "type": "id_number", "description": "Individual filing document ID for this specific instrument", "required": False},
+    {"name": "filing_type",        "type": "text",      "description": "Type of SOS filing: Articles of Incorporation, Articles of Organization, Statement of Qualification, Continued Existence Notice, Charter Cancellation, Reinstatement, Amendment, Annual Report", "required": True},
+    {"name": "entity_type",        "type": "text",      "description": "Legal structure: Nonprofit Corporation, For-Profit Corporation, LLC, LLP, LP, Trust", "required": True},
+    {"name": "filing_date",        "type": "date",      "description": "Date the document was filed with the Secretary of State", "required": True},
+    {"name": "effective_date",     "type": "date",      "description": "Effective date if different from filing date", "required": False},
+    {"name": "filing_fee",         "type": "currency",  "description": "Fee paid to the SOS for this filing", "required": False},
+    {"name": "state",              "type": "text",      "description": "State of formation or registration", "required": False},
+    {"name": "county",             "type": "text",      "description": "County of principal office", "required": False},
+    {"name": "sos_secretary",      "type": "name",      "description": "Name of Secretary of State who certified the filing — useful for dating documents", "required": False},
+]
+
+SOS_ADDRESSES = [
+    {"name": "statutory_agent_name",    "type": "name",    "description": "Name of the statutory/registered agent", "required": False},
+    {"name": "statutory_agent_address", "type": "address", "description": "Address of the statutory agent — this is the legal notice address for the entity", "required": False},
+    {"name": "principal_office_address","type": "address", "description": "Principal office or business address", "required": False},
+    {"name": "mailing_address",         "type": "address", "description": "Mailing or correspondence address on the receipt", "required": False},
+    {"name": "receipt_addressee",       "type": "name",    "description": "Entity name or person on the filing receipt — may differ from legal entity name, revealing DBAs or related entities", "required": False},
+]
+
+# Named individuals — up to 5
+SOS_PEOPLE = _repeating("person", 5, [
+    ("name",    "name",    "Full name of individual as printed in the document"),
+    ("role",    "text",    "Role: incorporator, organizer, statutory agent, member, manager, partner, officer, director, signatory"),
+    ("address", "address", "Address given for this individual in the filing"),
+])
+
+SOS_FORMATION = [
+    {"name": "purpose_description",  "type": "text",     "description": "Stated business purpose or mission — broad catch-all clauses vs. specific purposes are both significant", "required": False},
+    {"name": "dissolution_clause",   "type": "text",     "description": "How assets are distributed on dissolution — for nonprofits, should specify 501(c)(3) recipients; vague clauses are a red flag", "required": False},
+    {"name": "authorized_shares",    "type": "text",     "description": "Number and class of authorized shares (for-profit corps only)", "required": False},
+    {"name": "initial_capital",      "type": "currency", "description": "Initial capital contribution stated in the articles", "required": False},
+    {"name": "duration",             "type": "text",     "description": "Entity duration: perpetuity or stated term", "required": False},
+    {"name": "law_firm_filer",       "type": "text",     "description": "Name of law firm or attorney that submitted the filing — repeated appearance of same firm across entities is a network signal", "required": False},
+    {"name": "attorney_filer",       "type": "name",     "description": "Name of the individual attorney on the filing", "required": False},
+    {"name": "formation_state",      "type": "text",     "description": "State of original formation (may differ from registration state for foreign entities)", "required": False},
+]
+
+SOS_STATUS = [
+    {"name": "entity_status",           "type": "text",    "description": "Current status as shown on the document: Active, Cancelled, Suspended, Dissolved", "required": False},
+    {"name": "cancellation_date",       "type": "date",    "description": "Date the charter or registration was cancelled", "required": False},
+    {"name": "cancellation_reason",     "type": "text",    "description": "Stated reason for cancellation — failure to file continued existence, voluntary dissolution, etc.", "required": False},
+    {"name": "reinstatement_date",      "type": "date",    "description": "Date reinstated after cancellation", "required": False},
+    {"name": "reinstatement_fee",       "type": "currency","description": "Fee paid to reinstate", "required": False},
+    {"name": "five_year_anniversary",   "type": "date",    "description": "For continued existence notices: the date by which the Statement of Continued Existence must be filed", "required": False},
+    {"name": "advance_notice_date",     "type": "date",    "description": "Date the SOS sent the advance warning notice", "required": False},
+    {"name": "original_formation_date", "type": "date",    "description": "Original incorporation/organization date — for amendment/reinstatement documents that reference it", "required": False},
+]
+
+
+SOS_EXTRACTION_PROMPT = """Extract structured data from this Ohio Secretary of State (SOS) filing document.
+
+SOS FILING TYPES AND WHAT THEY CONTAIN:
+
+Articles of Incorporation (Form 532B / C-101): Forms a nonprofit or for-profit corporation.
+  - Contains: entity name, entity number, incorporators, statutory agent, purpose clause, dissolution clause, share structure
+  - Key fields: who signed as incorporator, what address for statutory agent, dissolution language
+
+Articles of Organization (Form 533A / 115-LCA): Forms an LLC.
+  - Contains: entity name, entity number, organizer/member, statutory agent address
+  - Note: LLC articles do NOT require a purpose clause or member list — operating agreement governs membership
+
+Statement of Qualification (Form 536 / 105-PLL): Registers a Limited Liability Partnership.
+  - Contains: entity name, partner/authorized signatory, chief executive office address
+  - Note: No statutory agent required if Ohio CEO address is provided
+
+Continued Existence Notice: SOS administrative letter warning that a nonprofit's 5-year filing is due.
+  - Contains: entity name, entity number, deadline date, penalty for non-filing
+  - The addressee's name and address is the statutory agent of record
+
+Charter Cancellation: Certificate of cancellation issued by the SOS.
+  - Contains: entity name, entity number, cancellation date, reason, reinstatement instructions
+
+Reinstatement (Form 525B): Restores a cancelled entity.
+  - Contains: entity name, entity number, reinstatement date, fee paid, signatory
+  - IMPORTANT: The receipt addressee may name a DBA or related entity — always extract the receipt_addressee field
+
+EXTRACTION RULES:
+
+Entity name: Extract exactly as printed — preserve commas, periods, "Inc.", "LLC", "Ltd.", "LLP"
+
+Named individuals: Extract EVERY person named anywhere in the document:
+  - Incorporators, organizers, statutory agents, signatories, attorneys, partners
+  - For each person: full name, role (how they appear in the document), and address if given
+  - The same person may appear multiple times in different roles — extract each occurrence
+
+Addresses: Two addresses often appear:
+  - Statutory agent address: legal service address
+  - Principal/CEO office: where business operates
+  - Receipt/mailing address: where SOS sends correspondence — may differ from legal address
+
+Law firm: Look for "filed by," "prepared by," or a firm name on the transmittal letter or receipt header.
+  Repeated appearance of the same law firm across multiple entity filings is a network connection signal.
+
+Dissolution clause (for nonprofits): The purpose attachment often contains language about how assets are
+  distributed on dissolution. Extract this verbatim — it reveals whether specific recipient organizations
+  are named or whether vague boilerplate was used.
+
+Receipt addressee: The filing receipt may be addressed to a name different from the legal entity name.
+  This can reveal DBAs, operating names, or related entities. Always capture this.
+
+If a field is not present in this filing type, leave it null."""
+
+
+def seed_sos_filing_schema(db):
+    """Insert the SOS-FILING schema if it doesn't already exist."""
+    existing = db.query(DocumentSchema).filter(
+        DocumentSchema.document_type == "SOS-FILING"
+    ).first()
+
+    if existing:
+        print("SOS-FILING schema already exists — skipping.")
+        return existing
+
+    schema_fields = _fields(
+        SOS_CORE,
+        SOS_ADDRESSES,
+        SOS_PEOPLE,
+        SOS_FORMATION,
+        SOS_STATUS,
+    )
+
+    schema = DocumentSchema(
+        document_type="SOS-FILING",
+        display_name="Secretary of State Corporate Filing",
+        vertical="fraud",
+        schema_fields=schema_fields,
+        extraction_prompt=SOS_EXTRACTION_PROMPT,
+        version=1,
+        is_active=True,
+    )
+    db.add(schema)
+    db.commit()
+    db.refresh(schema)
+    print(f"SOS-FILING schema created — {len(schema_fields)} fields.")
+    return schema
+
+
 def main():
     db = SessionLocal()
     try:
         seed_parcel_record_schema(db)
         seed_deed_schema(db)
         seed_990_schema(db)
+        seed_sos_filing_schema(db)
     finally:
         db.close()
 
