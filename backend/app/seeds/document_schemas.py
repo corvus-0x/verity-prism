@@ -1626,6 +1626,99 @@ def seed_plat_schema(db):
     return schema
 
 
+# ── CORRESPONDENCE schema ─────────────────────────────────────────────────────
+
+CORRESPONDENCE_FIELDS = [
+    {"name": "document_subtype",    "type": "text",    "description": "Type of correspondence: complaint letter, referral, formal notice, regulatory filing, demand letter, response letter, memorandum, email", "required": True},
+    {"name": "date",                "type": "date",    "description": "Date the document was written or signed", "required": False},
+    {"name": "from_name",           "type": "name",    "description": "Author or sender name", "required": False},
+    {"name": "from_org",            "type": "text",    "description": "Author's organization or firm", "required": False},
+    {"name": "to_name",             "type": "name",    "description": "Recipient name", "required": False},
+    {"name": "to_org",              "type": "text",    "description": "Recipient organization (e.g. Ohio Attorney General, IRS Exempt Organizations, FBI)", "required": False},
+    {"name": "to_address",          "type": "address", "description": "Recipient mailing address", "required": False},
+    {"name": "re_line",             "type": "text",    "description": "RE: subject line — what the letter is about", "required": False},
+    {"name": "subject_entity",      "type": "name",    "description": "Primary entity the correspondence concerns (e.g. Do Good In His Name Inc)", "required": False},
+    {"name": "subject_ein",         "type": "id_number","description": "EIN of the subject organization if applicable", "required": False},
+    {"name": "document_summary",    "type": "text",    "description": "Brief summary of the document's purpose and key content", "required": False},
+    {"name": "full_text",           "type": "text",    "description": "Complete verbatim text of the letter or correspondence — do not summarize", "required": False},
+    {"name": "violations_alleged",  "type": "text",    "description": "Comma-separated list of violations, laws, or regulations cited (e.g. IRC 4941, IRC 4958, Ohio Rev. Code 1716, wire fraud)", "required": False},
+    {"name": "relief_requested",    "type": "text",    "description": "What action the author is requesting from the recipient", "required": False},
+    {"name": "signed",              "type": "boolean", "description": "True if the document has a wet or electronic signature; false if a template/draft with blank signature block", "required": False},
+    {"name": "is_draft",            "type": "boolean", "description": "True if the document is a draft or template (placeholder dates, blank signature, [Date] fields)", "required": False},
+    {"name": "reference_number",    "type": "id_number","description": "Any case number, complaint number, or reference number assigned", "required": False},
+    {"name": "attachments_mentioned","type": "text",   "description": "Documents or exhibits referenced as attachments in the letter", "required": False},
+    {"name": "source_url",          "type": "text",    "description": "URL if the document was retrieved from a web source", "required": False},
+]
+
+# Allegations — up to 10 numbered allegations in a complaint
+CORRESPONDENCE_ALLEGATIONS = _repeating("allegation", 10, [
+    ("number",      "text", "Allegation number or label (e.g. 1, Allegation 3, Count IV)"),
+    ("title",       "text", "Short title or heading of the allegation"),
+    ("description", "text", "Verbatim description of the allegation — do not summarize"),
+    ("evidence_cited","text","Documents or exhibits cited as evidence for this allegation"),
+])
+
+CORRESPONDENCE_EXTRACTION_PROMPT = """Extract structured data from this correspondence document.
+
+Correspondence includes: formal complaint letters, regulatory referrals, government agency filings,
+demand letters, formal notices, legal memoranda, emails, and similar written communications.
+
+MOST IMPORTANT FIELDS:
+
+full_text: Copy the COMPLETE text of the letter verbatim — every word. For complaint letters
+  and regulatory filings, the full text is the primary evidence. Do not summarize or abbreviate.
+
+document_subtype: Be specific — "complaint letter to Ohio Attorney General" is more useful than
+  just "letter."
+
+is_draft: Set to true if the document contains placeholder text like "[Date]", blank signature
+  lines, or unfilled fields. A draft is not the same as a filed complaint.
+
+allegations: For complaint letters and legal filings, extract each numbered allegation separately.
+  Copy the allegation text verbatim. Note which documents are cited as evidence.
+
+violations_alleged: List every law, regulation, or statutory provision cited in the letter
+  (e.g. "IRC 4941, IRC 4958, Ohio Rev. Code 1716.13, 18 U.S.C. 1343").
+
+relief_requested: What specific action is the author asking the recipient to take?
+  For IRS complaints: audit, revocation, excise taxes, criminal referral.
+  For AG complaints: injunction, investigation, removal of officer.
+
+signed vs. is_draft: A document can have a signature but still reference draft elements.
+  Check signature blocks carefully — typed names without handwriting may indicate electronic
+  signature or may indicate a template.
+
+If a field is not present, leave it null."""
+
+
+def seed_correspondence_schema(db):
+    """Insert the CORRESPONDENCE schema if it doesn't already exist."""
+    existing = db.query(DocumentSchema).filter(
+        DocumentSchema.document_type == "CORRESPONDENCE"
+    ).first()
+
+    if existing:
+        print("CORRESPONDENCE schema already exists — skipping.")
+        return existing
+
+    schema_fields = _fields(CORRESPONDENCE_FIELDS, CORRESPONDENCE_ALLEGATIONS)
+
+    schema = DocumentSchema(
+        document_type="CORRESPONDENCE",
+        display_name="Correspondence — Letter / Complaint / Referral",
+        vertical="fraud",
+        schema_fields=schema_fields,
+        extraction_prompt=CORRESPONDENCE_EXTRACTION_PROMPT,
+        version=1,
+        is_active=True,
+    )
+    db.add(schema)
+    db.commit()
+    db.refresh(schema)
+    print(f"CORRESPONDENCE schema created — {len(schema_fields)} fields.")
+    return schema
+
+
 def main():
     db = SessionLocal()
     try:
@@ -1639,6 +1732,7 @@ def main():
         seed_screenshot_schema(db)
         seed_obituary_schema(db)
         seed_plat_schema(db)
+        seed_correspondence_schema(db)
     finally:
         db.close()
 
