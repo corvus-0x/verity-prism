@@ -1309,6 +1309,97 @@ def seed_audit_report_schema(db):
     return schema
 
 
+# ── SCREENSHOT schema ─────────────────────────────────────────────────────────
+
+SCREENSHOT_FIELDS = [
+    {"name": "platform",          "type": "text",    "description": "Source platform: Facebook, Twitter/X, Instagram, LinkedIn, NextDoor, YouTube, website, government portal, other", "required": True},
+    {"name": "account_name",      "type": "name",    "description": "Name of the account or page that posted — the display name as shown", "required": False},
+    {"name": "account_handle",    "type": "text",    "description": "Username, handle, or URL identifier of the account", "required": False},
+    {"name": "account_type",      "type": "text",    "description": "Type of account: individual, organization, government, business, nonprofit, media", "required": False},
+    {"name": "post_date",         "type": "date",    "description": "Date the content was originally posted, as shown in the screenshot", "required": False},
+    {"name": "post_time",         "type": "text",    "description": "Time the content was posted, as shown", "required": False},
+    {"name": "post_text",         "type": "text",    "description": "Complete verbatim text of the post — every word, including hashtags and emojis if present", "required": True},
+    {"name": "author_name",       "type": "name",    "description": "Name of the individual who authored the post (may differ from the account name for page posts)", "required": False},
+    {"name": "likes_count",       "type": "text",    "description": "Number of likes or reactions as shown", "required": False},
+    {"name": "comments_count",    "type": "text",    "description": "Number of comments as shown", "required": False},
+    {"name": "shares_count",      "type": "text",    "description": "Number of shares as shown", "required": False},
+    {"name": "screenshot_date",   "type": "date",    "description": "Date the screenshot was captured (if known) — may differ from post date", "required": False},
+    {"name": "entities_mentioned","type": "text",    "description": "Comma-separated list of all named people, organizations, or properties explicitly mentioned in the post text", "required": False},
+    {"name": "property_address",  "type": "address", "description": "Property address if a specific property is the subject of the post", "required": False},
+    {"name": "transaction_described","type": "text", "description": "Summary of any property transaction, agreement, or financial arrangement described in the post", "required": False},
+    {"name": "url",               "type": "text",    "description": "URL of the original post if visible in the screenshot", "required": False},
+]
+
+# Visible comments — up to 5
+SCREENSHOT_COMMENTS = _repeating("comment", 5, [
+    ("author", "name", "Name of the commenter as shown"),
+    ("text",   "text", "Verbatim text of the comment"),
+])
+
+SCREENSHOT_EXTRACTION_PROMPT = """Extract structured data from this screenshot of social media, a website, or a digital document.
+
+WHAT TO EXTRACT:
+
+post_text: Copy the COMPLETE text of the main post verbatim — every word exactly as written,
+  including capitalization, punctuation, and emojis. Do not summarize or paraphrase.
+  This is the most important field.
+
+platform: Identify the platform from visual elements:
+  - Facebook: blue header, "Follow" button, reaction/comment/share buttons
+  - Twitter/X: bird logo or X logo, @ handles, character-limited posts
+  - Instagram: square images, follower counts
+  - NextDoor: neighborhood-focused layout
+  - Government portal: .gov URL or official seals
+
+account_name: The display name of the page or account that posted — exactly as shown.
+  Example: "Osgood Community Fire Company" not "OsgoodFire"
+
+post_date: Extract the date as shown in the screenshot. Some platforms show relative times
+  ("March 11 at 8:09 PM", "2 hours ago", "March 2024"). Extract what is visible;
+  if relative ("2 hours ago"), note it as text.
+
+entities_mentioned: List every named person, organization, or property explicitly named
+  in the post text. Separate with commas.
+  Example: "Do Good In His Name, Osgood Volunteer Fire Department, Winner's Meats, Allen Barlage"
+
+transaction_described: If the post describes a property deal, agreement, exchange, or
+  financial arrangement, summarize what was agreed to in one or two sentences.
+  Example: "Do Good In His Name will purchase the current fire station and exchange a
+  new facility with the fire department; the old firehouse will be used for a future project."
+
+comments: Extract visible comments in order. Copy each comment author name and text verbatim.
+
+If a field is not visible in the screenshot, leave it null."""
+
+
+def seed_screenshot_schema(db):
+    """Insert the SCREENSHOT schema if it doesn't already exist."""
+    existing = db.query(DocumentSchema).filter(
+        DocumentSchema.document_type == "SCREENSHOT"
+    ).first()
+
+    if existing:
+        print("SCREENSHOT schema already exists — skipping.")
+        return existing
+
+    schema_fields = _fields(SCREENSHOT_FIELDS, SCREENSHOT_COMMENTS)
+
+    schema = DocumentSchema(
+        document_type="SCREENSHOT",
+        display_name="Screenshot — Social Media / Web",
+        vertical="fraud",
+        schema_fields=schema_fields,
+        extraction_prompt=SCREENSHOT_EXTRACTION_PROMPT,
+        version=1,
+        is_active=True,
+    )
+    db.add(schema)
+    db.commit()
+    db.refresh(schema)
+    print(f"SCREENSHOT schema created — {len(schema_fields)} fields.")
+    return schema
+
+
 def main():
     db = SessionLocal()
     try:
@@ -1319,6 +1410,7 @@ def main():
         seed_ucc_schema(db)
         seed_building_permit_schema(db)
         seed_audit_report_schema(db)
+        seed_screenshot_schema(db)
     finally:
         db.close()
 
