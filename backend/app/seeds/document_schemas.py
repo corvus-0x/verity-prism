@@ -146,8 +146,8 @@ TAX_DISTRIBUTIONS = [
     {"name": "tax_dist_city_amount",     "type": "currency", "description": "Dollar amount going to city/village", "required": False},
 ]
 
-# Tax payment history: 8 payments newest to oldest
-TAX_PAYMENTS = _repeating("tax_payment", 8, [
+# Tax payment history: 14 payments newest to oldest (~7 years of biannual payments)
+TAX_PAYMENTS = _repeating("tax_payment", 14, [
     ("date",        "date",     "Payment date"),
     ("cycle",       "text",     "Payment cycle code (e.g. 1-25, 2-24)"),
     ("first_half",  "currency", "First half payment amount"),
@@ -961,8 +961,8 @@ UCC_CORE = [
     {"name": "manufactured_home",     "type": "boolean",   "description": "True if Manufactured Home Transaction checkbox is marked", "required": False},
 ]
 
-# Debtors — up to 6 (agricultural filings can have many co-obligors)
-UCC_DEBTORS = _repeating("debtor", 6, [
+# Debtors — up to 8 (agricultural filings can have many co-obligors)
+UCC_DEBTORS = _repeating("debtor", 8, [
     ("name",    "name",    "Full legal name of the debtor as it appears on the filing"),
     ("address", "address", "Debtor's address — street, city, state, zip"),
     ("type",    "text",    "individual or organization"),
