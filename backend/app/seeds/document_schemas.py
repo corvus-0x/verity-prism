@@ -1400,6 +1400,114 @@ def seed_screenshot_schema(db):
     return schema
 
 
+# ── OBITUARY schema ───────────────────────────────────────────────────────────
+
+OBITUARY_FIELDS = [
+    {"name": "deceased_full_name",    "type": "name",    "description": "Full legal name of the deceased exactly as printed", "required": True},
+    {"name": "birth_date",            "type": "date",    "description": "Date of birth", "required": False},
+    {"name": "death_date",            "type": "date",    "description": "Date of death — establishes timeline for estate transactions", "required": True},
+    {"name": "age_at_death",          "type": "text",    "description": "Age at time of death", "required": False},
+    {"name": "hometown",              "type": "text",    "description": "City/township where the deceased lived", "required": False},
+    {"name": "county",                "type": "text",    "description": "County of residence", "required": False},
+    {"name": "cause_of_death",        "type": "text",    "description": "Cause or location of death (hospice, hospital) if stated", "required": False},
+    {"name": "spouse_name",           "type": "name",    "description": "Surviving spouse name", "required": False},
+    {"name": "parents",               "type": "text",    "description": "Parents names as listed", "required": False},
+    {"name": "occupation",            "type": "text",    "description": "Career or occupation — farmer, banker, contractor, etc.", "required": False},
+    {"name": "education",             "type": "text",    "description": "School and graduation year if listed", "required": False},
+    {"name": "religious_affiliation", "type": "text",    "description": "Church or religious organization", "required": False},
+    {"name": "funeral_home",          "type": "name",    "description": "Funeral home name", "required": False},
+    {"name": "funeral_home_address",  "type": "address", "description": "Funeral home address", "required": False},
+    {"name": "service_date",          "type": "date",    "description": "Date of funeral mass or memorial service", "required": False},
+    {"name": "burial_location",       "type": "text",    "description": "Cemetery name and location", "required": False},
+    {"name": "source_url",            "type": "text",    "description": "URL of the obituary if captured from a funeral home website", "required": False},
+    {"name": "screenshot_date",       "type": "date",    "description": "Date the page was captured", "required": False},
+    {"name": "memorial_contributions","type": "text",    "description": "Organizations named for memorial donations — directly shows which charities the family endorses", "required": False},
+]
+
+# Children — up to 8 (most investigatively significant survivors)
+OBITUARY_CHILDREN = _repeating("child", 8, [
+    ("name",     "name",    "Child's full name as listed, including married name if given"),
+    ("spouse",   "name",    "Spouse name if listed"),
+    ("location", "text",    "City/town where child lives — geographic network mapping"),
+])
+
+# Siblings and in-laws — up to 10
+OBITUARY_SIBLINGS = _repeating("sibling", 10, [
+    ("name",     "name",    "Sibling or sibling-in-law full name"),
+    ("location", "text",    "City/town where sibling lives"),
+])
+
+OBITUARY_EXTRACTION_PROMPT = """Extract structured data from this obituary document.
+
+Obituaries appear as printed programs, funeral home website pages, or newspaper listings.
+
+MOST IMPORTANT FIELDS FOR INVESTIGATION:
+
+memorial_contributions: The line "Memorial contributions may be made to [organizations]" directly
+  reveals which charities the deceased's family considers worthy. If a named investigation entity
+  appears here, it documents a family endorsement of that organization.
+
+Children: Extract ALL children listed, with their spouses and locations. The children's list maps
+  the complete immediate family network. Children's spouses become connected individuals.
+  Children's locations reveal the geographic footprint of the family.
+
+Siblings and in-laws: Extract ALL sibling and in-law names with locations. These are second-degree
+  connections — in small rural communities, these family relationships explain otherwise puzzling
+  transactions (why an elderly couple sold property below market to a specific organization, etc.).
+
+spouse_name: The surviving spouse. In Ohio farm families, the spouse often holds the farm assets.
+
+occupation: Especially relevant for farmers and business owners — identifies the economic base.
+
+EXTRACTION NOTES:
+
+For children: The format is typically "First Last & spouse First Last of City" or
+  "First & First Last of City" (when listed as a couple). Extract the full couple.
+
+For siblings: Listed with in-law names, often as "First & Spouse Last of City."
+  The sibling-in-law surnames are as important as the sibling surnames.
+
+For locations: Small Ohio communities — Cassella, Maria Stein, St. Henry, Osgood, New Bremen,
+  Coldwater, Versailles — indicate Mercer/Darke County network membership.
+
+death_date: The most critical date field. In estate and trust contexts, the death date establishes
+  when assets began moving through probate or trust distribution.
+
+If a field is not present or unclear, leave it null."""
+
+
+def seed_obituary_schema(db):
+    """Insert the OBITUARY schema if it doesn't already exist."""
+    existing = db.query(DocumentSchema).filter(
+        DocumentSchema.document_type == "OBITUARY"
+    ).first()
+
+    if existing:
+        print("OBITUARY schema already exists — skipping.")
+        return existing
+
+    schema_fields = _fields(
+        OBITUARY_FIELDS,
+        OBITUARY_CHILDREN,
+        OBITUARY_SIBLINGS,
+    )
+
+    schema = DocumentSchema(
+        document_type="OBITUARY",
+        display_name="Obituary",
+        vertical="fraud",
+        schema_fields=schema_fields,
+        extraction_prompt=OBITUARY_EXTRACTION_PROMPT,
+        version=1,
+        is_active=True,
+    )
+    db.add(schema)
+    db.commit()
+    db.refresh(schema)
+    print(f"OBITUARY schema created — {len(schema_fields)} fields.")
+    return schema
+
+
 def main():
     db = SessionLocal()
     try:
@@ -1411,6 +1519,7 @@ def main():
         seed_building_permit_schema(db)
         seed_audit_report_schema(db)
         seed_screenshot_schema(db)
+        seed_obituary_schema(db)
     finally:
         db.close()
 
