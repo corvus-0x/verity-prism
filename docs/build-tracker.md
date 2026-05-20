@@ -53,3 +53,5 @@
 | 2026-05-18 | Tasks 1–6 complete. git init. 16/16 tests passing. First commit. |
 | 2026-05-19 | Task 7 complete. Transactions, leads, and notes APIs. 22/22 tests passing. |
 | 2026-05-19 | Task 2 migration complete. Alembic initialized, initial schema migrated, FTS index + audit trigger applied. |
+| 2026-05-19 | Schema derivation complete. 11 document type schemas seeded from 100+ real investigation documents: PARCEL-RECORD (370), DEED (64), 990 (235), SOS-FILING (47), UCC (52), BUILDING-PERMIT (13), AUDIT-REPORT (122), SCREENSHOT (26), OBITUARY (63), PLAT (51), CORRESPONDENCE (59). |
+| 2026-05-19 | Task 8 complete. Document pipeline: BackgroundTasks, fail-fast error handling, no_schema auto-leads, XML direct parse path. 29/29 tests passing. |
