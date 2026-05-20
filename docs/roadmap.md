@@ -19,7 +19,7 @@
 │  │              │  │              │  │                │ │
 │  │  hash        │  │  OCR         │  │  NLP search    │ │
 │  │  store       │  │  type detect │  │  AI chat       │ │
-│  │  index       │  │  field parse │  │  network graph │ │
+│  │  index       │  │  field parse │  │                │ │
 │  └──────────────┘  └──────────────┘  └────────────────┘ │
 │                                                           │
 │  ┌──────────────────────────────────────────────────┐   │
@@ -42,10 +42,12 @@
   │                │  │                 │  │                  │
   │  Fraud schemas │  │  Insurance      │  │  Legal discovery │
   │  SR signals    │  │  schemas        │  │  Compliance      │
-  │  Investigation │  │  Claims signals │  │  Real estate     │
-  │  workflow      │  │  Claim workflow │  │  title           │
-  │  AG/IRS/FBI    │  │  Claims system  │  │  ...             │
-  │  referral      │  │  export         │  │                  │
+  │  Network graph │  │  Claims signals │  │  Real estate     │
+  │  Timeline      │  │  Claim workflow │  │  title           │
+  │  Investigation │  │  Claims system  │  │  ...             │
+  │  workflow      │  │  export         │  │                  │
+  │  AG/IRS/FBI    │  │                 │  │                  │
+  │  referral      │  │                 │  │                  │
   └────────────────┘  └─────────────────┘  └──────────────────┘
 
 An insurance customer installs the engine + insurance cap.
@@ -141,18 +143,20 @@ The engine gains the ability to define and evaluate signals. The signals themsel
 
 **What the framework does NOT contain:** Any specific rule definitions. Those live in the vertical cap.
 
-### 2C — Relationship & Network Graph
-Visual map of entities, properties, transactions, and document links.
+### 2C — Intelligence Layer: Search + AI Chat
+These are engine capabilities — they understand documents and answer questions. The same search and chat infrastructure serves every vertical. The questions asked are different; the mechanism is identical.
 
-**Data source:** Everything already in `entities`, `relationships`, `transactions`, `document_extractions`  
-**Value:** Patterns invisible in tables become obvious as a graph  
-**Cross-vertical:** Fraud uses it for entity networks. Insurance uses it for claim relationships.
+**NLP Search** (Task 9 — already planned):  
+Plain-English query → structured filters on `document_extractions` → results with matched fields highlighted.  
+An insurance adjuster asks: "find claims where contractor invoice is dated after repair completion."  
+A fraud investigator asks: "find properties where the nonprofit paid more than twice appraised value."  
+Same engine. Different question.
 
-### 2D — Investigation Timeline
-Chronological view of all extracted dates across all documents in a workspace.
+**AI Chat** (Task 10 — already planned):  
+Claude with full workspace context — entities, transactions, findings, documents. Surfaces connections, answers questions, suggests next steps. No vertical-specific knowledge built in — the vertical's data shapes the answers.
 
-**Data source:** Every date field extracted from every document type  
-**Value:** Events in sequence reveal what isolated documents don't
+### 2D — Alembic Migration (carry-forward)
+`no_schema` enum value and `extraction_error` column were added directly to the DB in Task 8. Need a proper Alembic migration before Phase 2 so clean rebuilds work.
 
 ### 2E — Alembic Migration (carry-forward)
 `no_schema` enum value and `extraction_error` column were added directly to the DB in Task 8. Need a proper Alembic migration before Phase 2 so clean rebuilds work.
@@ -180,8 +184,16 @@ PARCEL-RECORD, DEED, 990, SOS-FILING, UCC, BUILDING-PERMIT, AUDIT-REPORT, SCREEN
 - SR-026 CONSTRUCTION_OVERAGE: permit estimated_value > total_revenue_cy same year
 - *(full SR catalog in signal definitions)*
 
+**Network graph:**
+Visual map of entities, properties, transactions, and document links — built from fraud-specific relationship data. The fraud cap defines what a meaningful connection looks like (officer_of, controls, owns, financed_by). A different vertical would define a different graph with different edge types and different emphasis.
+
+The engine stores entities and relationships. The fraud cap decides what to render and why.
+
+**Investigation timeline:**
+Chronological view of fraud-relevant events — deed recordings, 990 filing dates, UCC amendment timestamps, permit issuance dates, SOS filing events — ordered to reveal patterns. The fraud cap selects which date fields matter and what sequence means something. The engine provides the extracted dates.
+
 **Investigation workflow:**
-Upload → extract → signals fire → findings created → investigator reviews → referral package
+Upload → extract → signals fire → findings created → investigator reviews → network graph → timeline → referral package
 
 **Referral export:**
 - Ohio AG (Charitable Law Section) format

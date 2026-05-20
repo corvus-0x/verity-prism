@@ -6,9 +6,7 @@ Field paths in the schema description are used to locate values in the XML tree.
 import xml.etree.ElementTree as ET
 import re
 import logging
-from sqlalchemy.orm import Session
 from app.models.document_schema import DocumentSchema
-from app.models.document_extraction import DocumentExtraction
 
 logger = logging.getLogger(__name__)
 
@@ -74,19 +72,18 @@ def _extract_path_from_description(description: str) -> str | None:
 def parse_xml_document(
     file_bytes: bytes,
     schema: DocumentSchema,
-    document_id: str,
-    workspace_id: str,
-    db: Session,
-) -> list[DocumentExtraction]:
+) -> list[dict]:
     """
     Parse a structured XML document directly using field paths from the schema.
-    Returns a list of DocumentExtraction rows saved to the database.
-    Used for IRS 990 XML and any other structured XML document type.
+    Returns a list of dicts in the same format as extract_fields() so the
+    pipeline can call save_extractions() uniformly for both paths.
+
+    Confidence is always 1.0 — direct parse has no interpretation uncertainty.
     """
     try:
         root = ET.fromstring(file_bytes)
     except ET.ParseError as e:
-        logger.error(f"XML parse error for doc {document_id}: {e}")
+        logger.error(f"XML parse error: {e}")
         return []
 
     extractions = []
@@ -103,25 +100,17 @@ def parse_xml_document(
         if value is None:
             continue
 
-        row = DocumentExtraction(
-            document_id=document_id,
-            workspace_id=workspace_id,
-            field_name=field_name,
-            field_value=value,
-            field_type=field_type,
-            confidence=1.0,  # Direct parse = certain
-            schema_id=schema.id,
-        )
-        db.add(row)
-        extractions.append(row)
+        extractions.append({
+            "field_name": field_name,
+            "field_value": value,
+            "field_type": field_type,
+            "confidence": 1.0,
+        })
 
-    if extractions:
-        db.commit()
-        logger.info(
-            f"XML direct parse: {len(extractions)} fields extracted "
-            f"for doc {document_id} using schema {schema.document_type}"
-        )
-
+    logger.info(
+        f"XML direct parse: {len(extractions)} fields extracted "
+        f"using schema {schema.document_type}"
+    )
     return extractions
 
 

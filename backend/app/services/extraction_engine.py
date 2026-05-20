@@ -45,11 +45,33 @@ Document text (first 1500 characters):
         return "OTHER"
 
 
-def get_schema_for_type(doc_type: str, db: Session) -> DocumentSchema | None:
-    """Look up the active extraction schema for this document type."""
+def get_schema_for_type(
+    doc_type: str,
+    db: Session,
+    workspace_vertical: str = "general",
+) -> DocumentSchema | None:
+    """
+    Look up the active extraction schema for this document type.
+
+    Prefers a vertical-specific schema over a general one so verticals can
+    override the default extraction behaviour for any document type.
+    Falls back to vertical='general' if no vertical-specific schema exists.
+    """
+    # 1. Try vertical-specific schema first
+    if workspace_vertical != "general":
+        schema = db.query(DocumentSchema).filter(
+            DocumentSchema.document_type == doc_type,
+            DocumentSchema.vertical == workspace_vertical,
+            DocumentSchema.is_active == True,
+        ).first()
+        if schema:
+            return schema
+
+    # 2. Fall back to general schema
     return db.query(DocumentSchema).filter(
         DocumentSchema.document_type == doc_type,
-        DocumentSchema.is_active == True
+        DocumentSchema.vertical == "general",
+        DocumentSchema.is_active == True,
     ).first()
 
 

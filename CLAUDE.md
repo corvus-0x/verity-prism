@@ -125,6 +125,35 @@ The `documents.search_vector` column is a `tsvector` updated after every extract
 
 ---
 
+## Docstring Conventions
+
+Every function in `app/services/` gets a docstring. One concise block — no multi-paragraph essays. Cover:
+
+- **What it does** (one line, plain English)
+- **Why it works this way** — only if the constraint isn't obvious from the name (e.g., immutability guarantees, ordering requirements, coupling to another system)
+- **How callers use it** — only if it's a FastAPI dependency, requires specific argument shapes, or has a non-obvious return
+
+Routers, models, and schemas do **not** need docstrings — their structure and naming are self-documenting. Services contain business logic, so the *why* lives there.
+
+**Example (good):**
+```python
+def log(...):
+    """Write an immutable audit entry.
+
+    The audit_log table has a PostgreSQL trigger that blocks UPDATE and DELETE,
+    so every call here is a permanent record. Call from services after every
+    meaningful action — create, update, soft-delete, login, etc.
+    """
+```
+
+**Example (skip it — name says it all):**
+```python
+def hash_password(password: str) -> str:
+    """Return a bcrypt hash of the given password."""  # fine, but one line is enough
+```
+
+---
+
 ## Test Conventions
 
 - Test database: `catalyst_test` (separate from dev database)
@@ -145,6 +174,31 @@ SECRET_KEY=<long random string>
 ANTHROPIC_API_KEY=sk-ant-...
 UPLOAD_DIR=./uploads
 ```
+
+---
+
+## Blog Post Conventions
+
+Blog posts live in `docs/blog/`. Always start from `docs/blog/template.md`.
+
+**Voice — Corvus (alias, never connect to real name):**
+- Reasoning over announcement — walk through *how* you got there, not *what* you decided
+- Confident without being loud — don't say it's good, let the work demonstrate it
+- The mystery is in what's NOT said — don't over-explain, don't tie every bow
+- Metaphors from the physical world — water, weight, pressure, animals. Accurate, not decorative. Reach for them when abstract language won't carry the weight.
+- Never: "excited to share", "thrilled to announce", "game-changing", "amazing"
+- Posts are about the work, not about Corvus
+
+**Structure (from template):**
+1. Opening hook — drop into a specific moment or tension, no explanation, move on
+2. Context/problem — what friction existed before this decision
+3. The decision — reasoning that led there, specific details over abstractions
+4. Why it had to be this way — connect to the larger purpose
+5. Quiet close — what works now, what it proves, one paragraph, no triumphalism
+
+**Naming:** `post-NNN-kebab-case-title.md`
+
+**Published on:** Hashnode, under the alias `-corvus`, blog "From Case to Code"
 
 ---
 

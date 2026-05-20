@@ -92,21 +92,22 @@ Engine. Text extraction from PDFs and images. PyMuPDF for embedded text, pytesse
 #### `extraction_engine.py` ✅
 Engine. Three functions:
 - `detect_document_type()` — asks Claude to identify type from OCR text
-- `get_schema_for_type()` — looks up active schema for the workspace's vertical
-- `extract_fields()` + `save_extractions()` — Claude extracts fields per schema definition
+- `get_schema_for_type(doc_type, db, workspace_vertical)` — vertical-aware schema lookup. Prefers vertical-specific schema; falls back to `general`. A fraud workspace gets fraud schemas first, then general. Prevents cross-vertical schema contamination.
+- `extract_fields()` + `save_extractions()` — Claude extracts fields per schema definition, returns `list[dict]`
 
 #### `naming.py` ✅
 Engine. Generates standardized filenames: `YYYY-MM-DD_DOC-TYPE_ENTITY_DESCRIPTION.ext`.
 
 #### `xml_parser.py` ✅
-Engine. Direct XML parse for structured files. Reads field values from element paths in schema descriptions. Bypasses OCR and Claude. Confidence = 1.0. Currently active for 990 and 990-T.
+Engine. Direct XML parse for structured files. Reads field values from element paths in schema descriptions. Returns `list[dict]` — same format as `extract_fields()`. The pipeline calls `save_extractions()` identically for both paths. Confidence = 1.0. Currently active for 990 and 990-T.
 
 #### `document_pipeline.py` ✅
 Engine. Orchestrates the full upload pipeline:
 - `create_pending_document()` — hash + store + pending record (before HTTP response)
-- `process_upload_background()` — OCR → type → schema → extract → FTS → audit (after response via BackgroundTasks)
+- `process_upload_background()` — OCR → type → **vertical-aware** schema lookup → extract → FTS → audit (after response via BackgroundTasks)
 - `_no_schema()` — creates investigation lead for unknown document types
 - `_fail()` — sets failed status with error message
+- Both XML and Claude extraction paths return `list[dict]` — no type branching in FTS or downstream steps
 
 #### `search_service.py` 🔲
 Engine. NLP query → PostgreSQL FTS + field-level filters on `document_extractions`. Task 9.
@@ -126,6 +127,9 @@ app/services/connectors/
 
 #### `signal_engine.py` 🔲
 Engine framework. Phase 2 — evaluates signal rules from `signal_rules` table against `document_extractions`. The framework is engine. The rules it runs are vertical cap content.
+
+#### `connectors/` + `search_service.py` + `ai_engine.py` = Intelligence Layer
+The engine's intelligence layer. Understands documents, answers questions, surfaces connections. No domain knowledge — the same search and chat infrastructure serves every vertical. The questions differ; the mechanism is identical.
 
 ---
 
@@ -193,8 +197,18 @@ These components contain fraud-specific domain knowledge. They do not ship with 
 **Phase 3:** Fraud cap installer seeds all SR rules via `signal_rules` table  
 **Status:** 🔲 Planned
 
+### Network Graph
+**What it is:** Visual map of entity relationships, property chains, UCC lien networks — built from fraud-specific relationship data. The fraud cap defines what a meaningful connection looks like. A different vertical builds a different graph with different logic.  
+**Engine provides:** `entities`, `relationships`, `transactions` tables  
+**Fraud cap provides:** Graph rendering logic, which connections to surface, what layout means  
+**Status:** 🔲 Planned (Phase 3 — fraud cap)
+
+### Investigation Timeline
+**What it is:** Chronological view of fraud-relevant events. Fraud cap selects which extracted date fields matter and what sequence reveals. Engine stores the dates; cap decides what to show.  
+**Status:** 🔲 Planned (Phase 3 — fraud cap)
+
 ### Investigation Workflow Config
-**What it is:** The sequence an investigation follows — upload → extract → signals → findings → referral  
+**What it is:** The sequence an investigation follows — upload → extract → signals → findings → network graph → timeline → referral  
 **Phase 3:** Fraud cap defines this workflow. Insurance cap defines a different one.  
 **Status:** 🔲 Planned
 
@@ -211,9 +225,12 @@ These components contain fraud-specific domain knowledge. They do not ship with 
 Layer: Engine. `docker-compose up -d` starts full stack.
 
 ### Alembic Migrations
-**Current migration:** `5a4ff7266708_initial_schema` — creates all 17 tables  
-**⚠️ MISSING MIGRATION:** `no_schema` enum value + `extraction_error` column were added directly to the database in Task 8. Not in any migration file. Must be written before Phase 2 so clean rebuilds work.  
-**Status:** ⚠️ LOOSE
+**Migrations in order:**
+1. `5a4ff7266708_initial_schema` — creates all 17 tables, FTS index, audit trigger
+2. `c12f44824c55_add_no_schema_status_and_extraction_error` — adds `no_schema` to extraction_status enum, adds `extraction_error` column to documents table
+
+A clean `alembic upgrade head` now produces the correct full schema including all Task 8 changes.  
+**Status:** ✅ Connected
 
 ### FTS Index + Audit Trigger ✅
 Applied via SQL in Task 2. GIN index on `documents.search_vector`. PostgreSQL trigger on `audit_log`.
@@ -272,3 +289,4 @@ Investigation workflow + referral export
 | 2026-05-19 | Initial inventory created. Tasks 1-8 complete. 29/29 tests. |
 | 2026-05-19 | 11 document schemas seeded. fetch_990_xml.py and parse_990_xml.py built. |
 | 2026-05-20 | Restructured engine vs. fraud cap separation. All 11 schemas changed to vertical=general. Signal type seed data flagged as misplaced in engine layer. Roadmap rewritten with IDP-first architecture. |
+| 2026-05-20 | Pipeline hardening: (1) get_schema_for_type now vertical-aware — prefers vertical-specific, falls back to general. (2) XML and Claude extraction paths both return list[dict] — no type branching. (3) Alembic migration c12f44824c55 written and applied — no_schema enum + extraction_error column. All three flagged issues resolved. 29/29 tests. |

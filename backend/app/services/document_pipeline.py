@@ -29,6 +29,7 @@ from app.database import SessionLocal
 from app.models.document import Document
 from app.models.lead import InvestigationLead
 from app.models.document_schema import DocumentSchema
+from app.models.workspace import Workspace
 from app.services.ocr import extract_text
 from app.services.extraction_engine import (
     detect_document_type,
@@ -198,7 +199,12 @@ def _run_pipeline(
     db.commit()
 
     # ── Step 5: Match schema ────────────────────────────────────────────────
-    schema: DocumentSchema | None = get_schema_for_type(doc_type, db)
+    # Look up the workspace vertical so the schema registry can prefer
+    # vertical-specific schemas over general ones when both exist.
+    workspace = db.query(Workspace).filter(Workspace.id == workspace_id).first()
+    workspace_vertical = workspace.vertical if workspace else "general"
+
+    schema: DocumentSchema | None = get_schema_for_type(doc_type, db, workspace_vertical)
 
     if not schema:
         _no_schema(doc, doc_type, workspace_id, db)
@@ -211,16 +217,18 @@ def _run_pipeline(
     db.commit()
 
     # ── Step 6: Extract fields ──────────────────────────────────────────────
-    extractions = []
+    # Both paths return list[dict] with field_name/field_value/field_type/confidence.
+    # save_extractions() writes them to document_extractions for both paths.
+    raw_extractions: list[dict] = []
     try:
         if is_parseable_xml(file_bytes, doc_type):
-            # Gap 3: direct XML parse — no Claude needed
-            extractions = parse_xml_document(file_bytes, schema, doc.id, workspace_id, db)
+            # XML direct parse — no Claude, confidence = 1.0
+            raw_extractions = parse_xml_document(file_bytes, schema)
         else:
-            # Standard Claude extraction
-            raw = extract_fields(ocr_text, schema)
-            save_extractions(raw, doc.id, workspace_id, schema.id, db)
-            extractions = raw
+            # Claude extraction
+            raw_extractions = extract_fields(ocr_text, schema)
+
+        save_extractions(raw_extractions, doc.id, workspace_id, schema.id, db)
     except Exception as e:
         _fail(doc, f"Extraction failed: {e}", db)
         return
@@ -236,12 +244,12 @@ def _run_pipeline(
         pass
 
     # ── Step 8: Update FTS search index ─────────────────────────────────────
+    # raw_extractions is always list[dict] — no type branching needed
     extra_text = " ".join(
         f"{e.get('field_name', '')} {e.get('field_value', '')}"
-        for e in (extractions if isinstance(extractions[0], dict) else
-                  [{"field_name": e.field_name, "field_value": e.field_value or ""}
-                   for e in extractions])
-    ) if extractions else ""
+        for e in raw_extractions
+        if e.get("field_value")
+    )
     _update_search_index(doc, ocr_text, extra_text, db)
 
     doc.extraction_status = "complete"
@@ -252,7 +260,7 @@ def _run_pipeline(
 
     logger.info(
         f"Pipeline complete: doc={doc.id} type={doc_type} "
-        f"fields={len(extractions)} file='{original_filename}'"
+        f"fields={len(raw_extractions)} file='{original_filename}'"
     )
 
 
