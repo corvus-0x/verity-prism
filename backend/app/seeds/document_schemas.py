@@ -1220,7 +1220,7 @@ AUDIT_FLAGS = [
     {"name": "official_nonresponse",        "type": "boolean", "description": "True if any finding shows officials did not respond to the auditor — documented accountability failure", "required": False},
     {"name": "over_appropriation_spending", "type": "boolean", "description": "True if a finding documents expenditures exceeding appropriations (spending without council authorization)", "required": False},
     {"name": "late_filing",                 "type": "boolean", "description": "True if a finding documents late filing of required annual reports", "required": False},
-    {"name": "mentions_investigation_entity","type": "boolean","description": "True if any named investigation entity (Do Good, Homan, Baumer, etc.) appears anywhere in the report", "required": False},
+    {"name": "mentions_investigation_entity","type": "boolean","description": "True if any entity or individual under investigation appears by name anywhere in the report", "required": False},
     {"name": "tax_abatement_disclosed",     "type": "boolean", "description": "True if any tax abatement, enterprise zone, or TIF agreement is disclosed in notes or findings", "required": False},
     {"name": "related_party_disclosed",     "type": "boolean", "description": "True if any related party transaction is disclosed", "required": False},
 ]
@@ -1265,7 +1265,7 @@ FINDINGS:
 BOOLEAN FLAGS — SET CAREFULLY:
   - no_public_records_policy: true if a finding says the entity lacked a public records policy
   - over_appropriation_spending: true if a finding says expenditures exceeded appropriations
-  - mentions_investigation_entity: true ONLY if Do Good, Homan, Baumer, Poeppelman, Mescher, or known investigation entities are explicitly named
+  - mentions_investigation_entity: true ONLY if any entity or individual under active investigation is explicitly named anywhere in the report
   - tax_abatement_disclosed: true if any tax abatement, enterprise zone, or TIF agreement appears anywhere
 
 ZERO ACTIVITY:
@@ -1352,7 +1352,7 @@ platform: Identify the platform from visual elements:
   - Government portal: .gov URL or official seals
 
 account_name: The display name of the page or account that posted — exactly as shown.
-  Example: "Osgood Community Fire Company" not "OsgoodFire"
+  Example: "Smith Valley Fire Company" not "SmithValleyFire"
 
 post_date: Extract the date as shown in the screenshot. Some platforms show relative times
   ("March 11 at 8:09 PM", "2 hours ago", "March 2024"). Extract what is visible;
@@ -1360,12 +1360,12 @@ post_date: Extract the date as shown in the screenshot. Some platforms show rela
 
 entities_mentioned: List every named person, organization, or property explicitly named
   in the post text. Separate with commas.
-  Example: "Do Good In His Name, Osgood Volunteer Fire Department, Winner's Meats, Allen Barlage"
+  Example: "Acme Foundation, Riverside Fire Department, Smith's Hardware, John Doe"
 
 transaction_described: If the post describes a property deal, agreement, exchange, or
   financial arrangement, summarize what was agreed to in one or two sentences.
-  Example: "Do Good In His Name will purchase the current fire station and exchange a
-  new facility with the fire department; the old firehouse will be used for a future project."
+  Example: "The foundation will acquire the fire station and exchange a new facility;
+  the old building will be repurposed for future use."
 
 comments: Extract visible comments in order. Copy each comment author name and text verbatim.
 
@@ -1467,8 +1467,8 @@ For children: The format is typically "First Last & spouse First Last of City" o
 For siblings: Listed with in-law names, often as "First & Spouse Last of City."
   The sibling-in-law surnames are as important as the sibling surnames.
 
-For locations: Small Ohio communities — Cassella, Maria Stein, St. Henry, Osgood, New Bremen,
-  Coldwater, Versailles — indicate Mercer/Darke County network membership.
+For locations: note the city/state for each survivor — geographic clustering of family members
+  can reveal the operational footprint of a network.
 
 death_date: The most critical date field. In estate and trust contexts, the death date establishes
   when assets began moving through probate or trust distribution.
@@ -1540,7 +1540,7 @@ PLAT_FIELDS = [
     {"name": "auditor_certification_date","type": "date", "description": "Date the county auditor certified no unpaid taxes on the platted land", "required": False},
     {"name": "auditor_name",         "type": "name",      "description": "County auditor who signed the tax certificate", "required": False},
     {"name": "deed_delivery_person", "type": "text",      "description": "Person or entity who dropped off the plat at the recorder — can reveal contractors or legal agents connected to the owner", "required": False},
-    {"name": "roads_shown",          "type": "text",      "description": "Road names visible on the plat (e.g. Washington Avenue, Homan Road)", "required": False},
+    {"name": "roads_shown",          "type": "text",      "description": "Road names visible on the plat drawing — road names can confirm geographic location", "required": False},
     {"name": "easements_created",    "type": "text",      "description": "Utility or other easements created or vacated by this plat", "required": False},
     {"name": "covenants_reference",  "type": "id_number", "description": "Instrument number where subdivision covenants and restrictions are recorded", "required": False},
     {"name": "health_dept_approval_date","type": "date",  "description": "Date of health department inspection/approval if shown", "required": False},
@@ -1578,7 +1578,7 @@ owner_name: The entity that owns the land being platted.
 deed_delivery_person: Who dropped off the plat at the recorder's office.
   This appears in the recorder's header as "Dropped off by: [name/entity]"
   A contractor or law firm dropping off the plat reveals who is managing the project.
-  Example: "BAUMER CONST/SARA" = Baumer Construction
+  Example: "SMITH CONST/JANE" = Smith Construction
 
 surveyor_name and surveyor_ps_number: Found in the surveyor's certification block.
   "I hereby certify that this plat is true and accurate... PROFESSIONAL SURVEYOR NO. [PS] XXXX"
@@ -1591,7 +1591,7 @@ adjacent_owners: All named property owners shown on the plat diagram for neighbo
   in small communities, adjacent owners often reveal network connections.
 
 roads_shown: All road names visible on the plat drawing.
-  Road names can confirm geographic location or reveal family connections (e.g. "Homan Road").
+  Road names can confirm geographic location and may reveal connections to nearby landowners.
 
 easements_created and lots_vacated: Note any lot lines, easements, or roads being eliminated.
 
@@ -1637,7 +1637,7 @@ CORRESPONDENCE_FIELDS = [
     {"name": "to_org",              "type": "text",    "description": "Recipient organization (e.g. Ohio Attorney General, IRS Exempt Organizations, FBI)", "required": False},
     {"name": "to_address",          "type": "address", "description": "Recipient mailing address", "required": False},
     {"name": "re_line",             "type": "text",    "description": "RE: subject line — what the letter is about", "required": False},
-    {"name": "subject_entity",      "type": "name",    "description": "Primary entity the correspondence concerns (e.g. Do Good In His Name Inc)", "required": False},
+    {"name": "subject_entity",      "type": "name",    "description": "Primary entity the correspondence concerns", "required": False},
     {"name": "subject_ein",         "type": "id_number","description": "EIN of the subject organization if applicable", "required": False},
     {"name": "document_summary",    "type": "text",    "description": "Brief summary of the document's purpose and key content", "required": False},
     {"name": "full_text",           "type": "text",    "description": "Complete verbatim text of the letter or correspondence — do not summarize", "required": False},

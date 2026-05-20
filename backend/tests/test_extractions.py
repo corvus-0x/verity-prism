@@ -15,7 +15,7 @@ def test_extractions_created_after_upload(client, auth_headers, workspace_id):
     in tests (BackgroundTasks execute inline with TestClient), so we can
     immediately check for extraction rows.
     """
-    content = b"%PDF-1.4 Grantor: Karen Homan. Grantee: Do Good Real Estate LLC."
+    content = b"%PDF-1.4 Grantor: Jane Smith. Grantee: Acme Real Estate LLC."
 
     with patch("app.services.extraction_engine.Anthropic") as mock_anthropic:
         mock_client = MagicMock()

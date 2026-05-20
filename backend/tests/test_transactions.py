@@ -15,7 +15,7 @@ def test_create_transaction(client, auth_headers, workspace_id):
         "consideration": "above_market",
         "transaction_date": "2022-09-15",
         "instrument_number": "202300004871",
-        "notes": "47 Patterson St — Seller: Winner Kyle J"
+        "notes": "Above-market acquisition — Seller: J. Smith"
     }, headers=auth_headers)
     assert response.status_code == 201
     data = response.json()

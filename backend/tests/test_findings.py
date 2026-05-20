@@ -16,8 +16,8 @@ def test_signal_types_are_preloaded(client, auth_headers):
 def test_create_finding(client, auth_headers, workspace_id):
     signal = client.get("/signal-types", headers=auth_headers).json()[0]
     response = client.post(f"/workspaces/{workspace_id}/findings", json={
-        "title": "47 Patterson St — 700% overpayment",
-        "description": "Paid $300K for $37,490 property. Seller: Winner Kyle J.",
+        "title": "Property overpayment anomaly",
+        "description": "Paid above-market price for significantly below-appraisal property.",
         "severity": "critical",
         "signal_type_id": signal["id"]
     }, headers=auth_headers)

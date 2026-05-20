@@ -9,8 +9,8 @@ def workspace_id(client, auth_headers):
 
 def test_create_lead(client, auth_headers, workspace_id):
     response = client.post(f"/workspaces/{workspace_id}/leads", json={
-        "question": "Does Karen Homan have related businesses registered in Ohio?",
-        "source": "Ohio Secretary of State"
+        "question": "Does the subject entity have related businesses registered in the state?",
+        "source": "Secretary of State"
     }, headers=auth_headers)
     assert response.status_code == 201
     assert response.json()["status"] == "pending"
@@ -21,7 +21,7 @@ def test_complete_lead_with_summary(client, auth_headers, workspace_id):
                        json={"question": "Test question"}, headers=auth_headers).json()
     response = client.patch(f"/workspaces/{workspace_id}/leads/{lead['id']}", json={
         "status": "complete",
-        "result_summary": "Found Do Good Real Estate LLC (SOS #4371988)"
+        "result_summary": "Found affiliated LLC registered with state (SOS #1234567)"
     }, headers=auth_headers)
     assert response.status_code == 200
     assert response.json()["status"] == "complete"
