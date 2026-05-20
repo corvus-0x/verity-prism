@@ -321,7 +321,7 @@ def seed_parcel_record_schema(db):
     schema = DocumentSchema(
         document_type="PARCEL-RECORD",
         display_name="County Auditor Parcel Record",
-        vertical="fraud",
+        vertical="general",
         schema_fields=schema_fields,
         extraction_prompt=EXTRACTION_PROMPT,
         version=1,
@@ -528,7 +528,7 @@ def seed_deed_schema(db):
     schema = DocumentSchema(
         document_type="DEED",
         display_name="Recorded Deed Instrument",
-        vertical="fraud",
+        vertical="general",
         schema_fields=schema_fields,
         extraction_prompt=DEED_EXTRACTION_PROMPT,
         version=1,
@@ -789,7 +789,7 @@ def seed_990_schema(db):
     schema = DocumentSchema(
         document_type="990",
         display_name="IRS Form 990 — Annual Return of Exempt Organization",
-        vertical="fraud",
+        vertical="general",
         schema_fields=schema_fields,
         extraction_prompt=F990_EXTRACTION_PROMPT,
         version=1,
@@ -931,7 +931,7 @@ def seed_sos_filing_schema(db):
     schema = DocumentSchema(
         document_type="SOS-FILING",
         display_name="Secretary of State Corporate Filing",
-        vertical="fraud",
+        vertical="general",
         schema_fields=schema_fields,
         extraction_prompt=SOS_EXTRACTION_PROMPT,
         version=1,
@@ -1060,7 +1060,7 @@ def seed_ucc_schema(db):
     schema = DocumentSchema(
         document_type="UCC",
         display_name="UCC Financing Statement",
-        vertical="fraud",
+        vertical="general",
         schema_fields=schema_fields,
         extraction_prompt=UCC_EXTRACTION_PROMPT,
         version=1,
@@ -1144,7 +1144,7 @@ def seed_building_permit_schema(db):
     schema = DocumentSchema(
         document_type="BUILDING-PERMIT",
         display_name="Building Permit",
-        vertical="fraud",
+        vertical="general",
         schema_fields=PERMIT_FIELDS,
         extraction_prompt=PERMIT_EXTRACTION_PROMPT,
         version=1,
@@ -1296,7 +1296,7 @@ def seed_audit_report_schema(db):
     schema = DocumentSchema(
         document_type="AUDIT-REPORT",
         display_name="Government / Nonprofit Audit Report",
-        vertical="fraud",
+        vertical="general",
         schema_fields=schema_fields,
         extraction_prompt=AUDIT_EXTRACTION_PROMPT,
         version=1,
@@ -1387,7 +1387,7 @@ def seed_screenshot_schema(db):
     schema = DocumentSchema(
         document_type="SCREENSHOT",
         display_name="Screenshot — Social Media / Web",
-        vertical="fraud",
+        vertical="general",
         schema_fields=schema_fields,
         extraction_prompt=SCREENSHOT_EXTRACTION_PROMPT,
         version=1,
@@ -1495,7 +1495,7 @@ def seed_obituary_schema(db):
     schema = DocumentSchema(
         document_type="OBITUARY",
         display_name="Obituary",
-        vertical="fraud",
+        vertical="general",
         schema_fields=schema_fields,
         extraction_prompt=OBITUARY_EXTRACTION_PROMPT,
         version=1,
@@ -1613,7 +1613,7 @@ def seed_plat_schema(db):
     schema = DocumentSchema(
         document_type="PLAT",
         display_name="Subdivision Plat / Replat",
-        vertical="fraud",
+        vertical="general",
         schema_fields=schema_fields,
         extraction_prompt=PLAT_EXTRACTION_PROMPT,
         version=1,
@@ -1706,7 +1706,7 @@ def seed_correspondence_schema(db):
     schema = DocumentSchema(
         document_type="CORRESPONDENCE",
         display_name="Correspondence — Letter / Complaint / Referral",
-        vertical="fraud",
+        vertical="general",
         schema_fields=schema_fields,
         extraction_prompt=CORRESPONDENCE_EXTRACTION_PROMPT,
         version=1,

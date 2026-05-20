@@ -1,301 +1,266 @@
 # Verity Prism — Build Inventory
 
 **Purpose:** Every component that exists, what it does, what it connects to, and whether it's wired in.  
-**Rule:** Nothing gets built without adding it here. Update this at the end of every session.  
-**Status key:** ✅ Connected — wired into main flow | ⚠️ Loose — built but not yet integrated | 🔲 Planned — in a plan but not built
+**Rule:** Nothing gets built without adding it here. Update at the end of every session.  
+**Status key:** ✅ Connected | ⚠️ Loose — built but not yet integrated | 🔲 Planned — not yet built
 
 ---
 
-## How to Use This
+## Architecture: Engine vs. Cap
 
-When you build something new, ask three questions:
-1. What does this component do?
-2. What does it call, and what calls it?
-3. Is it wired into the platform, or is it floating?
+Everything in this inventory belongs to one of two layers:
 
-If the answer to #3 is "floating," add it here with status ⚠️ and note where it needs to connect in a future phase. That's the thing that broke Catalyst — built pieces with no documented home.
+**ENGINE** — Ships to every customer, every vertical. Contains no domain logic. Processes documents, extracts fields, indexes data, answers queries.
 
----
+**VERTICAL CAP** — Installs on top of the engine for a specific domain. Contains signal definitions, schema sets, workflow config, export formats. A fraud customer never sees insurance cap logic. An insurance customer never sees fraud cap logic.
 
-## Scripts (Standalone Utilities)
-
-### `scripts/fetch_990_xml.py`
-**What it does:** Downloads 990 XML filings from IRS TEOS bulk data for any organization by EIN. Handles all IRS ZIP formats (monthly 2023+, year-wide 2021-2022, CT1 legacy 2020, Deflate64 compression). Uses HTTP range requests to read ZIP table-of-contents without downloading full archives.
-
-**Currently used:** Manually from terminal — `python scripts/fetch_990_xml.py --ein XXXXXXXXX`
-
-**Calls:** IRS bulk data URLs directly (no internal dependencies)
-
-**Called by:** Nothing in the platform yet
-
-**Needs to connect to (Phase 2):**
-- New service: `app/services/public_data.py` — wraps the download logic
-- New endpoint: `POST /workspaces/{id}/import/990?ein=XXXXXXXXX`
-- That endpoint calls `create_pending_document()` + `process_upload_background()` for each downloaded XML
-
-**Status:** ⚠️ LOOSE — works, tested against live IRS data, not wired into platform
+This distinction matters in code: if a component knows what fraud is, it belongs in the fraud cap, not the engine.
 
 ---
 
-### `scripts/parse_990_xml.py`
-**What it does:** Reads all 990 XML files in `private/example documents/990_xml/` and prints a structured report — revenue, expenses, balance sheet, governance flags, officers, program service revenue, and schedules. Used for investigation analysis, not for platform processing.
+## ENGINE COMPONENTS
 
-**Currently used:** Manually for investigation analysis — `python scripts/parse_990_xml.py`
+### Scripts — Standalone Utilities
 
-**Calls:** Python standard library only (xml.etree.ElementTree)
+#### `scripts/fetch_990_xml.py` — IRS 990 XML Downloader
+**Layer:** Engine (general-purpose, any vertical pulls 990s)  
+**What it does:** Downloads 990 XML from IRS TEOS bulk data for any EIN. Handles all ZIP formats (monthly 2023+, year-wide 2021-2022, CT1 legacy 2020, Deflate64 compression). HTTP range requests read ZIP table-of-contents without downloading full archives.  
+**Currently used:** CLI only — `python scripts/fetch_990_xml.py --ein XXXXXXXXX`  
+**Needs to connect to (Phase 2):** `app/services/connectors/irs_teos.py` → `POST /workspaces/{id}/connectors/irs-teos`  
+**Status:** ⚠️ LOOSE — works, not wired into platform
 
-**Called by:** Nothing in the platform
-
-**Needs to connect to:** This is an investigator tool, not a platform component. It can stay as a CLI utility. Consider wrapping it as a workspace report endpoint in Phase 2.
-
-**Status:** ⚠️ LOOSE — investigation utility, intentionally standalone for now
-
----
-
-## Database Models (`backend/app/models/`)
-
-### `user.py` — Users table
-**What it does:** Stores accounts. Fields: id, email, password_hash, full_name, role.
-**Called by:** auth router, get_current_user dependency, workspace_members
-**Status:** ✅ Connected
-
-### `workspace.py` — Workspaces + WorkspaceMembers tables
-**What it does:** A workspace is a case container. WorkspaceMember tracks who has access at what role.
-**Called by:** All workspace-scoped routers. Every entity, document, finding, etc. has a workspace_id.
-**Status:** ✅ Connected
-
-### `document.py` — Documents table
-**What it does:** One row per uploaded file. Stores: sha256_hash, file_path, detected_doc_type, extraction_status (`pending`/`complete`/`failed`/`no_schema`), extraction_error, ocr_text, search_vector.
-**Called by:** document_pipeline.py, documents router, search_service (Task 9)
-**Note:** `extraction_status = no_schema` triggers auto-lead creation in the pipeline. `extraction_error` stores the reason for failures.
-**Status:** ✅ Connected
-
-### `document_schema.py` — DocumentSchemas table
-**What it does:** The extraction schema registry. One row per document type (DEED, 990, UCC, etc.) with schema_fields (JSON array of field definitions) and extraction_prompt.
-**Called by:** extraction_engine.py (`get_schema_for_type`), xml_parser.py, document_pipeline.py
-**Note:** 11 schemas are seeded. Adding a new schema requires no code change — just add a row.
-**Status:** ✅ Connected
-
-### `document_extraction.py` — DocumentExtractions table
-**What it does:** The central IDP table. One row per extracted field per document. A 340-field parcel record creates 340 rows. Every field is individually queryable.
-**Called by:** extraction_engine.py (`save_extractions`), xml_parser.py (`parse_xml_document`), search_service (Task 9)
-**Status:** ✅ Connected
-
-### `entity.py` — Entities + Relationships tables
-**What it does:** People and organizations under investigation. Soft-deleted. Relationships link entities (officer_of, owner_of, etc.).
-**Called by:** entities router, ai_engine.py (Task 10 workspace context)
-**Status:** ✅ Connected
-
-### `transaction.py` — Transactions table
-**What it does:** Financial movements tied to workspace entities.
-**Called by:** transactions router, ai_engine.py (Task 10)
-**Status:** ✅ Connected
-
-### `finding.py` — SignalTypes + Findings + FindingEvidence tables
-**What it does:** Signal types are the fraud pattern catalog (SR-003 through SR-026). Findings are confirmed signals in a workspace. FindingEvidence links findings to documents.
-**Called by:** findings router, ai_engine.py (Task 10)
-**Note:** Signal type seed data is in `findings.py` router (8 signal types pre-loaded).
-**Status:** ✅ Connected
-
-### `lead.py` — InvestigationLeads table
-**What it does:** Open questions and next steps. Can be created by users OR auto-created by the pipeline when a document has no schema.
-**Called by:** leads router, document_pipeline.py (`_no_schema` handler)
-**Status:** ✅ Connected
-
-### `note.py` — Notes table
-**What it does:** Analyst observations attached to any workspace entity (workspace, entity, document, finding, transaction, lead).
-**Called by:** notes router
-**Status:** ✅ Connected
-
-### `ai.py` — AIConversations + AIMessages tables
-**What it does:** Stores chat sessions with Claude for each workspace.
-**Called by:** ai router (Task 10), ai_engine.py (Task 10)
-**Status:** 🔲 Planned — model exists, router/service not built (Task 10)
-
-### `audit.py` — AuditLog table
-**What it does:** Immutable record of every action. PostgreSQL trigger blocks UPDATE/DELETE at the database level.
-**Called by:** audit.py service, called from every router and the pipeline after meaningful actions
-**Status:** ✅ Connected
+#### `scripts/parse_990_xml.py` — 990 Analysis Utility
+**Layer:** Engine (investigator tool, any vertical)  
+**What it does:** Reads all 990 XML files and prints structured financial/governance report. Investigation analysis tool, not platform processing.  
+**Currently used:** CLI only — `python scripts/parse_990_xml.py`  
+**Needs to connect to:** Stay as CLI utility. Optional Phase 2: workspace report endpoint.  
+**Status:** ⚠️ LOOSE — intentionally standalone
 
 ---
 
-## Services (`backend/app/services/`)
+### Database Models (`backend/app/models/`)
 
-### `audit.py` — Audit log writer
-**What it does:** `log()` writes one permanent row to audit_log. The database trigger makes it immutable.
-**Called by:** Every router (create/update/delete operations) and document_pipeline.py
-**Calls:** AuditLog model
-**Status:** ✅ Connected
+#### `user.py` ✅
+Engine. Accounts, authentication. No domain logic.
 
-### `auth.py` — Authentication
-**What it does:** `hash_password`, `verify_password`, `create_access_token`, `get_current_user`. The `get_current_user` dependency protects every authenticated endpoint.
-**Called by:** auth router, every protected router via `Depends(get_current_user)`
-**Calls:** User model, JWT, bcrypt
-**Status:** ✅ Connected
+#### `workspace.py` ✅
+Engine. A workspace is a case/claim/matter container — vertical-agnostic. WorkspaceMember tracks access. The `vertical` field on Workspace tells the signal engine which cap to apply.
 
-### `ocr.py` — Text extraction
-**What it does:** Extracts text from PDFs (embedded text first, OCR fallback for scanned pages) and images. Entry point: `extract_text(file_bytes, file_type)`.
-**Called by:** document_pipeline.py (Step 3)
-**Calls:** PyMuPDF (fitz), pytesseract, Pillow
-**Status:** ✅ Connected
+#### `document.py` ✅
+Engine. One row per uploaded file. `extraction_status` (`pending`/`complete`/`failed`/`no_schema`), `extraction_error`. Hash, OCR text, search vector. No domain knowledge.
 
-### `extraction_engine.py` — Claude-based extraction
-**What it does:** Three functions:
-- `detect_document_type(ocr_text)` — asks Claude to identify the document type
-- `get_schema_for_type(doc_type, db)` — looks up the active schema
-- `extract_fields(ocr_text, schema)` + `save_extractions(...)` — Claude extracts fields, saves to document_extractions
-**Called by:** document_pipeline.py (Steps 4, 5, 6)
-**Calls:** Anthropic API, DocumentSchema model, DocumentExtraction model
-**Status:** ✅ Connected
+#### `document_schema.py` ✅
+Engine. The schema registry. `vertical = "general"` means available in all workspaces. `vertical = "fraud"` activates only in fraud workspaces. `vertical = "insurance"` activates only in insurance workspaces. Currently all 11 schemas are `general`.
 
-### `naming.py` — Standardized filename generation
-**What it does:** `generate_standardized_name(ocr_text, filename, ext)` — asks Claude to generate a standardized filename in the format `YYYY-MM-DD_DOC-TYPE_ENTITY_DESCRIPTION.ext`.
-**Called by:** document_pipeline.py (Step 7)
-**Calls:** Anthropic API
-**Status:** ✅ Connected
+#### `document_extraction.py` ✅
+Engine. **The central IDP table.** One row per extracted field per document. No domain knowledge — just field_name, field_value, field_type, confidence. Every vertical's signals query this table.
 
-### `xml_parser.py` — Direct XML extraction
-**What it does:** `parse_xml_document(file_bytes, schema, ...)` — for structured XML files (990, 990-T), reads field values directly from XML element paths defined in schema descriptions. Bypasses OCR and Claude. Confidence = 1.0.
-**Called by:** document_pipeline.py (Step 6, XML branch)
-**Calls:** xml.etree.ElementTree, DocumentExtraction model
-**Note:** `is_parseable_xml(file_bytes, doc_type)` is the gate — returns True only for 990/990-T XML files.
-**Status:** ✅ Connected
+#### `entity.py` ✅
+Engine. People and organizations. Soft-deleted. Relationships link entities. No fraud-specific fields.
 
-### `document_pipeline.py` — Upload orchestrator
-**What it does:** Two functions:
-- `create_pending_document()` — hash, store file, create pending DB record (runs before HTTP response)
-- `process_upload_background()` — full pipeline (OCR → type detection → schema lookup → extraction → FTS index → audit). Runs after HTTP response via BackgroundTasks.
-**Called by:** documents router
-**Calls:** ocr.py, extraction_engine.py, xml_parser.py, naming.py, audit.py, InvestigationLead model (for no_schema)
-**Status:** ✅ Connected
+#### `transaction.py` ✅
+Engine. Financial movements. Generic enough for fraud, insurance, legal — any domain that tracks money.
 
-### `search_service.py` — NLP search
-**What it does:** Translates plain-English queries into PostgreSQL FTS + field-level filters on document_extractions.
-**Called by:** search router (Task 9)
-**Calls:** Anthropic API, Document model, DocumentExtraction model
-**Status:** 🔲 Planned (Task 9)
+#### `finding.py` ✅
+Engine structure, **vertical content.** The `Finding` and `FindingEvidence` models are engine components. The `SignalType` seed data (SR-003, SR-025, etc.) is **fraud cap content** — currently seeded in the findings router but should move to a fraud cap installer in Phase 3.
 
-### `ai_engine.py` — AI chat
-**What it does:** Builds workspace context (entities, transactions, findings, documents) and passes it to Claude for conversational analysis.
-**Called by:** ai router (Task 10)
-**Calls:** Anthropic API, all workspace models
-**Status:** 🔲 Planned (Task 10)
+#### `lead.py` ✅
+Engine. Investigation leads / open questions. Auto-created by pipeline for no_schema documents. Generic across verticals.
+
+#### `note.py` ✅
+Engine. Analyst observations on any entity type.
+
+#### `ai.py` 🔲
+Engine. AIConversation + AIMessage. Model exists, router/service not built (Task 10).
+
+#### `audit.py` ✅
+Engine. Immutable audit log. PostgreSQL trigger blocks UPDATE/DELETE at database level.
 
 ---
 
-## API Routers (`backend/app/routers/`)
+### Services (`backend/app/services/`)
 
-| Router | Endpoints | Status |
-|---|---|---|
-| `auth.py` | POST /auth/register, POST /auth/login | ✅ |
-| `workspaces.py` | CRUD /workspaces, /workspaces/{id}/members | ✅ |
-| `entities.py` | CRUD /workspaces/{id}/entities, /relationships | ✅ |
-| `findings.py` | GET /signal-types, CRUD /workspaces/{id}/findings | ✅ |
-| `transactions.py` | CRUD /workspaces/{id}/transactions | ✅ |
-| `leads.py` | CRUD /workspaces/{id}/leads | ✅ |
-| `notes.py` | CRUD /workspaces/{id}/notes | ✅ |
-| `documents.py` | POST /workspaces/{id}/documents, GET list/detail/extractions | ✅ |
-| `search.py` | POST /workspaces/{id}/search | 🔲 Task 9 |
-| `ai.py` | POST /workspaces/{id}/conversations + messages | 🔲 Task 10 |
+#### `audit.py` ✅
+Engine. `log()` writes permanent audit rows. Called from every router and the pipeline.
+
+#### `auth.py` ✅
+Engine. JWT creation/verification, bcrypt hashing, `get_current_user` dependency.
+
+#### `ocr.py` ✅
+Engine. Text extraction from PDFs and images. PyMuPDF for embedded text, pytesseract for scanned pages. Entry point: `extract_text(file_bytes, file_type)`.
+
+#### `extraction_engine.py` ✅
+Engine. Three functions:
+- `detect_document_type()` — asks Claude to identify type from OCR text
+- `get_schema_for_type()` — looks up active schema for the workspace's vertical
+- `extract_fields()` + `save_extractions()` — Claude extracts fields per schema definition
+
+#### `naming.py` ✅
+Engine. Generates standardized filenames: `YYYY-MM-DD_DOC-TYPE_ENTITY_DESCRIPTION.ext`.
+
+#### `xml_parser.py` ✅
+Engine. Direct XML parse for structured files. Reads field values from element paths in schema descriptions. Bypasses OCR and Claude. Confidence = 1.0. Currently active for 990 and 990-T.
+
+#### `document_pipeline.py` ✅
+Engine. Orchestrates the full upload pipeline:
+- `create_pending_document()` — hash + store + pending record (before HTTP response)
+- `process_upload_background()` — OCR → type → schema → extract → FTS → audit (after response via BackgroundTasks)
+- `_no_schema()` — creates investigation lead for unknown document types
+- `_fail()` — sets failed status with error message
+
+#### `search_service.py` 🔲
+Engine. NLP query → PostgreSQL FTS + field-level filters on `document_extractions`. Task 9.
+
+#### `ai_engine.py` 🔲
+Engine. Claude chat with full workspace context. Task 10.
+
+#### `connectors/` 🔲
+Engine. Phase 2 — public data sources feed into the pipeline.
+```
+app/services/connectors/
+    irs_teos.py       (wraps scripts/fetch_990_xml.py)
+    ohio_sos.py
+    county_auditor.py
+    building_permits.py
+```
+
+#### `signal_engine.py` 🔲
+Engine framework. Phase 2 — evaluates signal rules from `signal_rules` table against `document_extractions`. The framework is engine. The rules it runs are vertical cap content.
 
 ---
 
-## Document Schemas (database — `document_schemas` table)
+### API Routers (`backend/app/routers/`)
 
-All 11 schemas are seeded and active. The pipeline uses them automatically when a document of the matching type is uploaded.
-
-| Schema | Fields | XML parse? | Phase 2 additions needed |
+| Router | Endpoints | Layer | Status |
 |---|---|---|---|
-| PARCEL-RECORD | 370 | No (county website HTML) | Direct scraper from county auditor portals |
-| DEED | 64 | No (PDFs) | None — complete |
-| 990 | 235 | **Yes** (IRS XML) | Wire `fetch_990_xml.py` into platform import endpoint |
-| SOS-FILING | 47 | No (PDFs) | Ohio SOS API integration (Phase 2) |
-| UCC | 46 | No (PDFs) | Ohio SOS UCC search API (Phase 2) |
-| BUILDING-PERMIT | 13 | No (Excel/PDF) | County permit portal scrapers (Phase 2) |
-| AUDIT-REPORT | 122 | No (PDFs) | Ohio AOS bulk download (Phase 2) |
-| SCREENSHOT | 26 | No (images/PDFs) | None — complete |
-| OBITUARY | 63 | No (PDFs) | None — complete |
-| PLAT | 51 | No (PDFs) | None — complete |
-| CORRESPONDENCE | 59 | No (PDFs/Word) | None — complete |
+| `auth.py` | POST /auth/register, /auth/login | Engine | ✅ |
+| `workspaces.py` | CRUD /workspaces | Engine | ✅ |
+| `entities.py` | CRUD /entities, /relationships | Engine | ✅ |
+| `findings.py` | GET /signal-types, CRUD /findings | Engine (model) + Fraud cap (signal seed data) | ✅ |
+| `transactions.py` | CRUD /transactions | Engine | ✅ |
+| `leads.py` | CRUD /leads | Engine | ✅ |
+| `notes.py` | CRUD /notes | Engine | ✅ |
+| `documents.py` | POST /documents, GET list/detail/extractions | Engine | ✅ |
+| `search.py` | POST /search | Engine | 🔲 Task 9 |
+| `ai.py` | POST /conversations + messages | Engine | 🔲 Task 10 |
+| `connectors.py` | POST /connectors/{source} | Engine | 🔲 Phase 2 |
 
 ---
 
-## Seeds (`backend/app/seeds/`)
+### Schema Registry (`document_schemas` table)
 
-### `document_schemas.py`
-**What it does:** Seeds all 11 document type schemas into the `document_schemas` table. Idempotent — skips existing schemas, adds new ones.
-**How to run:** `docker-compose exec backend python -m app.seeds.document_schemas`
-**How to add a new schema:** Add a `seed_X_schema(db)` function following the existing pattern, then add it to `main()`.
-**Status:** ✅ Connected — runs on demand, not on startup
+All 11 schemas are `vertical = "general"` — available in every workspace regardless of vertical. The schema describes how to extract fields from a document type. What to DO with those fields is vertical cap logic.
+
+| Schema | Fields | XML parse? | Available to |
+|---|---|---|---|
+| PARCEL-RECORD | 370 | No | All verticals |
+| DEED | 64 | No | All verticals |
+| 990 | 235 | **Yes** | All verticals |
+| SOS-FILING | 47 | No | All verticals |
+| UCC | 52 | No | All verticals |
+| BUILDING-PERMIT | 13 | No | All verticals |
+| AUDIT-REPORT | 122 | No | All verticals |
+| SCREENSHOT | 26 | No | All verticals |
+| OBITUARY | 63 | No | All verticals |
+| PLAT | 51 | No | All verticals |
+| CORRESPONDENCE | 59 | No | All verticals |
+
+**Future vertical-specific schemas** get `vertical = "insurance"`, `vertical = "legal"`, etc. and only activate in matching workspaces.
+
+---
+
+### Seeds (`backend/app/seeds/document_schemas.py`)
+**Layer:** Engine  
+**How to run:** `docker-compose exec backend python -m app.seeds.document_schemas`  
+**To add a schema:** Add `seed_X_schema(db)` following existing pattern, add to `main()`.  
+**Status:** ✅ Connected
+
+---
+
+## FRAUD CAP COMPONENTS
+
+These components contain fraud-specific domain knowledge. They do not ship with other verticals.
+
+### Signal Type Seed Data
+**Currently lives in:** `backend/app/routers/findings.py` (`SIGNAL_TYPES_SEED` constant)  
+**What it is:** 8 fraud-specific signal type definitions (SR-003, SR-004, SR-005, SR-015, SR-021, SR-024, SR-025, SR-026)  
+**Should move to (Phase 3):** `app/caps/fraud/signal_types.py` — the fraud cap installer  
+**Status:** ⚠️ MISPLACED — currently in the engine layer, should be in the fraud cap
+
+### SR Signal Definitions (full catalog)
+**Currently:** Documented in memory files and roadmap, not yet in code  
+**Phase 2:** Signal rule definitions go into `signal_rules` table (Phase 2B framework)  
+**Phase 3:** Fraud cap installer seeds all SR rules via `signal_rules` table  
+**Status:** 🔲 Planned
+
+### Investigation Workflow Config
+**What it is:** The sequence an investigation follows — upload → extract → signals → findings → referral  
+**Phase 3:** Fraud cap defines this workflow. Insurance cap defines a different one.  
+**Status:** 🔲 Planned
+
+### Referral Package Export
+**What it is:** AG/IRS/FBI complaint format generators  
+**Phase 3:** Fraud cap only — insurance cap has its own export format  
+**Status:** 🔲 Planned
 
 ---
 
 ## Infrastructure
 
-### Docker + docker-compose
-**What it does:** Runs the full stack (PostgreSQL, FastAPI backend) in containers. `docker-compose up -d` starts everything.
-**Status:** ✅ Connected
+### Docker + docker-compose ✅
+Layer: Engine. `docker-compose up -d` starts full stack.
 
-### Alembic migrations
-**What it does:** Tracks and applies database schema changes. `alembic upgrade head` runs pending migrations.
-**Current migration:** `5a4ff7266708_initial_schema.py` — creates all 17 tables
-**Manual DB changes this session:** Added `no_schema` enum value + `extraction_error` column directly via SQL (not yet in a migration file)
-**⚠️ Note:** The `no_schema` enum value and `extraction_error` column were added directly to the live database but are NOT in an Alembic migration. If you rebuild from scratch, `alembic upgrade head` will not create them. Need a migration.
-**Status:** ⚠️ LOOSE — needs a migration for the Task 8 database changes
+### Alembic Migrations
+**Current migration:** `5a4ff7266708_initial_schema` — creates all 17 tables  
+**⚠️ MISSING MIGRATION:** `no_schema` enum value + `extraction_error` column were added directly to the database in Task 8. Not in any migration file. Must be written before Phase 2 so clean rebuilds work.  
+**Status:** ⚠️ LOOSE
 
-### FTS Index + Audit Trigger
-**What it does:** GIN index on `documents.search_vector` for fast full-text search. PostgreSQL trigger on `audit_log` blocking UPDATE/DELETE.
-**Status:** ✅ Applied via SQL in Task 2 — lives in the database
+### FTS Index + Audit Trigger ✅
+Applied via SQL in Task 2. GIN index on `documents.search_vector`. PostgreSQL trigger on `audit_log`.
 
 ---
 
-## Test Coverage (`backend/tests/`)
+## Test Coverage
 
-| Test file | What it covers | Passing |
+| Test file | Layer | Passing |
 |---|---|---|
-| `test_auth.py` | Register, login, bad password, token validation | ✅ 5/5 |
-| `test_workspaces.py` | Create, list, get, update, access control | ✅ 5/5 |
-| `test_entities.py` | Create, soft delete, relationships | ✅ 3/3 |
-| `test_findings.py` | Signal type preload, create, confirm | ✅ 3/3 |
-| `test_transactions.py` | Create, list | ✅ 2/2 |
-| `test_leads.py` | Create, complete with summary | ✅ 2/2 |
-| `test_notes.py` | Create, filter by entity | ✅ 2/2 |
-| `test_documents.py` | Upload, hash, preserve filename, list, empty file | ✅ 5/5 |
-| `test_extractions.py` | Upload with mock Claude, pending status | ✅ 2/2 |
+| `test_auth.py` | Engine | ✅ 5/5 |
+| `test_workspaces.py` | Engine | ✅ 5/5 |
+| `test_entities.py` | Engine | ✅ 3/3 |
+| `test_findings.py` | Engine + Fraud cap | ✅ 3/3 |
+| `test_transactions.py` | Engine | ✅ 2/2 |
+| `test_leads.py` | Engine | ✅ 2/2 |
+| `test_notes.py` | Engine | ✅ 2/2 |
+| `test_documents.py` | Engine | ✅ 5/5 |
+| `test_extractions.py` | Engine | ✅ 2/2 |
 | **Total** | | **29/29** |
 
-**Not yet tested:**
-- Search service (Task 9)
-- AI chat (Task 10)
-- Background pipeline completing in test environment (session isolation prevents full pipeline test — see diary)
-- XML direct parse path (tested manually, not in automated suite)
-
 ---
 
-## Phase 2 Integration Map
-
-Everything marked ⚠️ LOOSE or 🔲 Planned needs a home in Phase 2 plans. This is the connection map:
+## Phase Integration Map — Where Loose Ends Land
 
 ```
+ENGINE LOOSE ENDS:
 scripts/fetch_990_xml.py
-    → Phase 2: app/services/public_data.py
-    → Phase 2: POST /workspaces/{id}/import/990
-    → calls: create_pending_document() + process_upload_background()
+    → Phase 2: app/services/connectors/irs_teos.py
+    → Phase 2: POST /workspaces/{id}/connectors/irs-teos
 
-scripts/parse_990_xml.py
-    → Stay as CLI investigator tool
-    → Optional Phase 2: GET /workspaces/{id}/990-summary endpoint
+Alembic migration (no_schema + extraction_error)
+    → Phase 2 prerequisite: write migration before Phase 2 starts
 
-Alembic migration needed:
-    → Add no_schema to extraction_status enum
-    → Add extraction_error VARCHAR column to documents table
+Signal detection framework
+    → Phase 2: app/services/signal_engine.py
+    → Phase 2: signal_rules table
 
-Phase 2 endpoints not yet planned:
-    → POST /workspaces/{id}/import/990 (EIN → IRS fetch → pipeline)
-    → POST /workspaces/{id}/import/ucc (SOS search → pipeline)
-    → POST /workspaces/{id}/import/sos (SOS entity lookup → pipeline)
-    → GET  /workspaces/{id}/network-graph (entity relationship visualization)
-    → POST /workspaces/{id}/referral (generate referral package)
+FRAUD CAP LOOSE ENDS:
+Signal type seed data (currently in findings router)
+    → Phase 3: app/caps/fraud/signal_types.py
+
+Full SR signal rule definitions
+    → Phase 3: seeded via signal_rules table by fraud cap installer
+
+Investigation workflow + referral export
+    → Phase 3: fraud cap only
 ```
 
 ---
@@ -306,3 +271,4 @@ Phase 2 endpoints not yet planned:
 |---|---|
 | 2026-05-19 | Initial inventory created. Tasks 1-8 complete. 29/29 tests. |
 | 2026-05-19 | 11 document schemas seeded. fetch_990_xml.py and parse_990_xml.py built. |
+| 2026-05-20 | Restructured engine vs. fraud cap separation. All 11 schemas changed to vertical=general. Signal type seed data flagged as misplaced in engine layer. Roadmap rewritten with IDP-first architecture. |
