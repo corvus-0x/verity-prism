@@ -12,6 +12,15 @@ def log(
     after_state: dict = None,
     ip_address: str = None,
 ):
+    """Write an immutable audit entry.
+
+    The audit_log table has a PostgreSQL trigger that blocks UPDATE and DELETE,
+    so every call here is a permanent record. Call this from services after every
+    meaningful action — create, update, soft-delete, login, etc.
+
+    before_state / after_state accept any dict; store the relevant fields, not
+    entire ORM objects.
+    """
     entry = AuditLog(
         action=action,
         user_id=user_id,

@@ -17,7 +17,7 @@
 | Task 6: Signal Types + Findings | Signal type seed data, findings CRUD | ✅ Done |
 | Task 7: Transactions + Leads + Notes | Financial transactions CRUD, investigation leads CRUD, notes on any entity | ✅ Done |
 | Task 2.5: Document Schema Seeds | PARCEL-RECORD (340) + DEED (64) + 990 (235) + SOS-FILING (47) + UCC (46) + BUILDING-PERMIT (13) + AUDIT-REPORT (122) seeded. | ✅ Done |
-| Task 8: Document Pipeline | SHA-256 hash → OCR → AI extraction → FTS index | ⬜ Next |
+| Task 8: Document Pipeline | SHA-256 hash → OCR → AI extraction → FTS index | ✅ Done |
 | Task 9: NLP Search | Plain-English query → SQL/FTS results | ⬜ |
 | Task 10: AI Chat | Claude with full workspace context | ⬜ |
 | Task 11: Full Verification | All tests passing end-to-end in Docker, audit log immutability check | ⬜ |
