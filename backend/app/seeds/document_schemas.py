@@ -1157,6 +1157,158 @@ def seed_building_permit_schema(db):
     return schema
 
 
+# ── AUDIT-REPORT schema ───────────────────────────────────────────────────────
+
+AUDIT_HEADER = [
+    {"name": "entity_name",         "type": "name",    "description": "Full legal name of the audited entity", "required": True},
+    {"name": "entity_type",         "type": "text",    "description": "Type of entity: municipality, township, village, school district, CIC, nonprofit, county, special district", "required": False},
+    {"name": "county",              "type": "text",    "description": "County where the entity is located", "required": False},
+    {"name": "fiscal_year_end",     "type": "date",    "description": "Most recent fiscal year end date covered (e.g. December 31, 2023)", "required": True},
+    {"name": "fiscal_years_covered","type": "text",    "description": "All fiscal years covered by this report — Ohio AOS often audits two years per report (e.g. 2023 and 2024)", "required": False},
+    {"name": "audit_type",          "type": "text",    "description": "Type of engagement: Regular Audit (full financial audit), Agreed-Upon Procedures (AUP, limited scope), Basic Audit (Ohio Rev. Code 117.11(A), takes Board representation at face value), Financial Audit", "required": True},
+    {"name": "auditor_name",        "type": "name",    "description": "Name of the state auditor or AOS chief deputy who accepted/certified the report", "required": False},
+    {"name": "audit_firm",          "type": "text",    "description": "CPA firm that performed the engagement (for contracted audits) or Ohio Auditor of State regional office", "required": False},
+    {"name": "report_date",         "type": "date",    "description": "Date the auditors signed the report", "required": False},
+    {"name": "certification_date",  "type": "date",    "description": "Date the AOS certified/accepted the report for public release", "required": False},
+    {"name": "opinion_type",        "type": "text",    "description": "Auditor opinion: unmodified/clean, qualified, adverse, disclaimer, or not applicable (for AUP engagements which express no opinion)", "required": False},
+    {"name": "basis_of_accounting", "type": "text",    "description": "Accounting basis: GAAP, regulatory cash basis (common for Ohio municipalities), or not applicable", "required": False},
+    {"name": "zero_activity",       "type": "boolean", "description": "True if the entity reported zero revenues, expenditures, assets, and liabilities — indicates a dormant or shell entity. Critical for CIC audits.", "required": False},
+]
+
+AUDIT_FINANCIALS = [
+    {"name": "total_revenues",          "type": "currency", "description": "Total cash receipts or revenues for the most recent year covered", "required": False},
+    {"name": "total_expenditures",      "type": "currency", "description": "Total cash disbursements or expenditures for the most recent year covered", "required": False},
+    {"name": "net_change_fund_balance", "type": "currency", "description": "Net change in fund cash balance or fund balance for the year", "required": False},
+    {"name": "total_assets_eoy",        "type": "currency", "description": "Total assets at end of year", "required": False},
+    {"name": "total_liabilities_eoy",   "type": "currency", "description": "Total liabilities at end of year", "required": False},
+    {"name": "fund_balance_eoy",        "type": "currency", "description": "Total fund balance or net position at end of year", "required": False},
+    {"name": "cash_investments_eoy",    "type": "currency", "description": "Cash and investment balances at end of year", "required": False},
+    # Revenue detail
+    {"name": "rev_taxes",               "type": "currency", "description": "Property and other local taxes", "required": False},
+    {"name": "rev_income_tax",          "type": "currency", "description": "Municipal income tax receipts — increase here can reflect new commercial activity", "required": False},
+    {"name": "rev_intergovernmental",   "type": "currency", "description": "Intergovernmental receipts (state/federal grants, shared revenue)", "required": False},
+    {"name": "rev_charges_for_services","type": "currency", "description": "Charges for services (sewer, water, fees)", "required": False},
+    {"name": "rev_other",               "type": "currency", "description": "Miscellaneous and other revenues", "required": False},
+    # Expenditure detail
+    {"name": "exp_general_government",  "type": "currency", "description": "General government expenditures", "required": False},
+    {"name": "exp_public_safety",       "type": "currency", "description": "Police, fire, public safety expenditures", "required": False},
+    {"name": "exp_transportation",      "type": "currency", "description": "Roads, streets, transportation expenditures", "required": False},
+    {"name": "exp_capital_outlay",      "type": "currency", "description": "Capital outlay — large values relative to operating budget are investigatively significant", "required": False},
+    {"name": "exp_debt_service",        "type": "currency", "description": "Debt principal and interest payments", "required": False},
+]
+
+# Debt instruments — up to 5
+AUDIT_DEBT = _repeating("debt", 5, [
+    ("description",  "text",     "Description of the debt instrument (e.g. OWDA Loan 5464 — sewer plant, OPWC Loan CT40T — street reconstruction)"),
+    ("outstanding",  "currency", "Outstanding principal balance at end of most recent year"),
+    ("original_amt", "currency", "Original loan amount"),
+])
+
+# Findings — up to 10 (most small entity audits have fewer than 5)
+AUDIT_FINDINGS = _repeating("finding", 10, [
+    ("number",       "id_number", "Finding number as assigned in the report (e.g. 2018-001)"),
+    ("type",         "text",      "Finding type: Material Weakness, Significant Deficiency, Noncompliance, Finding for Recovery, Observation, Recommendation"),
+    ("title",        "text",      "Short title or heading of the finding"),
+    ("description",  "text",      "Complete verbatim finding description — do not summarize"),
+    ("recommendation","text",     "Auditor's recommendation verbatim"),
+    ("response",     "text",      "Officials' response verbatim — 'We did not receive a response' is itself a significant finding"),
+    ("status",       "text",      "Current (new this period) or Resolved (prior finding now resolved)"),
+])
+
+AUDIT_FLAGS = [
+    {"name": "no_public_records_policy",    "type": "boolean", "description": "True if a finding documents the entity has no public records policy — a vulnerability for records requests", "required": False},
+    {"name": "official_nonresponse",        "type": "boolean", "description": "True if any finding shows officials did not respond to the auditor — documented accountability failure", "required": False},
+    {"name": "over_appropriation_spending", "type": "boolean", "description": "True if a finding documents expenditures exceeding appropriations (spending without council authorization)", "required": False},
+    {"name": "late_filing",                 "type": "boolean", "description": "True if a finding documents late filing of required annual reports", "required": False},
+    {"name": "mentions_investigation_entity","type": "boolean","description": "True if any named investigation entity (Do Good, Homan, Baumer, etc.) appears anywhere in the report", "required": False},
+    {"name": "tax_abatement_disclosed",     "type": "boolean", "description": "True if any tax abatement, enterprise zone, or TIF agreement is disclosed in notes or findings", "required": False},
+    {"name": "related_party_disclosed",     "type": "boolean", "description": "True if any related party transaction is disclosed", "required": False},
+]
+
+
+AUDIT_EXTRACTION_PROMPT = """Extract structured data from this government or nonprofit audit report.
+
+AUDIT REPORT TYPES — WHAT THEY CONTAIN AND WHAT THEY MISS:
+
+Regular Audit (Full Financial Audit):
+  - Contains full financial statements: balance sheet, revenue/expenditure statement, notes
+  - Auditor expresses an opinion on the financial statements
+  - Notes include related-party disclosures, debt schedule, commitments, contingencies
+  - Most comprehensive format — highest investigative value
+
+Agreed-Upon Procedures (AUP):
+  - NOT a full audit — auditors express no opinion
+  - Limited scope: cash reconciliation, payroll spot checks, budgetary compliance, contract sample
+  - DOES NOT look for related-party transactions, tax abatements, or economic development
+  - Absence of named investigation entities in an AUP report is NOT evidence those relationships don't exist
+  - The audit_type field should be "Agreed-Upon Procedures"
+  - zero_activity = true if all financial amounts are zero or the report says the entity had no activity
+
+Basic Audit (Ohio Rev. Code 117.11(A)):
+  - Used for dormant or zero-activity entities
+  - The auditor obtains a written Board representation that there was no activity — does NOT independently verify
+  - If the Board's representation is false, this format would not detect it
+  - zero_activity = true for these reports
+
+FINANCIAL STATEMENTS:
+  - Ohio municipalities often report on a regulatory cash basis, not GAAP
+  - An adverse opinion on U.S. GAAP + unmodified opinion on regulatory basis is NORMAL for Ohio villages — not a red flag
+  - Extract revenue and expenditure by category as shown in the statements
+
+FINDINGS:
+  - Extract EVERY finding verbatim — do not summarize
+  - For Ohio Auditor of State reports: findings are numbered (e.g. 2018-001)
+  - Finding types: Material Weakness > Significant Deficiency > Noncompliance > Observation (in order of severity)
+  - Extract officials' response exactly as written — "We did not receive a response from Officials" is significant
+  - Set official_nonresponse = true if any finding shows no official response
+
+BOOLEAN FLAGS — SET CAREFULLY:
+  - no_public_records_policy: true if a finding says the entity lacked a public records policy
+  - over_appropriation_spending: true if a finding says expenditures exceeded appropriations
+  - mentions_investigation_entity: true ONLY if Do Good, Homan, Baumer, Poeppelman, Mescher, or known investigation entities are explicitly named
+  - tax_abatement_disclosed: true if any tax abatement, enterprise zone, or TIF agreement appears anywhere
+
+ZERO ACTIVITY:
+  - If the entity's financial statements show all zeros, or the report explicitly states the Board represented no activity, set zero_activity = true
+  - Note the audit type — Basic Audit zero-activity is taken on faith; AUP zero-activity has no independent verification
+
+If financial statements are absent (AUP or Basic Audit format), leave all financial fields null."""
+
+
+def seed_audit_report_schema(db):
+    """Insert the AUDIT-REPORT schema if it doesn't already exist."""
+    existing = db.query(DocumentSchema).filter(
+        DocumentSchema.document_type == "AUDIT-REPORT"
+    ).first()
+
+    if existing:
+        print("AUDIT-REPORT schema already exists — skipping.")
+        return existing
+
+    schema_fields = _fields(
+        AUDIT_HEADER,
+        AUDIT_FINANCIALS,
+        AUDIT_DEBT,
+        AUDIT_FINDINGS,
+        AUDIT_FLAGS,
+    )
+
+    schema = DocumentSchema(
+        document_type="AUDIT-REPORT",
+        display_name="Government / Nonprofit Audit Report",
+        vertical="fraud",
+        schema_fields=schema_fields,
+        extraction_prompt=AUDIT_EXTRACTION_PROMPT,
+        version=1,
+        is_active=True,
+    )
+    db.add(schema)
+    db.commit()
+    db.refresh(schema)
+    print(f"AUDIT-REPORT schema created — {len(schema_fields)} fields.")
+    return schema
+
+
 def main():
     db = SessionLocal()
     try:
@@ -1166,6 +1318,7 @@ def main():
         seed_sos_filing_schema(db)
         seed_ucc_schema(db)
         seed_building_permit_schema(db)
+        seed_audit_report_schema(db)
     finally:
         db.close()
 
