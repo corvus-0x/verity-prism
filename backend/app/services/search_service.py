@@ -8,9 +8,9 @@ How it works:
 3. run_search() executes FTS + field filters and returns matching documents
 """
 import json
-import re
 import logging
 from anthropic import Anthropic
+from app.utils.json_helpers import strip_json_fences
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 from app.config import settings
@@ -73,15 +73,7 @@ Respond with JSON only. Example:
             max_tokens=300,
             messages=[{"role": "user", "content": prompt}]
         )
-        raw = response.content[0].text.strip()
-        # Strip markdown code fences Claude sometimes adds
-        if raw.startswith("```"):
-            start = raw.find("\n")
-            if start != -1:
-                raw = raw[start:].strip()
-            if raw.endswith("```"):
-                raw = raw[: raw.rfind("```")].strip()
-        return json.loads(raw)
+        return json.loads(strip_json_fences(response.content[0].text))
     except Exception as e:
         logger.warning(f"Query translation failed: {e} — falling back to FTS only")
         return {"fts_query": natural_language_query, "field_filters": [], "doc_type_filter": None}
