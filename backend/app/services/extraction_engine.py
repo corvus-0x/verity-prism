@@ -1,4 +1,5 @@
 import json
+import re
 import logging
 from anthropic import Anthropic
 from sqlalchemy.orm import Session
@@ -9,6 +10,23 @@ from app.models.document_extraction import DocumentExtraction
 logger = logging.getLogger(__name__)
 
 client = Anthropic(api_key=settings.anthropic_api_key)
+
+def _strip_json_fences(text: str) -> str:
+    """
+    Remove markdown code fences that Claude sometimes wraps JSON in.
+    '```json\\n{...}\\n```' → '{...}'
+    """
+    text = text.strip()
+    if text.startswith("```"):
+        # Find the first newline after the opening fence
+        start = text.find("\n")
+        if start != -1:
+            text = text[start:].strip()
+        # Remove closing fence
+        if text.endswith("```"):
+            text = text[: text.rfind("```")].strip()
+    return text
+
 
 KNOWN_DOCUMENT_TYPES = [
     "DEED", "PLAT", "990", "990-T", "UCC", "SOS-FILING", "BUILDING-PERMIT",
@@ -37,7 +55,7 @@ Document text (first 1500 characters):
             max_tokens=50,
             messages=[{"role": "user", "content": prompt}]
         )
-        result = json.loads(response.content[0].text.strip())
+        result = json.loads(_strip_json_fences(response.content[0].text))
         detected = result.get("document_type", "OTHER")
         return detected if detected in KNOWN_DOCUMENT_TYPES else "OTHER"
     except Exception as e:
@@ -108,10 +126,10 @@ Document text:
     try:
         response = client.messages.create(
             model="claude-sonnet-4-6",
-            max_tokens=2000,
+            max_tokens=4096,
             messages=[{"role": "user", "content": prompt}]
         )
-        result = json.loads(response.content[0].text.strip())
+        result = json.loads(_strip_json_fences(response.content[0].text))
         return result.get("extractions", [])
     except Exception as e:
         logger.warning(f"Field extraction failed for schema {schema.document_type}: {e}")
@@ -125,15 +143,23 @@ def save_extractions(
     schema_id: str,
     db: Session,
 ) -> None:
-    """Save each extracted field as one row in document_extractions."""
+    """
+    Save each extracted field as one row in document_extractions.
+    Handles key name variants Claude sometimes returns:
+    field_name/field_value (expected) OR field/value (also seen).
+    """
     for item in extractions:
-        if not item.get("field_name"):
+        # Accept both field_name and field
+        field_name = item.get("field_name") or item.get("field")
+        if not field_name:
             continue
+        # Accept both field_value and value
+        field_value = item.get("field_value") or item.get("value")
         row = DocumentExtraction(
             document_id=document_id,
             workspace_id=workspace_id,
-            field_name=item["field_name"],
-            field_value=item.get("field_value"),
+            field_name=field_name,
+            field_value=field_value,
             field_type=item.get("field_type", "text"),
             confidence=item.get("confidence", 1.0),
             schema_id=schema_id,

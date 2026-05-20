@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.routers import auth, workspaces, entities, findings, transactions, leads, notes, documents
+from app.routers import auth, workspaces, entities, findings, transactions, leads, notes, documents, search, ai
 
 app = FastAPI(
     title="Verity Prism IDP Platform",
@@ -24,6 +24,8 @@ app.include_router(transactions.router)
 app.include_router(leads.router)
 app.include_router(notes.router)
 app.include_router(documents.router)
+app.include_router(search.router)
+app.include_router(ai.router)
 
 @app.get("/health")
 def health():

@@ -109,11 +109,11 @@ Engine. Orchestrates the full upload pipeline:
 - `_fail()` — sets failed status with error message
 - Both XML and Claude extraction paths return `list[dict]` — no type branching in FTS or downstream steps
 
-#### `search_service.py` 🔲
-Engine. NLP query → PostgreSQL FTS + field-level filters on `document_extractions`. Task 9.
+#### `search_service.py` ✅
+Engine. NLP query → PostgreSQL FTS + field-level filters on `document_extractions`. `get_known_field_names()` tells Claude what's available. `translate_query()` returns structured filters. `run_search()` executes with numeric guard before CAST to prevent crashes on non-numeric values.
 
-#### `ai_engine.py` 🔲
-Engine. Claude chat with full workspace context. Task 10.
+#### `ai_engine.py` ✅
+Engine. `build_workspace_context()` loads all workspace data (entities, transactions, findings, leads, documents) into a structured text block for the system prompt. `chat()` sends context + history to Claude and returns the response. `get_conversation_history()` fetches last 20 messages chronologically.
 
 #### `connectors/` 🔲
 Engine. Phase 2 — public data sources feed into the pipeline.
@@ -145,8 +145,8 @@ The engine's intelligence layer. Understands documents, answers questions, surfa
 | `leads.py` | CRUD /leads | Engine | ✅ |
 | `notes.py` | CRUD /notes | Engine | ✅ |
 | `documents.py` | POST /documents, GET list/detail/extractions | Engine | ✅ |
-| `search.py` | POST /search | Engine | 🔲 Task 9 |
-| `ai.py` | POST /conversations + messages | Engine | 🔲 Task 10 |
+| `search.py` | POST /workspaces/{id}/search/ | Engine | ✅ |
+| `ai.py` | POST + GET /conversations, POST /conversations/{id}/messages | Engine | ✅ |
 | `connectors.py` | POST /connectors/{source} | Engine | 🔲 Phase 2 |
 
 ---
@@ -290,3 +290,6 @@ Investigation workflow + referral export
 | 2026-05-19 | 11 document schemas seeded. fetch_990_xml.py and parse_990_xml.py built. |
 | 2026-05-20 | Restructured engine vs. fraud cap separation. All 11 schemas changed to vertical=general. Signal type seed data flagged as misplaced in engine layer. Roadmap rewritten with IDP-first architecture. |
 | 2026-05-20 | Pipeline hardening: (1) get_schema_for_type now vertical-aware — prefers vertical-specific, falls back to general. (2) XML and Claude extraction paths both return list[dict] — no type branching. (3) Alembic migration c12f44824c55 written and applied — no_schema enum + extraction_error column. All three flagged issues resolved. 29/29 tests. |
+| 2026-05-20 | Task 9 complete. NLP search: translate_query → run_search with FTS + field filters. Numeric guard prevents CAST crashes. 32/32 tests. |
+| 2026-05-20 | Task 10 complete. AI chat: build_workspace_context + Claude + conversation history. 35/35 tests. |
+| 2026-05-20 | Live demo hardening: 3 bugs fixed — (1) Claude wraps JSON in markdown fences, strip before parsing. (2) Claude uses field/value keys instead of field_name/field_value, save_extractions accepts both. (3) max_tokens=2000 truncates 64-field extractions, raised to 4096. Real deed: 41 fields extracted, NLP search and AI chat both confirmed working. |
