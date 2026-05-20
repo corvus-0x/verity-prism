@@ -1508,6 +1508,124 @@ def seed_obituary_schema(db):
     return schema
 
 
+# ── PLAT schema ───────────────────────────────────────────────────────────────
+
+PLAT_FIELDS = [
+    {"name": "instrument_number",    "type": "id_number", "description": "Recorder's instrument number for this plat", "required": True},
+    {"name": "recording_date",       "type": "date",      "description": "Date the plat was recorded with the county recorder", "required": True},
+    {"name": "recording_time",       "type": "text",      "description": "Time of recording", "required": False},
+    {"name": "recording_fee",        "type": "currency",  "description": "Fee paid to record the plat", "required": False},
+    {"name": "recorder_name",        "type": "name",      "description": "County recorder who accepted the filing", "required": False},
+    {"name": "county",               "type": "text",      "description": "County where the plat was recorded", "required": True},
+    {"name": "plat_title",           "type": "text",      "description": "Official title of the plat as printed (e.g. Replat of Lot #29 & #30 of Marion Acres Subdivision Phase 2)", "required": True},
+    {"name": "plat_type",            "type": "text",      "description": "Type of plat: Original Subdivision, Replat, Minor Subdivision, Vacation, Lot Split", "required": False},
+    {"name": "owner_name",           "type": "name",      "description": "Owner of the land at time of platting — the entity creating the subdivision", "required": False},
+    {"name": "owner_instrument",     "type": "id_number", "description": "Deed/instrument number showing the owner's title", "required": False},
+    {"name": "township",             "type": "text",      "description": "Township where the platted land is located", "required": False},
+    {"name": "section_description",  "type": "text",      "description": "Quarter-section description (e.g. Northwest Quarter of Section 26, Town 7 South, Range 3 East)", "required": False},
+    {"name": "total_area_acres",     "type": "text",      "description": "Total area of the plat in acres", "required": False},
+    {"name": "number_of_lots",       "type": "text",      "description": "Number of lots created by this plat", "required": False},
+    {"name": "lots_created",         "type": "text",      "description": "Names/numbers of lots created (e.g. Lot 29A)", "required": False},
+    {"name": "lots_vacated",         "type": "text",      "description": "Names/numbers of existing lots vacated or merged by this plat", "required": False},
+    {"name": "zoning",               "type": "text",      "description": "Zoning designation (R-1, B-1, etc.)", "required": False},
+    {"name": "subdivision_name",     "type": "text",      "description": "Parent subdivision name", "required": False},
+    {"name": "prior_plat_instrument","type": "id_number", "description": "Instrument number of the prior plat this replat references", "required": False},
+    {"name": "surveyor_name",        "type": "name",      "description": "Name of the registered professional surveyor who prepared the plat", "required": False},
+    {"name": "surveyor_ps_number",   "type": "id_number", "description": "Ohio PS (Professional Surveyor) license number", "required": False},
+    {"name": "survey_date",          "type": "date",      "description": "Date the field survey was performed", "required": False},
+    {"name": "engineering_firm",     "type": "text",      "description": "Engineering or surveying firm that prepared the plat", "required": False},
+    {"name": "engineering_firm_address","type": "address","description": "Address of the engineering firm", "required": False},
+    {"name": "planning_commission_approval_date","type": "date","description": "Date the regional planning commission approved the plat", "required": False},
+    {"name": "planning_commission_secretary","type": "name","description": "Secretary who signed the planning commission certificate", "required": False},
+    {"name": "auditor_certification_date","type": "date", "description": "Date the county auditor certified no unpaid taxes on the platted land", "required": False},
+    {"name": "auditor_name",         "type": "name",      "description": "County auditor who signed the tax certificate", "required": False},
+    {"name": "deed_delivery_person", "type": "text",      "description": "Person or entity who dropped off the plat at the recorder — can reveal contractors or legal agents connected to the owner", "required": False},
+    {"name": "roads_shown",          "type": "text",      "description": "Road names visible on the plat (e.g. Washington Avenue, Homan Road)", "required": False},
+    {"name": "easements_created",    "type": "text",      "description": "Utility or other easements created or vacated by this plat", "required": False},
+    {"name": "covenants_reference",  "type": "id_number", "description": "Instrument number where subdivision covenants and restrictions are recorded", "required": False},
+    {"name": "health_dept_approval_date","type": "date",  "description": "Date of health department inspection/approval if shown", "required": False},
+]
+
+# Adjacent lot owners — up to 6
+PLAT_ADJACENT = _repeating("adjacent_owner", 6, [
+    ("lot",        "text",      "Lot number or tract identifier of the adjacent parcel"),
+    ("owner_name", "name",      "Name of the adjacent property owner"),
+    ("instrument", "id_number", "Deed or instrument number for the adjacent parcel"),
+])
+
+PLAT_EXTRACTION_PROMPT = """Extract structured data from this subdivision plat or replat document.
+
+A plat is a recorded map and legal document that creates, modifies, or vacates subdivision lots.
+It is filed with the county recorder and includes certificates from the surveyor, planning commission,
+and county auditor.
+
+TYPES OF PLATS:
+
+Original Subdivision: Creates new lots from a larger tract.
+Replat: Modifies existing lots — may combine, split, or reconfigure.
+Minor Subdivision: Small lot split, often a single division.
+Lot Split: Divides one lot into two or more.
+Vacation: Removes lot lines or roads.
+
+WHAT TO EXTRACT:
+
+plat_title: The full official title printed on the plat document.
+  Example: "REPLAT OF LOT #29 & #30 OF MARION ACRES SUBDIVISION PHASE 2"
+
+owner_name: The entity that owns the land being platted.
+  This is usually found in a note on the plat: "OWNER: [instrument reference] / [entity name]"
+
+deed_delivery_person: Who dropped off the plat at the recorder's office.
+  This appears in the recorder's header as "Dropped off by: [name/entity]"
+  A contractor or law firm dropping off the plat reveals who is managing the project.
+  Example: "BAUMER CONST/SARA" = Baumer Construction
+
+surveyor_name and surveyor_ps_number: Found in the surveyor's certification block.
+  "I hereby certify that this plat is true and accurate... PROFESSIONAL SURVEYOR NO. [PS] XXXX"
+
+planning_commission_approval: The certificate signed by the regional planning commission secretary.
+  Extract the date and the secretary's name.
+
+adjacent_owners: All named property owners shown on the plat diagram for neighboring lots.
+  Extract their names, lot numbers, and instrument numbers. These are the neighbors —
+  in small communities, adjacent owners often reveal network connections.
+
+roads_shown: All road names visible on the plat drawing.
+  Road names can confirm geographic location or reveal family connections (e.g. "Homan Road").
+
+easements_created and lots_vacated: Note any lot lines, easements, or roads being eliminated.
+
+If a field is not present on this plat, leave it null."""
+
+
+def seed_plat_schema(db):
+    """Insert the PLAT schema if it doesn't already exist."""
+    existing = db.query(DocumentSchema).filter(
+        DocumentSchema.document_type == "PLAT"
+    ).first()
+
+    if existing:
+        print("PLAT schema already exists — skipping.")
+        return existing
+
+    schema_fields = _fields(PLAT_FIELDS, PLAT_ADJACENT)
+
+    schema = DocumentSchema(
+        document_type="PLAT",
+        display_name="Subdivision Plat / Replat",
+        vertical="fraud",
+        schema_fields=schema_fields,
+        extraction_prompt=PLAT_EXTRACTION_PROMPT,
+        version=1,
+        is_active=True,
+    )
+    db.add(schema)
+    db.commit()
+    db.refresh(schema)
+    print(f"PLAT schema created — {len(schema_fields)} fields.")
+    return schema
+
+
 def main():
     db = SessionLocal()
     try:
@@ -1520,6 +1638,7 @@ def main():
         seed_audit_report_schema(db)
         seed_screenshot_schema(db)
         seed_obituary_schema(db)
+        seed_plat_schema(db)
     finally:
         db.close()
 
