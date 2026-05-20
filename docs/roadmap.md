@@ -1,192 +1,257 @@
 # Verity Prism — Product Roadmap
 
 **Last updated:** 2026-05-20  
-**Purpose:** High-level direction for all four phases. Not a task plan — that lives in `docs/superpowers/plans/`. This is the WHAT and WHY so nothing gets lost between phases.
+**Core principle:** Verity Prism is an Intelligent Document Processing platform first. Verticals are plug-and-play caps that tell the platform what to care about. The engine ships to every customer. The cap ships only to the relevant vertical.
 
 ---
 
-## Phase 1 — Core IDP Platform + Fraud Vertical 1
-**Goal:** A working document processing engine with fraud investigation tools. One investigator, one case at a time.  
+## The Architecture in One Picture
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                    VERITY PRISM ENGINE                    │
+│                                                           │
+│  Any document in → structured data out                    │
+│                                                           │
+│  ┌──────────────┐  ┌──────────────┐  ┌────────────────┐ │
+│  │  Ingestion   │  │  Extraction  │  │  Intelligence  │ │
+│  │  Pipeline    │  │  Engine      │  │  Layer         │ │
+│  │              │  │              │  │                │ │
+│  │  hash        │  │  OCR         │  │  NLP search    │ │
+│  │  store       │  │  type detect │  │  AI chat       │ │
+│  │  index       │  │  field parse │  │  network graph │ │
+│  └──────────────┘  └──────────────┘  └────────────────┘ │
+│                                                           │
+│  ┌──────────────────────────────────────────────────┐   │
+│  │  Data Connectors (public sources → pipeline)      │   │
+│  │  IRS TEOS | SOS | County Auditor | Permits | ...  │   │
+│  └──────────────────────────────────────────────────┘   │
+│                                                           │
+│  ┌──────────────────────────────────────────────────┐   │
+│  │  Schema Registry (plug-and-play, per document type│   │
+│  │  DEED | 990 | UCC | PARCEL | PERMIT | FORM | ...  │   │
+│  └──────────────────────────────────────────────────┘   │
+│                                                           │
+│  The engine knows nothing about fraud, insurance,         │
+│  or any other domain. It processes documents.             │
+└─────────────────────────────────────────────────────────┘
+           │                    │                    │
+           ▼                    ▼                    ▼
+  ┌────────────────┐  ┌─────────────────┐  ┌──────────────────┐
+  │  FRAUD CAP     │  │  INSURANCE CAP  │  │  [FUTURE CAP]    │
+  │                │  │                 │  │                  │
+  │  Fraud schemas │  │  Insurance      │  │  Legal discovery │
+  │  SR signals    │  │  schemas        │  │  Compliance      │
+  │  Investigation │  │  Claims signals │  │  Real estate     │
+  │  workflow      │  │  Claim workflow │  │  title           │
+  │  AG/IRS/FBI    │  │  Claims system  │  │  ...             │
+  │  referral      │  │  export         │  │                  │
+  └────────────────┘  └─────────────────┘  └──────────────────┘
+
+An insurance customer installs the engine + insurance cap.
+They never see fraud signals, fraud schemas, or fraud workflows.
+A fraud customer installs the engine + fraud cap.
+Adding a new vertical = new cap. Engine unchanged.
+```
+
+---
+
+## What a Vertical (Cap) Contains
+
+Every vertical is a self-contained package:
+
+| Component | What it is | Example: Fraud | Example: Insurance |
+|---|---|---|---|
+| **Schema set** | Which document types are active | DEED, 990, UCC, PARCEL, SOS, PERMIT, AUDIT | INSURANCE-FORM, ACORD, APPRAISAL, INVOICE |
+| **Signal definitions** | What patterns to detect | SR-003 valuation anomaly, SR-025 false disclosure | Duplicate claim, inflated contractor invoice |
+| **Workflow config** | What steps a case follows | Upload → investigate → findings → referral | Intake → extract → flag → adjuster review |
+| **UI labels** | Terminology for the domain | "Case", "Finding", "Referral" | "Claim", "Discrepancy", "Adjustment" |
+| **Export format** | How output leaves the system | AG/IRS/FBI complaint package | Claims system API, structured report |
+
+Shared schemas (PARCEL-RECORD, for example) can belong to multiple verticals. The schema registry supports this — a schema tagged `general` is available to all verticals. A schema tagged `fraud` only activates in fraud workspaces.
+
+---
+
+## Phase 1 — IDP Engine Core
+**What it is:** The document processing foundation. Every future phase and every future vertical runs on this.  
 **Status:** In progress — Tasks 1-8 complete, Tasks 9-11 remaining.
 
-### What Phase 1 Delivers
-- Document upload → OCR → AI extraction → structured database fields
-- 11 document type schemas (PARCEL-RECORD, DEED, 990, SOS-FILING, UCC, BUILDING-PERMIT, AUDIT-REPORT, SCREENSHOT, OBITUARY, PLAT, CORRESPONDENCE)
-- XML direct parse path for IRS 990 filings
-- Workspace management, entities, relationships, transactions
-- Fraud signal types (SR-001 through SR-026)
-- Findings, investigation leads, notes
-- NLP search (Task 9) — plain-English queries across extracted fields
-- AI chat (Task 10) — Claude with full workspace context
-- Basic React frontend (Phase 1 frontend plan)
+### Engine capabilities delivered in Phase 1
+- Document ingestion: SHA-256 evidence lock → OCR → type detection → field extraction → FTS index
+- Schema registry: 11 document type schemas, plug-and-play, no code change to add new types
+- XML direct parse path: structured files (990 XML) bypass OCR, extracted at full confidence
+- Background processing: upload returns immediately, pipeline runs async
+- Fail-fast error handling: `failed` / `no_schema` statuses, auto-lead creation for unknown types
+- Workspace management, entities, relationships, transactions, notes
+- Audit log: immutable, PostgreSQL trigger-enforced
+- NLP search — Task 9: plain-English queries across all extracted fields
+- AI chat — Task 10: Claude with full workspace context
+- React frontend — Phase 1 frontend plan
 
-### What Phase 1 Does NOT Include
-- Public data integrations (IRS, SOS, county auditor APIs)
-- Automated signal detection
-- Network graph visualization
+### What Phase 1 does NOT include
+- Any vertical-specific logic
+- Public data connectors
+- Signal detection
 - Multi-user collaboration
-- Referral package generation
 
 ---
 
-## Phase 2 — Public Data + Guided Workflow
-**Goal:** The platform pulls data, not just accepts uploads. Investigations gain structure and automation.  
-**Trigger:** Start after all Phase 1 tests pass and frontend delivers working workspace UI.
+## Phase 2 — IDP Engine Capabilities
+**What it is:** The engine gets smarter and more connected. No vertical logic — these capabilities serve all verticals equally.  
+**Trigger:** All Phase 1 tasks complete, frontend working.
 
-### 2A — Public Data Integrations
-Connect the loose ends from Phase 1 to live data sources.
+### 2A — Data Connectors
+Public data sources feed directly into the pipeline. Any vertical can use any connector.
 
-**IRS 990 Import**  
-- New service: `app/services/public_data.py`
-- New endpoint: `POST /workspaces/{id}/import/990` — accepts EIN, fetches XML from TEOS, runs pipeline
-- Wraps: `scripts/fetch_990_xml.py` (already built — see build-inventory.md)
-- Scheduled option: annually check for new filings on watched EINs
+**Architecture:** `app/services/connectors/` — each connector fetches data, converts to a file, hands to the pipeline. The connector doesn't know which vertical is using it.
 
-**Ohio Secretary of State**  
-- Entity search by name or EIN → ingest as SOS-FILING documents
-- UCC financing statement search by debtor name → ingest as UCC documents
-- Real-time lookup, not bulk download
+```
+app/services/connectors/
+    irs_teos.py          ← 990 XML for any EIN
+    ohio_sos.py          ← entity and UCC records
+    county_auditor.py    ← parcel records by address/parcel number
+    building_permits.py  ← permit history by address
+```
 
-**County Auditor Records**  
-- Darke County: `darkecountyrealestate.org` — parcel record lookup by address or parcel number
-- Mercer County: `auditor.mercercountyohio.gov` — same
-- Output: PARCEL-RECORD documents in the pipeline
-- Parcel numbers extracted from deeds can trigger automatic auditor lookups
+**New endpoint pattern:**
+```
+POST /workspaces/{id}/connectors/irs-teos
+POST /workspaces/{id}/connectors/ohio-sos
+POST /workspaces/{id}/connectors/county-auditor
+```
 
-**Building Permit Integration**  
-- County permit data is currently ingested as Excel spreadsheets
-- Phase 2: Direct API or scraper to pull permit history by address
-- Output: BUILDING-PERMIT documents
+**Existing asset:** `scripts/fetch_990_xml.py` is the core IRS TEOS logic. Phase 2A wraps it in the connector service.  
+**Scheduled option:** Background job checks for new filings on watched EINs annually.  
+**Cross-vertical use:** Fraud uses IRS TEOS for 990s. A tax compliance vertical uses the same connector for the same reason. Insurance uses county auditor for property data.
 
-**Additional Document Schemas (Phase 2)**  
-- NEWS-ARTICLE — news coverage of investigation subjects
-- COURT-FILING — judgments, filings
-- INSURANCE-FORM — Vertical 2 preparation (see Phase 3)
+### 2B — Signal Detection Framework
+The engine gains the ability to define and evaluate signals. The signals themselves are defined by verticals — this is the framework that runs them.
 
-### 2B — Signal Detection Engine
-Automated detection of fraud signals across workspace documents.
+**How it works:**
+- A `signal_rules` table stores pattern definitions (field + operator + threshold + signal code)
+- After extraction completes, the signal engine evaluates all active rules for the workspace's vertical
+- Matching rules auto-create Findings with evidence links
+- New signals = new rows in `signal_rules`, no code change
 
-**How it works:**  
-After each document is fully extracted, the signal engine queries `document_extractions` for patterns that match signal definitions. It creates findings automatically and surfaces them in the workspace.
+**What the framework provides:**
+- Rule evaluation engine (queries `document_extractions`, compares values)
+- Cross-document rules (compare fields across multiple documents for same entity)
+- Time-series rules (compare field values across filing years)
+- Threshold rules (field value > X, or ratio between two fields > Y)
 
-**Key signals to automate:**
-- SR-021 REVENUE_SPIKE: Compare `total_revenue_cy` across 990s for same EIN — fire if >500% YoY increase
-- SR-026 CONSTRUCTION_OVERAGE: Compare `estimated_value` (building permit) to `total_revenue_cy` (990) for same year
-- SR-004 UCC_BURST: Find multiple UCC documents for same `original_fs_number` with `filing_time` within 15 minutes
-- SR-025 FALSE_DISCLOSURE: 990 `gov_related_entity = false` when DEED or SOS documents show same signatory controlling multiple entities
-- SR-005 ZERO_CONSIDERATION: DEED `conveyance_fee_exempt = true` + `seller_is_individual = true`
-- SR-003 VALUATION_ANOMALY: DEED `sale_amount` > 2x PARCEL-RECORD `appraised_value_current`
+**What the framework does NOT contain:** Any specific rule definitions. Those live in the vertical cap.
 
-**Output:** Auto-created Findings with evidence links to the triggering documents.
+### 2C — Relationship & Network Graph
+Visual map of entities, properties, transactions, and document links.
 
-### 2C — Network Graph
-Visual map of entity relationships, property chains, and transaction flows.
-
-**Data source:** Everything already in `entities`, `relationships`, `transactions`, and `document_extractions` tables  
-**Frontend:** D3.js or similar — nodes are entities, edges are relationships/transactions  
-**Key queries:**
-- "Show all entities connected to this nonprofit"
-- "Show all properties that changed hands through this network"
-- "Show the UCC lien chains for these debtors"
+**Data source:** Everything already in `entities`, `relationships`, `transactions`, `document_extractions`  
+**Value:** Patterns invisible in tables become obvious as a graph  
+**Cross-vertical:** Fraud uses it for entity networks. Insurance uses it for claim relationships.
 
 ### 2D — Investigation Timeline
-Chronological view of all events in a workspace — deed recordings, 990 filings, UCC amendments, permit dates, SOS filings — ordered by date.
+Chronological view of all extracted dates across all documents in a workspace.
 
-**Data source:** Extracted date fields from all document types  
-**Purpose:** The Catalyst problem that started this — events visible in sequence reveal patterns invisible in isolation
+**Data source:** Every date field extracted from every document type  
+**Value:** Events in sequence reveal what isolated documents don't
 
-### 2E — Alembic Migration (Carry-forward from Phase 1)
-The `no_schema` enum value and `extraction_error` column were added directly to the live DB in Task 8. Need a proper Alembic migration before Phase 2 starts so clean rebuilds work.
-
----
-
-## Phase 3 — Collaboration + Referral + Insurance Vertical
-**Goal:** More than one investigator. Cases move to agencies. A second vertical proves the platform generalizes.  
-**Trigger:** Start after Phase 2 public data integrations are stable and at least one full case has run end-to-end.
-
-### 3A — Multi-User Collaboration
-- Workspace roles already exist in the data model (owner, analyst, viewer)
-- Phase 3 wires the roles into the UI: analysts can edit, viewers are read-only
-- Activity feed: who added what, when
-- @mention in notes triggers notifications
-- Case assignment: leads can be assigned to specific users
-
-### 3B — Referral Package Generation
-A case is useful only if it goes somewhere. This feature exports an investigation to the format each receiving agency expects.
-
-**Referral targets:**
-- Ohio Attorney General (Charitable Law Section) — narrative + evidence exhibit list
-- IRS Form 13909 — tax-exempt organization complaint
-- FBI IC3 — internet crime referral
-- Farm Credit Administration OIG — if agricultural lending is involved
-
-**What the package contains:**
-- Executive summary (AI-generated from workspace context)
-- Chronological timeline of events
-- Entity relationship diagram
-- Evidence exhibit list with document references
-- Signal findings with supporting document citations
-
-**Format:** PDF export + optional structured data export
-
-### 3C — Insurance Vertical (Vertical 2)
-**The pain point:** Insurance adjusters and claims teams receive paper forms (ACORD forms, medical records, property appraisals, contractor invoices) that get re-keyed into systems manually. Hours of data entry per claim.
-
-**What the platform does:**
-- Upload insurance form PDFs → extract into structured fields
-- INSURANCE-FORM schema already partially designed
-- Cross-reference extracted data against existing records (property records, prior claims)
-- Flag discrepancies automatically
-
-**Integration target:** Whatever system the client already uses — API push to their claims system, or structured export
-
-**Contact:** Insurance vertical contact is documented in memory files (Vertical 2 context).
+### 2E — Alembic Migration (carry-forward)
+`no_schema` enum value and `extraction_error` column were added directly to the DB in Task 8. Need a proper Alembic migration before Phase 2 so clean rebuilds work.
 
 ---
 
-## Phase 4 — Scale + Deploy + Additional Verticals
-**Goal:** Production-grade. More than one client. Additional verticals without rebuilding.  
-**Trigger:** Phase 3 complete, at least one paying customer in each of two verticals.
+## Phase 3 — Vertical Packaging
+**What it is:** The engine gets its first two caps. Each vertical is a complete, installable package.  
+**Trigger:** Phase 2 engine capabilities stable. At least one full end-to-end case has run.
+
+### 3A — Fraud Vertical v1.0
+**Installs:** Fraud schema set + SR signal definitions + investigation workflow + referral export
+
+**Schema set (already built, just needs vertical packaging):**
+PARCEL-RECORD, DEED, 990, SOS-FILING, UCC, BUILDING-PERMIT, AUDIT-REPORT, SCREENSHOT, OBITUARY, PLAT, CORRESPONDENCE
+
+**Signal definitions (SR-001 through SR-026 — using Phase 2B framework):**
+- SR-003 VALUATION_ANOMALY: sale_amount > 2x appraised_value_current
+- SR-004 UCC_BURST: 3+ amendments to same financing statement within 15 minutes
+- SR-005 ZERO_CONSIDERATION: conveyance_fee_exempt = true + seller_is_individual = true
+- SR-015 DEED_TITLE_DEFECT: grantee_entity formed after deed execution date
+- SR-021 REVENUE_SPIKE: total_revenue_cy > 5x prior year revenue
+- SR-024 CHARITY_CONDUIT: building permit applicant = nonprofit, parcel owner = LLC
+- SR-025 FALSE_DISCLOSURE: 990 gov_related_entity = false, deed shows same signatory on both entities
+- SR-026 CONSTRUCTION_OVERAGE: permit estimated_value > total_revenue_cy same year
+- *(full SR catalog in signal definitions)*
+
+**Investigation workflow:**
+Upload → extract → signals fire → findings created → investigator reviews → referral package
+
+**Referral export:**
+- Ohio AG (Charitable Law Section) format
+- IRS Form 13909 narrative
+- FBI IC3 format
+- Farm Credit Administration OIG
+
+### 3B — Insurance Vertical v1.0
+**Installs:** Insurance schema set + claims signal definitions + claim intake workflow + claims export
+
+**Schema set (to be built when Phase 3 starts):**
+INSURANCE-FORM, ACORD-FORM, PROPERTY-APPRAISAL, CONTRACTOR-INVOICE, MEDICAL-RECORD  
+*Shared with fraud vertical:* PARCEL-RECORD (property data)
+
+**Signal definitions:**
+- Contractor invoice date after claim close date
+- Estimated repair cost > property appraised value
+- Duplicate claims across policies for same property
+- *(defined when vertical is built)*
+
+**Claim intake workflow:**
+Upload forms → extract → flag discrepancies → adjuster review queue → decision
+
+**Export:**
+Claims system API push (integration TBD based on client system)  
+Structured PDF report for manual review
+
+**Contact:** Insurance vertical contact and pain point documented in private memory files.
+
+---
+
+## Phase 4 — Scale + Additional Verticals
+**What it is:** Production infrastructure. The platform handles multiple clients, multiple verticals, at scale.  
+**Trigger:** Phase 3 complete. First paying customer in each of two verticals.
 
 ### 4A — AWS Deployment
-- Docker Compose → AWS ECS or EKS
-- PostgreSQL → RDS
-- File storage → S3
-- Background jobs → SQS + Lambda or ECS tasks
-- CDN for frontend assets
+Docker Compose → AWS ECS/EKS. PostgreSQL → RDS. Files → S3. Background jobs → SQS. CDN for frontend.
 
-### 4B — Performance at Scale
-- OCR is the bottleneck — consider dedicated OCR workers
-- Claude API calls are per-document — batch where possible, cache extraction results
-- FTS index updates are synchronous — move to async queue for large uploads
-- Database indexes — review query patterns after real usage data exists
+### 4B — Additional Vertical Caps
+Each new vertical is a schema set + signal definitions + workflow config + export format. The engine doesn't change.
 
-### 4C — Additional Verticals
-Each vertical is a new layer on top of the IDP core — new signal types, new schemas, new referral templates.
+**Candidates:**
+- Legal discovery — contracts, depositions, court filings, privilege review
+- Real estate title — chain of title analysis, lien searches, closing packages
+- Compliance audit — board minutes, policy docs, governance review
+- Nonprofit oversight — general 990 analysis beyond the fraud vertical
 
-**Candidates after insurance:**
-- Legal discovery — contracts, deposition transcripts, court filings
-- Real estate title work — chain of title analysis, lien searches
-- Compliance audit — corporate governance documents, board minutes, policy docs
-- Nonprofit oversight — expand beyond fraud vertical to general 990 analysis
+**Time to add a new vertical:** With the Phase 2 framework in place, a new vertical should take weeks, not months. Schema derivation (one session per document type, as established in Phase 1) + signal definitions + workflow config.
 
-**The platform's promise:** New vertical = new schemas + new signal types + new referral format. Core IDP engine doesn't change.
+### 4C — Vertical Marketplace
+Long-term: verticals become installable packages. A law firm buys the engine + legal cap. A title company buys the engine + real estate cap. An insurer buys the engine + insurance cap. They don't see each other's logic.
 
 ---
 
 ## Cross-Phase Principles
 
+**The engine is the product. Verticals are configuration.**  
+If you're changing the pipeline, the schema registry, the connector framework, or the search/AI layer — that's engine work. If you're adding signal rules, schemas for a domain, or export formats — that's vertical work. Keep them separate.
+
+**Schemas are plug-and-play by design.**  
+The `document_schemas` table already has a `vertical` field. A schema tagged `general` works in any workspace. A schema tagged `fraud` only activates in fraud workspaces. Insurance schemas tagged `insurance` never appear in a fraud case. No code change needed — just the row in the table.
+
 **Every phase delivers working software.**  
-Don't start Phase 3 until Phase 2 is stable. Don't accumulate technical debt across phase boundaries.
+Don't start Phase 3 until Phase 2 connectors and signal framework are stable. Don't let verticals leak into engine phases.
 
 **The build inventory stays current.**  
-See `docs/build-inventory.md`. Every component built gets an entry. Every loose end gets a Phase destination.
+See `docs/build-inventory.md`. Everything built gets an entry. Every loose end gets a phase destination.
 
-**New document types follow the established pattern.**  
-Examples → read documents → derive schema → seed → done. Pipeline picks it up automatically.
-
-**The investigation case remains the reference implementation.**  
-Every new feature gets validated against the fraud vertical use case before being generalized. If it doesn't make investigation better, it waits.
+**The investigation case remains the engine's proving ground.**  
+The fraud vertical was built first because it's the hardest case. If the engine handles it, it handles everything simpler. Every new engine capability gets validated against a fraud case before being generalized.
 
 ---
 
@@ -194,7 +259,7 @@ Every new feature gets validated against the fraud vertical use case before bein
 
 | Phase | Done when |
 |---|---|
-| Phase 1 | All 11 backend tasks pass. Frontend delivers working workspace with document upload, search, and AI chat. |
-| Phase 2 | At least 3 public data sources integrated. Signal detection fires automatically on new documents. Network graph renders. |
-| Phase 3 | Two investigators can collaborate on one case. A complete referral package can be exported. Insurance vertical processes its first real claim. |
-| Phase 4 | Platform runs on AWS. Two paying customers in different verticals. Onboarding a new vertical takes one week, not one month. |
+| Phase 1 | All 11 backend tasks pass. Frontend delivers working workspace with upload, search, and AI chat. Documents flow through the full pipeline end-to-end. |
+| Phase 2 | Three connectors integrated and tested. Signal framework evaluates rules without code changes. Network graph renders entity relationships. Timeline view shows extracted dates in sequence. |
+| Phase 3 | Fraud vertical installs as a complete package. Insurance vertical processes a real claim end-to-end. Both verticals run on the same engine with no engine modifications. |
+| Phase 4 | Platform runs on AWS. Two paying clients in different verticals. New vertical takes one week to install, not one month. |
