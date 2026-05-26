@@ -3,7 +3,7 @@ from sqlalchemy import text
 from app.models.user import User
 from app.models.workspace import Workspace
 from app.models.document import Document
-from app.services.agent_tools import search_documents, execute
+from app.services.agent_tools import search_documents, execute, get_entity
 import uuid
 
 
@@ -86,3 +86,65 @@ def test_search_documents_workspace_isolation(db, workspace, document, user):
 def test_execute_unknown_tool_returns_error(db, workspace):
     result = execute("nonexistent_tool", workspace.id, db, {})
     assert "error" in result
+
+
+@pytest.fixture
+def entity(db, workspace, user):
+    from app.models.entity import Entity
+    e = Entity(
+        id=str(uuid.uuid4()),
+        workspace_id=workspace.id,
+        name="Do Good In His Name Inc",
+        type="organization",
+        status="active",
+        data={"ein": "12-3456789"},
+        is_deleted=False,
+        created_by=user.id,
+    )
+    db.add(e)
+    db.commit()
+    return e
+
+
+def test_get_entity_exact_match(db, workspace, entity):
+    result = get_entity(workspace_id=workspace.id, db=db, name="Do Good In His Name Inc")
+    assert result["entity"]["name"] == "Do Good In His Name Inc"
+    assert result["entity"]["data"]["ein"] == "12-3456789"
+
+
+def test_get_entity_partial_match(db, workspace, entity):
+    result = get_entity(workspace_id=workspace.id, db=db, name="Do Good")
+    assert result["entity"]["name"] == "Do Good In His Name Inc"
+
+
+def test_get_entity_not_found(db, workspace):
+    result = get_entity(workspace_id=workspace.id, db=db, name="Nonexistent LLC")
+    assert result["entity"] is None
+
+
+def test_get_entity_multiple_matches_returns_list(db, workspace, entity, user):
+    from app.models.entity import Entity
+    e2 = Entity(
+        id=str(uuid.uuid4()),
+        workspace_id=workspace.id,
+        name="Do Good Foundation",
+        type="organization",
+        status="active",
+        is_deleted=False,
+        created_by=user.id,
+    )
+    db.add(e2)
+    db.commit()
+    result = get_entity(workspace_id=workspace.id, db=db, name="Do Good")
+    assert "entities" in result
+    assert len(result["entities"]) == 2
+    # Multi-match response has no data field — just id, name, type, status
+    assert "data" not in result["entities"][0]
+
+
+def test_get_entity_workspace_isolation(db, workspace, entity, user):
+    other_ws = Workspace(id=str(uuid.uuid4()), name="Other WS", vertical="fraud", created_by=user.id)
+    db.add(other_ws)
+    db.commit()
+    result = get_entity(workspace_id=other_ws.id, db=db, name="Do Good")
+    assert result["entity"] is None

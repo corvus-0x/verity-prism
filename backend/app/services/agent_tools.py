@@ -53,7 +53,38 @@ def search_documents(
 
 
 def get_entity(workspace_id: str, db: Session, name: str) -> dict:
-    pass  # implemented in Task 2
+    """Look up entities by name (partial match). Returns full data for one match,
+    summary list for multiple matches, null if none found.
+    """
+    matches = (
+        db.query(Entity)
+        .filter(
+            Entity.workspace_id == workspace_id,
+            Entity.is_deleted == False,
+            Entity.name.ilike(f"%{name}%"),
+        )
+        .limit(5)
+        .all()
+    )
+    if not matches:
+        return {"entity": None}
+    if len(matches) == 1:
+        e = matches[0]
+        return {
+            "entity": {
+                "id": e.id,
+                "name": e.name,
+                "type": e.type,
+                "status": e.status,
+                "data": e.data or {},
+            }
+        }
+    return {
+        "entities": [
+            {"id": e.id, "name": e.name, "type": e.type, "status": e.status}
+            for e in matches
+        ]
+    }
 
 
 def query_extractions(
