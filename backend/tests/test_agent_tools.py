@@ -3,7 +3,7 @@ from sqlalchemy import text
 from app.models.user import User
 from app.models.workspace import Workspace
 from app.models.document import Document
-from app.services.agent_tools import search_documents, execute, get_entity, query_extractions
+from app.services.agent_tools import search_documents, execute, get_entity, query_extractions, get_transactions
 from app.models.document_extraction import DocumentExtraction
 import uuid
 
@@ -256,3 +256,58 @@ def test_query_extractions_no_match(db, workspace, extraction):
         field_name="grantor", operator="eq", value="Nobody"
     )
     assert result["count"] == 0
+
+
+from app.models.transaction import Transaction
+from decimal import Decimal
+
+
+@pytest.fixture
+def transaction(db, workspace, user):
+    t = Transaction(
+        id=str(uuid.uuid4()),
+        workspace_id=workspace.id,
+        transaction_type="purchase",
+        amount_paid=Decimal("300000"),
+        appraised_value=Decimal("200000"),
+        instrument_number="2021-12345",
+        created_by=user.id,
+    )
+    db.add(t)
+    db.commit()
+    return t
+
+
+def test_get_transactions_no_filter(db, workspace, transaction):
+    result = get_transactions(workspace_id=workspace.id, db=db)
+    assert result["count"] == 1
+    assert result["transactions"][0]["instrument_number"] == "2021-12345"
+
+
+def test_get_transactions_overpay_pct_calculated(db, workspace, transaction):
+    result = get_transactions(workspace_id=workspace.id, db=db)
+    assert result["transactions"][0]["overpay_pct"] == 50.0
+
+
+def test_get_transactions_min_amount_filter(db, workspace, transaction):
+    result = get_transactions(workspace_id=workspace.id, db=db, min_amount=250000)
+    assert result["count"] == 1
+
+    result_miss = get_transactions(workspace_id=workspace.id, db=db, min_amount=400000)
+    assert result_miss["count"] == 0
+
+
+def test_get_transactions_max_amount_filter(db, workspace, transaction):
+    result = get_transactions(workspace_id=workspace.id, db=db, max_amount=400000)
+    assert result["count"] == 1
+
+    result_miss = get_transactions(workspace_id=workspace.id, db=db, max_amount=100000)
+    assert result_miss["count"] == 0
+
+
+def test_get_transactions_type_filter(db, workspace, transaction):
+    result = get_transactions(workspace_id=workspace.id, db=db, transaction_type="purchase")
+    assert result["count"] == 1
+
+    result_miss = get_transactions(workspace_id=workspace.id, db=db, transaction_type="sale")
+    assert result_miss["count"] == 0

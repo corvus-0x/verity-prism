@@ -126,6 +126,11 @@ def query_extractions(
     }
 
 
+_VALID_TRANSACTION_TYPES = {
+    "purchase", "transfer", "lien", "loan", "donation", "construction", "compensation"
+}
+
+
 def get_transactions(
     workspace_id: str,
     db: Session,
@@ -133,7 +138,45 @@ def get_transactions(
     max_amount: float = None,
     transaction_type: str = None,
 ) -> dict:
-    pass  # implemented in Task 4
+    """Filter transactions by amount range and/or type.
+    Returns up to 50 matching records with overpay percentage calculated.
+    Invalid transaction_type values return an empty result rather than raising a DB error,
+    because PostgreSQL enums reject unknown values at query time.
+    """
+    q = db.query(Transaction).filter(Transaction.workspace_id == workspace_id)
+    if transaction_type:
+        if transaction_type not in _VALID_TRANSACTION_TYPES:
+            return {"transactions": [], "count": 0}
+        q = q.filter(Transaction.transaction_type == transaction_type)
+    if min_amount is not None:
+        q = q.filter(Transaction.amount_paid >= min_amount)
+    if max_amount is not None:
+        q = q.filter(Transaction.amount_paid <= max_amount)
+
+    rows = q.limit(50).all()
+    results = []
+    for t in rows:
+        overpay_pct = None
+        if t.amount_paid and t.appraised_value and float(t.appraised_value) > 0:
+            overpay_pct = round(
+                (
+                    (float(t.amount_paid) - float(t.appraised_value))
+                    / float(t.appraised_value)
+                )
+                * 100,
+                1,
+            )
+        results.append({
+            "id": t.id,
+            "transaction_type": t.transaction_type,
+            "amount_paid": str(t.amount_paid) if t.amount_paid else None,
+            "appraised_value": str(t.appraised_value) if t.appraised_value else None,
+            "overpay_pct": overpay_pct,
+            "transaction_date": str(t.transaction_date) if t.transaction_date else None,
+            "instrument_number": t.instrument_number,
+            "notes": t.notes,
+        })
+    return {"transactions": results, "count": len(results)}
 
 
 def get_findings(workspace_id: str, db: Session) -> dict:
