@@ -3,7 +3,8 @@ from sqlalchemy import text
 from app.models.user import User
 from app.models.workspace import Workspace
 from app.models.document import Document
-from app.services.agent_tools import search_documents, execute, get_entity
+from app.services.agent_tools import search_documents, execute, get_entity, query_extractions
+from app.models.document_extraction import DocumentExtraction
 import uuid
 
 
@@ -182,3 +183,76 @@ def test_get_entity_excludes_soft_deleted(db, workspace, user):
     db.commit()
     result = get_entity(workspace_id=workspace.id, db=db, name="Do Good Deleted")
     assert result["entity"] is None
+
+
+@pytest.fixture
+def extraction(db, workspace, document, user):
+    ext = DocumentExtraction(
+        id=str(uuid.uuid4()),
+        document_id=document.id,
+        workspace_id=workspace.id,
+        field_name="grantor",
+        field_value="John Smith",
+        field_type="text",
+        confidence=0.95,
+    )
+    db.add(ext)
+    amt = DocumentExtraction(
+        id=str(uuid.uuid4()),
+        document_id=document.id,
+        workspace_id=workspace.id,
+        field_name="consideration_amount",
+        field_value="250000",
+        field_type="text",
+        confidence=0.9,
+    )
+    db.add(amt)
+    db.commit()
+    return ext
+
+
+def test_query_extractions_eq(db, workspace, extraction):
+    result = query_extractions(
+        workspace_id=workspace.id, db=db,
+        field_name="grantor", operator="eq", value="John Smith"
+    )
+    assert result["count"] == 1
+    assert result["extractions"][0]["field_value"] == "John Smith"
+
+
+def test_query_extractions_contains(db, workspace, extraction):
+    result = query_extractions(
+        workspace_id=workspace.id, db=db,
+        field_name="grantor", operator="contains", value="Smith"
+    )
+    assert result["count"] == 1
+
+
+def test_query_extractions_gt(db, workspace, extraction):
+    result = query_extractions(
+        workspace_id=workspace.id, db=db,
+        field_name="consideration_amount", operator="gt", value="100000"
+    )
+    assert result["count"] == 1
+
+    result_miss = query_extractions(
+        workspace_id=workspace.id, db=db,
+        field_name="consideration_amount", operator="gt", value="500000"
+    )
+    assert result_miss["count"] == 0
+
+
+def test_query_extractions_lt(db, workspace, extraction):
+    result = query_extractions(
+        workspace_id=workspace.id, db=db,
+        field_name="consideration_amount", operator="lt", value="500000"
+    )
+    assert result["count"] == 1
+
+
+def test_query_extractions_no_match(db, workspace, extraction):
+    result = query_extractions(
+        workspace_id=workspace.id, db=db,
+        field_name="grantor", operator="eq", value="Nobody"
+    )
+    assert result["count"] == 0

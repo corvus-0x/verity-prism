@@ -90,7 +90,40 @@ def get_entity(workspace_id: str, db: Session, name: str) -> dict:
 def query_extractions(
     workspace_id: str, db: Session, field_name: str, operator: str, value: str
 ) -> dict:
-    pass  # implemented in Task 3
+    """Query document_extractions by field name and value. Operators: eq, contains, gt, lt.
+    Returns up to 50 matching rows with document_id, field_name, field_value.
+    """
+    q = db.query(DocumentExtraction).filter(
+        DocumentExtraction.workspace_id == workspace_id,
+        DocumentExtraction.field_name == field_name,
+        DocumentExtraction.field_value.isnot(None),
+    )
+    if operator == "eq":
+        q = q.filter(DocumentExtraction.field_value == value)
+    elif operator == "contains":
+        q = q.filter(DocumentExtraction.field_value.ilike(f"%{value}%"))
+    elif operator in ("gt", "lt"):
+        numeric_guard = sql_text("field_value ~ '^[0-9]+(\\.[0-9]+)?$'")
+        comparator = ">" if operator == "gt" else "<"
+        q = q.filter(
+            numeric_guard,
+            sql_text(f"CAST(field_value AS NUMERIC) {comparator} :val").bindparams(
+                val=float(value)
+            ),
+        )
+
+    rows = q.limit(50).all()
+    return {
+        "extractions": [
+            {
+                "document_id": r.document_id,
+                "field_name": r.field_name,
+                "field_value": r.field_value,
+            }
+            for r in rows
+        ],
+        "count": len(rows),
+    }
 
 
 def get_transactions(
