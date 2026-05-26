@@ -53,7 +53,7 @@ def search_documents(
 
 
 def get_entity(workspace_id: str, db: Session, name: str) -> dict:
-    """Look up entities by name (partial match). Returns full data for one match,
+    """Look up entities by name (case-insensitive partial match). Returns full data for one match,
     summary list for multiple matches, null if none found.
     """
     matches = (

@@ -148,3 +148,37 @@ def test_get_entity_workspace_isolation(db, workspace, entity, user):
     db.commit()
     result = get_entity(workspace_id=other_ws.id, db=db, name="Do Good")
     assert result["entity"] is None
+
+
+def test_get_entity_case_insensitive(db, workspace, user):
+    from app.models.entity import Entity
+    e = Entity(
+        id=str(uuid.uuid4()),
+        workspace_id=workspace.id,
+        name="Do Good In His Name Inc",
+        type="organization",
+        status="active",
+        is_deleted=False,
+        created_by=user.id,
+    )
+    db.add(e)
+    db.commit()
+    result = get_entity(workspace_id=workspace.id, db=db, name="do good in his name")
+    assert result["entity"]["name"] == "Do Good In His Name Inc"
+
+
+def test_get_entity_excludes_soft_deleted(db, workspace, user):
+    from app.models.entity import Entity
+    deleted = Entity(
+        id=str(uuid.uuid4()),
+        workspace_id=workspace.id,
+        name="Do Good Deleted Org",
+        type="organization",
+        status="active",
+        is_deleted=True,
+        created_by=user.id,
+    )
+    db.add(deleted)
+    db.commit()
+    result = get_entity(workspace_id=workspace.id, db=db, name="Do Good Deleted")
+    assert result["entity"] is None
