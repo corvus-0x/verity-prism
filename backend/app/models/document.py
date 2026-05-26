@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime, timezone
-from sqlalchemy import String, DateTime, Enum as SAEnum, ForeignKey, Text, BigInteger
+from sqlalchemy import String, DateTime, Enum as SAEnum, ForeignKey, Text, BigInteger, Boolean
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 from app.database import Base
@@ -33,3 +33,5 @@ class Document(Base):
     extraction_error: Mapped[str] = mapped_column(String, nullable=True)
     uploaded_by: Mapped[str] = mapped_column(String, ForeignKey("users.id"), nullable=False)
     uploaded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    is_deleted: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    deleted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=True)
