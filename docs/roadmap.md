@@ -1,6 +1,6 @@
 # Verity Prism — Product Roadmap
 
-**Last updated:** 2026-05-20  
+**Last updated:** 2026-05-26  
 **Core principle:** Verity Prism is an Intelligent Document Processing platform first. Verticals are plug-and-play caps that tell the platform what to care about. The engine ships to every customer. The cap ships only to the relevant vertical.
 
 ---
@@ -76,7 +76,7 @@ Shared schemas (PARCEL-RECORD, for example) can belong to multiple verticals. Th
 
 ## Phase 1 — IDP Engine Core
 **What it is:** The document processing foundation. Every future phase and every future vertical runs on this.  
-**Status:** In progress — Tasks 1-8 complete, Tasks 9-11 remaining.
+**Status:** ✅ COMPLETE
 
 ### Engine capabilities delivered in Phase 1
 - Document ingestion: SHA-256 evidence lock → OCR → type detection → field extraction → FTS index
@@ -86,21 +86,22 @@ Shared schemas (PARCEL-RECORD, for example) can belong to multiple verticals. Th
 - Fail-fast error handling: `failed` / `no_schema` statuses, auto-lead creation for unknown types
 - Workspace management, entities, relationships, transactions, notes
 - Audit log: immutable, PostgreSQL trigger-enforced
-- NLP search — Task 9: plain-English queries across all extracted fields
-- AI chat — Task 10: Claude with full workspace context
-- React frontend — Phase 1 frontend plan
+- NLP search: plain-English queries → FTS + field-level filters on `document_extractions`
+- AI chat: native Anthropic tool-use agentic loop — 6 read-only tools, 10-round cap, synthesis pass, vertical tool registry
+- React frontend: all 8 workspace sections working
 
 ### What Phase 1 does NOT include
 - Any vertical-specific logic
 - Public data connectors
 - Signal detection
+- Extraction evaluation / observability
 - Multi-user collaboration
 
 ---
 
 ## Phase 2 — IDP Engine Capabilities
 **What it is:** The engine gets smarter and more connected. No vertical logic — these capabilities serve all verticals equally.  
-**Trigger:** All Phase 1 tasks complete, frontend working.
+**Status:** In progress — 2C tool-use chat agent complete. Extraction eval + observability + connectors + signal framework remaining.
 
 ### 2A — Data Connectors
 Public data sources feed directly into the pipeline. Any vertical can use any connector.
@@ -143,23 +144,19 @@ The engine gains the ability to define and evaluate signals. The signals themsel
 
 **What the framework does NOT contain:** Any specific rule definitions. Those live in the vertical cap.
 
-### 2C — Intelligence Layer: Search + AI Chat
-These are engine capabilities — they understand documents and answer questions. The same search and chat infrastructure serves every vertical. The questions asked are different; the mechanism is identical.
+### 2C — Intelligence Layer: Agentic Hardening
+The engine's intelligence layer is functional. These three builds harden it from working to production-reliable.
 
-**NLP Search** (Task 9 — already planned):  
-Plain-English query → structured filters on `document_extractions` → results with matched fields highlighted.  
-An insurance adjuster asks: "find claims where contractor invoice is dated after repair completion."  
-A fraud investigator asks: "find properties where the nonprofit paid more than twice appraised value."  
-Same engine. Different question.
+**Tool-use chat agent** ✅ DONE (2026-05-26):  
+Replaced static context dump with native Anthropic tool-use loop. Claude calls 6 read-only tools (`search_documents`, `get_entity`, `query_extractions`, `get_transactions`, `get_findings`, `get_leads`) to pull exactly what it needs. 10-round cap with synthesis pass fallback. Workspace-scoped dispatcher — `workspace_id` is never a parameter Claude can set. Vertical tool registry extensible for fraud/insurance caps.
 
-**AI Chat** (Task 10 — already planned):  
-Claude with full workspace context — entities, transactions, findings, documents. Surfaces connections, answers questions, suggests next steps. No vertical-specific knowledge built in — the vertical's data shapes the answers.
+**Extraction evaluation loop** 🔲 Next:  
+After `extract_fields()` runs, an evaluator pass checks confidence scores, retries low-confidence fields with a different prompt strategy, and escalates to a human-review lead if retry fails. Architecture: spec → extract → evaluate → retry/escalate. Produces the first real data on where Claude extraction fails systematically.  
+*Spec:* `docs/superpowers/specs/` (to be written)
 
-### 2D — Alembic Migration (carry-forward)
-`no_schema` enum value and `extraction_error` column were added directly to the DB in Task 8. Need a proper Alembic migration before Phase 2 so clean rebuilds work.
-
-### 2E — Alembic Migration (carry-forward)
-`no_schema` enum value and `extraction_error` column were added directly to the DB in Task 8. Need a proper Alembic migration before Phase 2 so clean rebuilds work.
+**Observability layer** 🔲 After extraction eval:  
+Log every Claude call with model, latency, token counts, confidence distribution per document type, which fields fail most often. Not for cost — for understanding where the engine breaks. Feeds the extraction evaluator and informs schema improvements.  
+*Spec:* `docs/superpowers/specs/` (to be written)
 
 ---
 
@@ -271,7 +268,7 @@ The fraud vertical was built first because it's the hardest case. If the engine 
 
 | Phase | Done when |
 |---|---|
-| Phase 1 | All 11 backend tasks pass. Frontend delivers working workspace with upload, search, and AI chat. Documents flow through the full pipeline end-to-end. |
-| Phase 2 | Three connectors integrated and tested. Signal framework evaluates rules without code changes. Network graph renders entity relationships. Timeline view shows extracted dates in sequence. |
+| Phase 1 | ✅ All backend tasks pass. Frontend delivers working workspace with upload, search, and AI chat. Documents flow through the full pipeline end-to-end. |
+| Phase 2 | Three connectors integrated and tested. Extraction evaluation loop running with retry/escalate. Observability layer logging all Claude calls. Signal framework evaluates rules without code changes. |
 | Phase 3 | Fraud vertical installs as a complete package. Insurance vertical processes a real claim end-to-end. Both verticals run on the same engine with no engine modifications. |
 | Phase 4 | Platform runs on AWS. Two paying clients in different verticals. New vertical takes one week to install, not one month. |
