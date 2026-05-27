@@ -111,3 +111,121 @@ def test_multi_turn_conversation_no_duplicate_user_message(client, auth_headers,
         # Should alternate: user, assistant, user, assistant, user — no consecutive duplicates
         for i in range(len(roles) - 1):
             assert roles[i] != roles[i + 1], f"Duplicate consecutive role at index {i}: {roles}"
+
+
+# ---------------------------------------------------------------------------
+# Agentic loop mechanic tests
+# ---------------------------------------------------------------------------
+from app.services.ai_engine import chat, _synthesis_pass, _extract_text
+from app.models.workspace import Workspace
+from app.models.ai import AIConversation
+import uuid
+
+
+@pytest.fixture
+def ws_and_conv(db):
+    from app.models.user import User
+    import hashlib
+    user = User(
+        id=str(uuid.uuid4()),
+        email="loop_test@example.com",
+        password_hash=hashlib.sha256(b"password").hexdigest(),
+        full_name="Loop Test User",
+    )
+    db.add(user)
+    db.commit()
+    ws = Workspace(id=str(uuid.uuid4()), name="Loop Test WS", vertical="fraud", created_by=user.id)
+    db.add(ws)
+    db.flush()  # Ensure ws.id is visible within this transaction before conv FK check
+    conv = AIConversation(id=str(uuid.uuid4()), workspace_id=ws.id, user_id=user.id)
+    db.add(conv)
+    db.commit()
+    return ws, conv
+
+
+def _mock_tool_use_then_end_turn(tool_name: str, tool_input: dict, final_text: str):
+    """Return two side_effect responses: round 1 = tool_use, round 2 = end_turn."""
+    # Round 1: Claude requests a tool call
+    tool_block = MagicMock()
+    tool_block.type = "tool_use"
+    tool_block.id = "tool_abc123"
+    tool_block.name = tool_name
+    tool_block.input = tool_input
+
+    round1 = MagicMock()
+    round1.stop_reason = "tool_use"
+    round1.content = [tool_block]
+
+    # Round 2: Claude returns a final text answer
+    text_block = MagicMock()
+    text_block.type = "text"
+    text_block.text = final_text
+
+    round2 = MagicMock()
+    round2.stop_reason = "end_turn"
+    round2.content = [text_block]
+
+    return [round1, round2]
+
+
+def test_chat_executes_tool_and_returns_final_answer(db, ws_and_conv):
+    ws, conv = ws_and_conv
+    side_effects = _mock_tool_use_then_end_turn(
+        tool_name="get_findings",
+        tool_input={},
+        final_text="No findings recorded yet in this workspace.",
+    )
+    with patch("app.services.ai_engine.client") as mock_client:
+        mock_client.messages.create.side_effect = side_effects
+        result = chat(ws.id, conv.id, "What findings exist?", db)
+
+    assert result == "No findings recorded yet in this workspace."
+    assert mock_client.messages.create.call_count == 2
+
+
+def test_chat_synthesis_pass_triggered_at_max_rounds(db, ws_and_conv):
+    ws, conv = ws_and_conv
+
+    # 10 tool_use rounds then 1 synthesis end_turn
+    tool_block = MagicMock()
+    tool_block.type = "tool_use"
+    tool_block.id = "tool_xyz"
+    tool_block.name = "get_findings"
+    tool_block.input = {}
+
+    tool_round = MagicMock()
+    tool_round.stop_reason = "tool_use"
+    tool_round.content = [tool_block]
+
+    synthesis_text = MagicMock()
+    synthesis_text.type = "text"
+    synthesis_text.text = "Synthesized answer after max rounds."
+
+    synthesis_round = MagicMock()
+    synthesis_round.stop_reason = "end_turn"
+    synthesis_round.content = [synthesis_text]
+
+    side_effects = [tool_round] * 10 + [synthesis_round]
+
+    with patch("app.services.ai_engine.client") as mock_client:
+        mock_client.messages.create.side_effect = side_effects
+        result = chat(ws.id, conv.id, "Run a deep analysis.", db)
+
+    assert result == "Synthesized answer after max rounds."
+    # 10 tool rounds + 1 synthesis call
+    assert mock_client.messages.create.call_count == 11
+
+
+def test_extract_text_returns_first_text_block():
+    block = MagicMock()
+    block.text = "Hello from Claude"
+    response = MagicMock()
+    response.content = [block]
+    assert _extract_text(response) == "Hello from Claude"
+
+
+def test_extract_text_fallback_when_no_text_block():
+    block = MagicMock(spec=[])  # no 'text' attribute
+    response = MagicMock()
+    response.content = [block]
+    assert _extract_text(response) == "I was unable to produce a response."
