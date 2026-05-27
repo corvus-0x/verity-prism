@@ -367,6 +367,7 @@ def test_get_leads_pending_by_default(db, workspace, user):
         question="Who are the grantees in all deeds?",
         status="pending",
         originated_by="ai",
+        source="ai",
     )
     done = InvestigationLead(
         id=str(uuid.uuid4()),
@@ -381,6 +382,7 @@ def test_get_leads_pending_by_default(db, workspace, user):
     result = get_leads(workspace_id=workspace.id, db=db)
     assert result["count"] == 1
     assert result["leads"][0]["status"] == "pending"
+    assert result["leads"][0]["source"] == "ai"
 
 
 def test_get_leads_all_status(db, workspace, user):
@@ -391,7 +393,9 @@ def test_get_leads_all_status(db, workspace, user):
             question=f"Lead {status}",
             status=status,
             originated_by="user",
+            source="user",
         ))
     db.commit()
     result = get_leads(workspace_id=workspace.id, db=db, status="all")
     assert result["count"] == 3
+    assert all(lead["source"] == "user" for lead in result["leads"])

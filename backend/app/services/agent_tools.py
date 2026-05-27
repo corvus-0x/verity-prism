@@ -209,7 +209,7 @@ def get_leads(workspace_id: str, db: Session, status: str = "pending") -> dict:
                 "id": lead.id,
                 "question": lead.question,
                 "status": lead.status,
-                "source": lead.originated_by,
+                "source": lead.source,
             }
             for lead in leads
         ],
