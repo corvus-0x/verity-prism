@@ -236,7 +236,7 @@ def _run_pipeline(
     # ── Step 7: Standardized filename ───────────────────────────────────────
     try:
         standardized = generate_standardized_name(
-            ocr_text, original_filename, ext.lstrip(".") or "pdf"
+            ocr_text, original_filename, ext.lstrip(".") or "pdf", db
         )
         doc.filename = standardized
     except Exception:

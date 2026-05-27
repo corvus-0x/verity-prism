@@ -114,18 +114,6 @@ def parse_xml_document(
     return extractions
 
 
-def is_parseable_xml(file_bytes: bytes, doc_type: str) -> bool:
-    """Return True if this document should use the direct XML parse path."""
-    xml_schema_types = {"990", "990-T"}
-    if doc_type not in xml_schema_types:
-        return False
-    try:
-        ET.fromstring(file_bytes)
-        return True
-    except ET.ParseError:
-        return False
-
-
 def is_valid_xml_bytes(file_bytes: bytes) -> bool:
     """Return True if file_bytes are parseable XML.
     Used by the pipeline to guard the xml_direct parse path. Unlike
