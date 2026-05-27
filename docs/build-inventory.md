@@ -112,8 +112,14 @@ Engine. Orchestrates the full upload pipeline:
 #### `search_service.py` ✅
 Engine. NLP query → PostgreSQL FTS + field-level filters on `document_extractions`. `get_known_field_names()` tells Claude what's available. `translate_query()` returns structured filters. `run_search()` executes with numeric guard before CAST to prevent crashes on non-numeric values.
 
+#### `agent_tools.py` ✅
+Engine. Six read-only tool functions callable by the Claude agent: `search_documents`, `get_entity`, `query_extractions`, `get_transactions`, `get_findings`, `get_leads`. All workspace-scoped — `workspace_id` is injected by `execute()`, never passed by Claude. `execute()` dispatches by tool name and returns `{"error": "..."}` on failure. Results are size-capped (≤10 docs, ≤50 rows) to prevent context overflow. Extended per vertical via `agent_tools_<vertical>.py` pattern.
+
+#### `agent_registry.py` ✅
+Engine. Tool JSON schemas and vertical → tool list registry. `build_tool_schemas()` returns the 6 core tool schemas with their descriptions (design artifacts — Claude uses them to decide which tool to call). `get_tools_for_vertical(vertical)` returns the correct tool set, falling back to core tools for unregistered verticals. To add vertical-specific tools: extend `VERTICAL_TOOLS[vertical]`.
+
 #### `ai_engine.py` ✅
-Engine. `build_workspace_context()` loads all workspace data (entities, transactions, findings, leads, documents) into a structured text block for the system prompt. `chat()` sends context + history to Claude and returns the response. `get_conversation_history()` fetches last 20 messages chronologically.
+Engine. Native Anthropic tool-use agentic loop. `chat()` runs up to 10 rounds: calls Claude with tool schemas, dispatches `tool_use` blocks via `agent_tools.execute()`, appends `tool_result` blocks, repeats until `end_turn`. On max rounds: `_synthesis_pass()` forces a final answer with tools disabled. `_extract_text()` extracts the first text block with fallback. `get_conversation_history()` fetches last 20 messages. Logs every tool call with name, params, result size, and latency. `build_workspace_context()` removed — Claude queries data via tools instead of reading a static dump.
 
 #### `connectors/` 🔲
 Engine. Phase 2 — public data sources feed into the pipeline.
@@ -228,8 +234,9 @@ Layer: Engine. `docker-compose up -d` starts full stack.
 **Migrations in order:**
 1. `5a4ff7266708_initial_schema` — creates all 17 tables, FTS index, audit trigger
 2. `c12f44824c55_add_no_schema_status_and_extraction_error` — adds `no_schema` to extraction_status enum, adds `extraction_error` column to documents table
+3. `a3b8e1f92d44_add_is_deleted_to_documents` — adds `is_deleted` and `deleted_at` columns to documents table (soft-delete compliance)
 
-A clean `alembic upgrade head` now produces the correct full schema including all Task 8 changes.  
+A clean `alembic upgrade head` produces the correct full schema.  
 **Status:** ✅ Connected
 
 ### FTS Index + Audit Trigger ✅
@@ -250,7 +257,9 @@ Applied via SQL in Task 2. GIN index on `documents.search_vector`. PostgreSQL tr
 | `test_notes.py` | Engine | ✅ 2/2 |
 | `test_documents.py` | Engine | ✅ 5/5 |
 | `test_extractions.py` | Engine | ✅ 2/2 |
-| **Total** | | **29/29** |
+| `test_agent_tools.py` | Engine | ✅ 27/27 |
+| `test_ai.py` (updated) | Engine | ✅ 8/8 |
+| **Total** | | **67/67** |
 
 ---
 
@@ -293,3 +302,4 @@ Investigation workflow + referral export
 | 2026-05-20 | Task 9 complete. NLP search: translate_query → run_search with FTS + field filters. Numeric guard prevents CAST crashes. 32/32 tests. |
 | 2026-05-20 | Task 10 complete. AI chat: build_workspace_context + Claude + conversation history. 35/35 tests. |
 | 2026-05-20 | Live demo hardening: 3 bugs fixed — (1) Claude wraps JSON in markdown fences, strip before parsing. (2) Claude uses field/value keys instead of field_name/field_value, save_extractions accepts both. (3) max_tokens=2000 truncates 64-field extractions, raised to 4096. Real deed: 41 fields extracted, NLP search and AI chat both confirmed working. |
+| 2026-05-26 | Tool-use chat agent. Added agent_tools.py (6 tools + dispatcher), agent_registry.py (schemas + vertical registry). Rewrote ai_engine.py with native Anthropic tool-use loop — 10-round cap, synthesis pass, per-call logging, is_error flag on failures. Added migration a3b8e1f92d44 (is_deleted on documents). Router fix: message save timing. 67/67 tests. |

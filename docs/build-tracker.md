@@ -23,7 +23,17 @@
 | Task 11: Full Verification | All tests passing end-to-end in Docker, audit log immutability check | ✅ Done |
 | Live demo verification | Real deed uploaded, 41 fields extracted, NLP search returned results, AI chat answered questions | ✅ Done |
 
-**Tests passing:** 22/22
+**Tests passing:** 22/22 (Phase 1 baseline)
+
+---
+
+## Agentic Layer — Status
+
+| Task | What It Builds | Status |
+|------|---------------|--------|
+| Tool-use chat agent | Replace static context dump with native Anthropic tool-use loop — 6 read-only tools, 10-round cap, synthesis pass, workspace-scoped dispatcher, vertical registry | ✅ Done |
+
+**Tests passing:** 67/67
 
 ---
 
@@ -59,3 +69,4 @@
 | 2026-05-20 | Pipeline hardening: vertical-aware schema lookup, normalized extraction output (list[dict]), Alembic migration for Task 8 DB changes. Engine vs. cap architecture separation — all 11 schemas changed to vertical=general. Roadmap rewritten. Build inventory + roadmap created. |
 | 2026-05-20 | Tasks 9–11 complete. NLP search (FTS + Claude query translation), AI chat (full workspace context), full verification (35/35 tests, live API, audit log immutability confirmed). Phase 1 backend complete. |
 | 2026-05-20 | Live demo hardening: 3 production bugs found and fixed — JSON fence stripping (shared utility), key name normalization (belt+suspenders), batched extraction (BATCH_SIZE=40, ends token truncation). Real deed: 41 fields extracted. NLP search and AI chat confirmed working against live extracted data. |
+| 2026-05-26 | Tool-use chat agent complete. Replaced static context dump with native Anthropic tool-use agentic loop (10-round cap, synthesis pass). 3 new service files: agent_tools.py (6 read-only tools + dispatcher), agent_registry.py (vertical registry), ai_engine.py rewritten. Router fix: user message saved after chat() returns to prevent duplicate history. 5 bugs caught in review: get_leads wrong column, Decimal zero falsy check, duplicate message timing, missing filename/doc_type in query_extractions, missing is_error flag. 67/67 tests. |
