@@ -50,7 +50,9 @@ Engine. A workspace is a case/claim/matter container — vertical-agnostic. Work
 Engine. One row per uploaded file. `extraction_status` (`pending`/`complete`/`failed`/`no_schema`), `extraction_error`. Hash, OCR text, search vector. No domain knowledge.
 
 #### `document_schema.py` ✅
-Engine. The schema registry. `vertical = "general"` means available in all workspaces. `vertical = "fraud"` activates only in fraud workspaces. `vertical = "insurance"` activates only in insurance workspaces. Currently all 11 schemas are `general`.
+Engine. The schema registry. `vertical = "general"` means available in all workspaces. `vertical = "fraud"` activates only in fraud workspaces. `vertical = "insurance"` activates only in insurance workspaces. 10 schemas are `general`; OBITUARY is `vertical = "fraud"`.
+
+New fields: `parse_strategy` enum (`claude` | `xml_direct`) — tells the pipeline how to extract this document type without hardcoding type strings. `default_confidence_threshold` float — per-schema baseline for the extraction evaluator (Phase 2A). Both set in the model and in all seeds.
 
 #### `document_extraction.py` ✅
 Engine. **The central IDP table.** One row per extracted field per document. No domain knowledge — just field_name, field_value, field_type, confidence. Every vertical's signals query this table.
@@ -91,20 +93,21 @@ Engine. Text extraction from PDFs and images. PyMuPDF for embedded text, pytesse
 
 #### `extraction_engine.py` ✅
 Engine. Three functions:
-- `detect_document_type()` — asks Claude to identify type from OCR text
-- `get_schema_for_type(doc_type, db, workspace_vertical)` — vertical-aware schema lookup. Prefers vertical-specific schema; falls back to `general`. A fraud workspace gets fraud schemas first, then general. Prevents cross-vertical schema contamination.
+- `detect_document_type(ocr_text, db)` — loads known types from `document_schemas` at call time (no hardcoded list); adding a schema row immediately makes that type detectable
+- `get_schema_for_type(doc_type, db, workspace_vertical)` — vertical-aware schema lookup. Prefers vertical-specific schema; falls back to `general`. A fraud workspace gets fraud schemas first, then general.
 - `extract_fields()` + `save_extractions()` — Claude extracts fields per schema definition, returns `list[dict]`
 
 #### `naming.py` ✅
-Engine. Generates standardized filenames: `YYYY-MM-DD_DOC-TYPE_ENTITY_DESCRIPTION.ext`.
+Engine. Generates standardized filenames: `YYYY-MM-DD_DOC-TYPE_ENTITY_DESCRIPTION.ext`. Loads known doc types from `document_schemas` table at call time — no hardcoded type list.
 
 #### `xml_parser.py` ✅
-Engine. Direct XML parse for structured files. Reads field values from element paths in schema descriptions. Returns `list[dict]` — same format as `extract_fields()`. The pipeline calls `save_extractions()` identically for both paths. Confidence = 1.0. Currently active for 990 and 990-T.
+Engine. Direct XML parse for structured files. Reads field values from element paths in schema descriptions. Returns `list[dict]` — same format as `extract_fields()`. The pipeline calls `save_extractions()` identically for both paths. Confidence = 1.0. `is_valid_xml_bytes()` validates raw bytes (type-agnostic). Activated when `schema.parse_strategy == "xml_direct"`.
 
 #### `document_pipeline.py` ✅
 Engine. Orchestrates the full upload pipeline:
 - `create_pending_document()` — hash + store + pending record (before HTTP response)
 - `process_upload_background()` — OCR → type → **vertical-aware** schema lookup → extract → FTS → audit (after response via BackgroundTasks)
+- Pipeline reads `schema.parse_strategy` to route XML vs Claude — no hardcoded type strings
 - `_no_schema()` — creates investigation lead for unknown document types
 - `_fail()` — sets failed status with error message
 - Both XML and Claude extraction paths return `list[dict]` — no type branching in FTS or downstream steps
@@ -161,19 +164,21 @@ The engine's intelligence layer. Understands documents, answers questions, surfa
 
 All 11 schemas are `vertical = "general"` — available in every workspace regardless of vertical. The schema describes how to extract fields from a document type. What to DO with those fields is vertical cap logic.
 
-| Schema | Fields | XML parse? | Available to |
+| Schema | Fields | parse_strategy | Available to |
 |---|---|---|---|
-| PARCEL-RECORD | 370 | No | All verticals |
-| DEED | 64 | No | All verticals |
-| 990 | 235 | **Yes** | All verticals |
-| SOS-FILING | 47 | No | All verticals |
-| UCC | 52 | No | All verticals |
-| BUILDING-PERMIT | 13 | No | All verticals |
-| AUDIT-REPORT | 122 | No | All verticals |
-| SCREENSHOT | 26 | No | All verticals |
-| OBITUARY | 63 | No | All verticals |
-| PLAT | 51 | No | All verticals |
-| CORRESPONDENCE | 59 | No | All verticals |
+| PARCEL-RECORD | 370 | claude | All verticals |
+| DEED | 64 | claude | All verticals |
+| 990 | 235 | **xml_direct** | All verticals |
+| SOS-FILING | 47 | claude | All verticals |
+| UCC | 52 | claude | All verticals |
+| BUILDING-PERMIT | 13 | claude | All verticals |
+| AUDIT-REPORT | 122 | claude | All verticals |
+| SCREENSHOT | 26 | claude | All verticals |
+| OBITUARY | 63 | claude | **Fraud vertical only** |
+| PLAT | 51 | claude | All verticals |
+| CORRESPONDENCE | 59 | claude | All verticals |
+
+**Adding a new document type** requires only a new row in `document_schemas` — no code changes. Set `parse_strategy="xml_direct"` for structured XML types, `"claude"` for everything else.
 
 **Future vertical-specific schemas** get `vertical = "insurance"`, `vertical = "legal"`, etc. and only activate in matching workspaces.
 
@@ -235,6 +240,8 @@ Layer: Engine. `docker-compose up -d` starts full stack.
 1. `5a4ff7266708_initial_schema` — creates all 17 tables, FTS index, audit trigger
 2. `c12f44824c55_add_no_schema_status_and_extraction_error` — adds `no_schema` to extraction_status enum, adds `extraction_error` column to documents table
 3. `a3b8e1f92d44_add_is_deleted_to_documents` — adds `is_deleted` and `deleted_at` columns to documents table (soft-delete compliance)
+4. `d4e9f2a83b17_add_parse_strategy_to_document_schemas` — adds `parse_strategy` enum (`claude`|`xml_direct`) and `default_confidence_threshold` float to `document_schemas`; sets 990 to `xml_direct`/`1.0`
+5. `c8dd75f9d15c_schema_cleanup_obituary_and_sr_` — moves OBITUARY to `vertical='fraud'`; strips SR signal codes from extraction_prompts; cleans fraud investigation commentary from 5 field descriptions
 
 A clean `alembic upgrade head` produces the correct full schema.  
 **Status:** ✅ Connected
@@ -259,7 +266,8 @@ Applied via SQL in Task 2. GIN index on `documents.search_vector`. PostgreSQL tr
 | `test_extractions.py` | Engine | ✅ 2/2 |
 | `test_agent_tools.py` | Engine | ✅ 27/27 |
 | `test_ai.py` (updated) | Engine | ✅ 8/8 |
-| **Total** | | **67/67** |
+| `test_extractions.py` (expanded) | Engine | ✅ 11/11 |
+| **Total** | | **75/75** |
 
 ---
 
@@ -303,3 +311,4 @@ Investigation workflow + referral export
 | 2026-05-20 | Task 10 complete. AI chat: build_workspace_context + Claude + conversation history. 35/35 tests. |
 | 2026-05-20 | Live demo hardening: 3 bugs fixed — (1) Claude wraps JSON in markdown fences, strip before parsing. (2) Claude uses field/value keys instead of field_name/field_value, save_extractions accepts both. (3) max_tokens=2000 truncates 64-field extractions, raised to 4096. Real deed: 41 fields extracted, NLP search and AI chat both confirmed working. |
 | 2026-05-26 | Tool-use chat agent. Added agent_tools.py (6 tools + dispatcher), agent_registry.py (schemas + vertical registry). Rewrote ai_engine.py with native Anthropic tool-use loop — 10-round cap, synthesis pass, per-call logging, is_error flag on failures. Added migration a3b8e1f92d44 (is_deleted on documents). Router fix: message save timing. 67/67 tests. |
+| 2026-05-26 (evening) | Core hardening + IDP expansion architecture. Core: CORS config, file size limit, soft-delete on list_documents, workspace null guard. Expansion: parse_strategy + default_confidence_threshold on DocumentSchema (migrations d4e9f2a + c8dd75f); detect_document_type and generate_standardized_name load types from DB; pipeline routes on schema.parse_strategy; is_parseable_xml removed. Schema cleanup: OBITUARY → vertical=fraud; SR signal codes and fraud commentary removed from 9 general schemas. 75/75 tests. |

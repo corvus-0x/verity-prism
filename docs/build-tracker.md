@@ -37,6 +37,24 @@
 
 ---
 
+## IDP Core Hardening + Expansion Architecture — Status
+
+| Task | What It Builds | Status |
+|------|---------------|--------|
+| Core fixes | CORS configurable, file size bounded, soft-delete on list_documents, get_workspace_or_404 null guard, Alembic verified on fresh DB | ✅ Done |
+| parse_strategy on DocumentSchema | Schema owns XML vs Claude routing decision — pipeline no longer hardcodes document type strings | ✅ Done |
+| default_confidence_threshold on DocumentSchema | Per-schema quality baseline for extraction evaluator (Phase 2A) | ✅ Done |
+| Dynamic type detection | detect_document_type loads known types from document_schemas table — adding a schema row makes the type immediately detectable | ✅ Done |
+| Pipeline uses parse_strategy | document_pipeline.py reads schema.parse_strategy; is_parseable_xml removed | ✅ Done |
+| naming.py loads types from DB | generate_standardized_name loads doc types from DB; last hardcoded type list removed | ✅ Done |
+| Seeds updated | All 11 seed constructors include parse_strategy and default_confidence_threshold; required fields in DEED + PARCEL-RECORD have per-field confidence_threshold | ✅ Done |
+| OBITUARY → fraud vertical | Migration + seed move OBITUARY to vertical="fraud"; general workspaces no longer receive it | ✅ Done |
+| Schema descriptions cleaned | SR signal codes (SR-0XX) and fraud investigation commentary removed from 9 general schema field descriptions and extraction prompts | ✅ Done |
+
+**Tests passing:** 75/75
+
+---
+
 ## Known Issues / Decisions
 
 | Date | Issue | Resolution |
@@ -70,3 +88,4 @@
 | 2026-05-20 | Tasks 9–11 complete. NLP search (FTS + Claude query translation), AI chat (full workspace context), full verification (35/35 tests, live API, audit log immutability confirmed). Phase 1 backend complete. |
 | 2026-05-20 | Live demo hardening: 3 production bugs found and fixed — JSON fence stripping (shared utility), key name normalization (belt+suspenders), batched extraction (BATCH_SIZE=40, ends token truncation). Real deed: 41 fields extracted. NLP search and AI chat confirmed working against live extracted data. |
 | 2026-05-26 | Tool-use chat agent complete. Replaced static context dump with native Anthropic tool-use agentic loop (10-round cap, synthesis pass). 3 new service files: agent_tools.py (6 read-only tools + dispatcher), agent_registry.py (vertical registry), ai_engine.py rewritten. Router fix: user message saved after chat() returns to prevent duplicate history. 5 bugs caught in review: get_leads wrong column, Decimal zero falsy check, duplicate message timing, missing filename/doc_type in query_extractions, missing is_error flag. 67/67 tests. |
+| 2026-05-26 (evening) | IDP core hardening + expansion architecture. Core fixes: CORS config, file size limit, soft-delete on list_documents, workspace null guard, Alembic verified on fresh DB. Expansion: parse_strategy + default_confidence_threshold on DocumentSchema (migration + seeds); KNOWN_DOCUMENT_TYPES removed — detect_document_type now queries DB; pipeline routes on schema.parse_strategy not type strings; naming.py loads doc types from DB; is_parseable_xml removed (dead code). Schema cleanup: OBITUARY moved to vertical="fraud" (migration + seed); SR signal codes and fraud investigation commentary removed from 9 general schema descriptions and extraction prompts. 75/75 tests. |

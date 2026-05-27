@@ -1,6 +1,6 @@
 # Verity Prism — Product Roadmap
 
-**Last updated:** 2026-05-26 (evening)  
+**Last updated:** 2026-05-26 (night)  
 **Core principle:** Verity Prism is an Intelligent Document Processing platform first. Verticals are plug-and-play caps that tell the platform what to care about. The engine ships to every customer. The cap ships only to the relevant vertical.
 
 ---
@@ -108,7 +108,12 @@ Shared schemas (PARCEL-RECORD, for example) can belong to multiple verticals. Th
 - CORS origins moved to config (`CORS_ORIGINS` env var) — deployment-ready
 - `get_workspace_or_404` raises 404 instead of silently returning None
 - File size limit added to config (`MAX_UPLOAD_BYTES`, default 50 MB)
-- Alembic verified on fresh database — all 3 migrations apply cleanly, head = `a3b8e1f92d44`
+- Alembic verified on fresh database — all 5 migrations apply cleanly, head = `c8dd75f9d15c`
+- `parse_strategy` and `default_confidence_threshold` on `DocumentSchema` — adding a new doc type is now a DB-only operation
+- `KNOWN_DOCUMENT_TYPES` hardcoded list removed — `detect_document_type` and `generate_standardized_name` load types from DB at call time
+- Pipeline routes on `schema.parse_strategy` not type strings — `is_parseable_xml` deleted
+- All 11 seeds include `parse_strategy` and `default_confidence_threshold`; OBITUARY moved to `vertical="fraud"`
+- SR signal codes and fraud investigation commentary removed from 9 general schema descriptions and extraction prompts
 
 ### Deferred (not blocking Phase 2, but tracked)
 - **Three Anthropic client instances** (`extraction_engine.py`, `search_service.py`, `ai_engine.py`) — consolidate into shared `app/services/claude_client.py` before adding retry logic or spend tracking
