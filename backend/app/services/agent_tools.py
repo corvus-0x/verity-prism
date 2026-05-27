@@ -157,7 +157,7 @@ def get_transactions(
     results = []
     for t in rows:
         overpay_pct = None
-        if t.amount_paid and t.appraised_value and float(t.appraised_value) > 0:
+        if t.amount_paid is not None and t.appraised_value is not None and float(t.appraised_value) > 0:
             overpay_pct = round(
                 (
                     (float(t.amount_paid) - float(t.appraised_value))
@@ -169,8 +169,8 @@ def get_transactions(
         results.append({
             "id": t.id,
             "transaction_type": t.transaction_type,
-            "amount_paid": str(t.amount_paid) if t.amount_paid else None,
-            "appraised_value": str(t.appraised_value) if t.appraised_value else None,
+            "amount_paid": str(t.amount_paid) if t.amount_paid is not None else None,
+            "appraised_value": str(t.appraised_value) if t.appraised_value is not None else None,
             "overpay_pct": overpay_pct,
             "transaction_date": str(t.transaction_date) if t.transaction_date else None,
             "instrument_number": t.instrument_number,

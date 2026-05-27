@@ -311,3 +311,21 @@ def test_get_transactions_type_filter(db, workspace, transaction):
 
     result_miss = get_transactions(workspace_id=workspace.id, db=db, transaction_type="sale")
     assert result_miss["count"] == 0
+
+
+def test_get_transactions_zero_amount_serializes_as_string(db, workspace, user):
+    t = Transaction(
+        id=str(uuid.uuid4()),
+        workspace_id=workspace.id,
+        transaction_type="purchase",
+        amount_paid=Decimal("0"),
+        appraised_value=Decimal("200000"),
+        instrument_number="2021-zero",
+        created_by=user.id,
+    )
+    db.add(t)
+    db.commit()
+    result = get_transactions(workspace_id=workspace.id, db=db)
+    txn = next(r for r in result["transactions"] if r["instrument_number"] == "2021-zero")
+    assert float(txn["amount_paid"]) == 0.0  # stored as 0.00 by Postgres; Decimal("0") is falsy — must use is not None
+    assert txn["overpay_pct"] == -100.0  # (0 - 200000) / 200000 * 100 = -100.0
