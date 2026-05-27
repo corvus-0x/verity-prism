@@ -65,7 +65,7 @@ LEGAL = [
     {"name": "tax_lien",                 "type": "boolean",   "description": "Whether a tax lien exists on the property (Y/N or True/False)", "required": False},
     {"name": "foreclosure",              "type": "boolean",   "description": "Whether the property is in foreclosure", "required": False},
     {"name": "homestead_reduction",      "type": "boolean",   "description": "Whether a homestead reduction applies", "required": False},
-    {"name": "owner_occupied",           "type": "boolean",   "description": "Whether the property is owner-occupied. N on a nonprofit-owned residential property is a signal.", "required": False},
+    {"name": "owner_occupied",           "type": "boolean",   "description": "Whether the property is owner-occupied.", "required": False},
     {"name": "board_of_revision",        "type": "boolean",   "description": "Whether a valuation challenge is pending before the Board of Revision", "required": False},
     {"name": "new_construction",         "type": "boolean",   "description": "Whether flagged as new construction", "required": False},
     {"name": "divided_property",         "type": "boolean",   "description": "Whether the property has been divided", "required": False},
@@ -124,7 +124,7 @@ TAX_CURRENT = [
     {"name": "tax_annual_net",          "type": "currency", "description": "Net annual tax after all reductions (NET TAX row, Year Total)", "required": False},
     {"name": "tax_cauv_recoupment",     "type": "currency", "description": "CAUV recoupment charge — applies when land leaves agricultural status", "required": False},
     {"name": "tax_special_assessments", "type": "currency", "description": "Total special assessments (Year Total)", "required": False},
-    {"name": "tax_penalty_interest",    "type": "currency", "description": "Penalty and interest — non-zero signals delinquency", "required": False},
+    {"name": "tax_penalty_interest",    "type": "currency", "description": "Penalty and interest on unpaid taxes.", "required": False},
     {"name": "tax_net_owed",            "type": "currency", "description": "Total net owed (NET OWED row, Year Total)", "required": False},
     {"name": "tax_net_paid",            "type": "currency", "description": "Total net paid (NET PAID row, Year Total)", "required": False},
     {"name": "tax_net_due",             "type": "currency", "description": "Outstanding balance currently due (NET DUE row, Year Total)", "required": False},
@@ -643,7 +643,7 @@ F990_GOVERNANCE = [
     {"name": "gov_document_retention",       "type": "boolean", "description": "IRS990/DocumentRetentionPolicyInd", "required": False},
     {"name": "gov_ceo_compensation_process", "type": "boolean", "description": "IRS990/CompensationProcessCEOInd — independent process to set CEO pay?", "required": False},
     {"name": "gov_financial_audit",          "type": "boolean", "description": "IRS990/FSAuditedInd — financial statements independently audited?", "required": False},
-    {"name": "gov_related_entity",           "type": "boolean", "description": "IRS990/RelatedEntityInd — does org have related entities? False when known related entities exist = SR-025 signal", "required": False},
+    {"name": "gov_related_entity",           "type": "boolean", "description": "IRS990/RelatedEntityInd — whether the organization has disclosed related entities.", "required": False},
     {"name": "gov_business_rln_org_members", "type": "boolean", "description": "IRS990/BusinessRlnWithOrgMemInd", "required": False},
     {"name": "gov_business_rln_family",      "type": "boolean", "description": "IRS990/BusinessRlnWithFamMemInd", "required": False},
     {"name": "gov_excess_benefit",           "type": "boolean", "description": "IRS990/EngagedInExcessBenefitTransInd", "required": False},
@@ -744,7 +744,6 @@ Program service revenue (Part VIII):
 - The UnrelatedBusinessRevenueAmt is the portion that triggers 990T filing
 
 Related entities:
-- RelatedEntityInd = false when known related entities exist = FALSE DISCLOSURE signal (SR-025)
 - Schedule R lists related organizations — extract all entries
 - Empty Schedule R combined with false RelatedEntityInd is a critical flag
 
@@ -845,7 +844,7 @@ SOS_FORMATION = [
     {"name": "authorized_shares",    "type": "text",     "description": "Number and class of authorized shares (for-profit corps only)", "required": False},
     {"name": "initial_capital",      "type": "currency", "description": "Initial capital contribution stated in the articles", "required": False},
     {"name": "duration",             "type": "text",     "description": "Entity duration: perpetuity or stated term", "required": False},
-    {"name": "law_firm_filer",       "type": "text",     "description": "Name of law firm or attorney that submitted the filing — repeated appearance of same firm across entities is a network signal", "required": False},
+    {"name": "law_firm_filer",       "type": "text",     "description": "Name of law firm or attorney that submitted the filing.", "required": False},
     {"name": "attorney_filer",       "type": "name",     "description": "Name of the individual attorney on the filing", "required": False},
     {"name": "formation_state",      "type": "text",     "description": "State of original formation (may differ from registration state for foreign entities)", "required": False},
 ]
@@ -904,7 +903,6 @@ Addresses: Two addresses often appear:
   - Receipt/mailing address: where SOS sends correspondence — may differ from legal address
 
 Law firm: Look for "filed by," "prepared by," or a firm name on the transmittal letter or receipt header.
-  Repeated appearance of the same law firm across multiple entity filings is a network connection signal.
 
 Dissolution clause (for nonprofits): The purpose attachment often contains language about how assets are
   distributed on dissolution. Extract this verbatim — it reveals whether specific recipient organizations
@@ -1016,8 +1014,7 @@ CRITICAL FIELDS:
 
 filing_time: Extract the EXACT time (HH:MM:SS) from the timestamp — not just the date.
   Multiple amendments filed within seconds or minutes of each other indicate a coordinated batch
-  submission (the UCC_BURST signal SR-004). The time gap between sequential filings is investigatively
-  significant. Format: HH:MM:SS as it appears in the document.
+  submission. The time gap between sequential filings is investigatively significant. Format: HH:MM:SS as it appears in the document.
 
 original_fs_number: For amendments, this is the FS number of the underlying financing statement
   being modified — NOT the SR/document number of this amendment itself. Always extract the original FS
@@ -1092,11 +1089,11 @@ PERMIT_FIELDS = [
     {"name": "county",           "type": "text",      "description": "County where the permit was issued", "required": False},
     {"name": "year_month",       "type": "text",      "description": "Source period label (e.g. AUGUST 2018) — derived from the spreadsheet sheet name", "required": False},
     {"name": "owner_name",       "type": "name",      "description": "Property owner name — first part of the OWNER OR BUILDER field before the slash separator", "required": False},
-    {"name": "contractor_name",  "type": "name",      "description": "Contractor or builder name — second part of the OWNER OR BUILDER field after the slash. Repeated appearance of the same contractor across an entity's permits is a network signal.", "required": False},
+    {"name": "contractor_name",  "type": "name",      "description": "Contractor or builder name — second part of the OWNER OR BUILDER field after the slash.", "required": False},
     {"name": "property_address", "type": "address",   "description": "Street address of the permitted construction", "required": False},
     {"name": "city_township",    "type": "text",      "description": "City or township abbreviation (e.g. OSGOOD, GV CORP, PATTERSON)", "required": False},
     {"name": "work_description", "type": "text",      "description": "Full description of the permitted work — verbatim from the TYPE column", "required": False},
-    {"name": "estimated_value",  "type": "currency",  "description": "Estimated construction value in dollars. Compare to organization's annual revenue to detect SR-026 CONSTRUCTION_OVERAGE signal.", "required": False},
+    {"name": "estimated_value",  "type": "currency",  "description": "Estimated construction value in dollars.", "required": False},
     {"name": "square_footage",   "type": "text",      "description": "Square footage of the permitted work", "required": False},
     {"name": "use_group",        "type": "text",      "description": "IBC use group code: A=Assembly, B=Business, E=Educational, F=Factory, I=Institutional, M=Mercantile, R=Residential, S=Storage, U=Utility. For residential sheets this field contains a sequence count.", "required": False},
 ]
@@ -1122,8 +1119,6 @@ permit_type: If this came from a commercial permit spreadsheet, set to "Commerci
   If from a residential spreadsheet, set to "Residential".
 
 estimated_value: Extract as a plain integer (no $ sign or commas).
-  This value is used to compute the SR-026 CONSTRUCTION_OVERAGE signal:
-  if estimated_value > total organization revenue for the same year, the signal fires.
 
 work_description: Copy the complete TYPE field verbatim — do not summarize.
   "NEW RESTAURANT & COMM. OUTREACH FACILITY" is more investigatively useful
