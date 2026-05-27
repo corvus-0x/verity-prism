@@ -124,3 +124,18 @@ def is_parseable_xml(file_bytes: bytes, doc_type: str) -> bool:
         return True
     except ET.ParseError:
         return False
+
+
+def is_valid_xml_bytes(file_bytes: bytes) -> bool:
+    """Return True if file_bytes are parseable XML.
+    Used by the pipeline to guard the xml_direct parse path. Unlike
+    is_parseable_xml(), this does not check document type — the schema's
+    parse_strategy field owns that decision.
+    """
+    if not file_bytes:
+        return False
+    try:
+        ET.fromstring(file_bytes)
+        return True
+    except ET.ParseError:
+        return False

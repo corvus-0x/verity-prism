@@ -13,7 +13,7 @@ Document ingestion pipeline — steps run in this exact order:
 Gap fixes applied:
 - Gap 1: process_upload_background() runs after the HTTP response is sent.
 - Gap 2: each step fails fast with extraction_status='failed'/'no_schema' + error logged.
-- Gap 3: XML files use direct parse; PDFs/images use Claude extraction.
+- Gap 3: parse_strategy on the schema drives routing — 'xml_direct' uses direct XML parse, 'claude' uses Claude extraction.
 """
 
 import hashlib
@@ -37,7 +37,7 @@ from app.services.extraction_engine import (
     extract_fields,
     save_extractions,
 )
-from app.services.xml_parser import is_parseable_xml, parse_xml_document
+from app.services.xml_parser import is_valid_xml_bytes, parse_xml_document
 from app.services.naming import generate_standardized_name
 from app.services import audit
 
@@ -221,7 +221,7 @@ def _run_pipeline(
     # save_extractions() writes them to document_extractions for both paths.
     raw_extractions: list[dict] = []
     try:
-        if is_parseable_xml(file_bytes, doc_type):
+        if schema.parse_strategy == "xml_direct" and is_valid_xml_bytes(file_bytes):
             # XML direct parse — no Claude, confidence = 1.0
             raw_extractions = parse_xml_document(file_bytes, schema)
         else:
