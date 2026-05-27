@@ -8,5 +8,7 @@ class Settings(BaseSettings):
     anthropic_api_key: str
     upload_dir: str = "./uploads"
     access_token_expire_minutes: int = 60 * 24
+    cors_origins: list[str] = ["http://localhost:5173"]
+    max_upload_bytes: int = 52_428_800  # 50 MB
 
 settings = Settings()

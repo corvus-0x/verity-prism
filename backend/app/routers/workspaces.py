@@ -16,7 +16,10 @@ def get_workspace_or_404(workspace_id: str, user: User, db: Session) -> Workspac
     ).first()
     if not membership:
         raise HTTPException(status_code=404, detail="Workspace not found")
-    return db.query(Workspace).filter(Workspace.id == workspace_id).first()
+    workspace = db.query(Workspace).filter(Workspace.id == workspace_id).first()
+    if not workspace:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+    return workspace
 
 @router.post("/", response_model=WorkspaceOut, status_code=201)
 def create_workspace(

@@ -1,5 +1,6 @@
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, UploadFile, File
 from sqlalchemy.orm import Session
+from app.config import settings
 from app.database import get_db
 from app.models.document import Document
 from app.models.document_extraction import DocumentExtraction
@@ -36,6 +37,8 @@ def upload_document(
     file_bytes = file.file.read()
     if not file_bytes:
         raise HTTPException(status_code=400, detail="Uploaded file is empty")
+    if len(file_bytes) > settings.max_upload_bytes:
+        raise HTTPException(status_code=413, detail=f"File too large. Maximum size is {settings.max_upload_bytes // 1_048_576} MB.")
 
     # Step 1–2: hash + store + create pending record (synchronous)
     doc = create_pending_document(
@@ -66,7 +69,10 @@ def list_documents(
     user: User = Depends(get_current_user),
 ):
     get_workspace_or_404(workspace_id, user, db)
-    return db.query(Document).filter(Document.workspace_id == workspace_id).all()
+    return db.query(Document).filter(
+        Document.workspace_id == workspace_id,
+        Document.is_deleted == False,
+    ).all()
 
 
 @router.get("/documents/{document_id}", response_model=DocumentOut)
