@@ -243,3 +243,49 @@ def test_detect_document_type_falls_back_to_other_for_unknown_type(db):
         result = detect_document_type("some ocr text", db)
 
     assert result == "OTHER"
+
+
+from app.services.extraction_engine import get_schema_for_type
+
+
+def test_obituary_schema_not_available_in_general_workspace(db):
+    """OBITUARY is fraud-vertical only — general workspaces should not receive it."""
+    from app.models.document_schema import DocumentSchema
+    import uuid
+    schema = DocumentSchema(
+        id=str(uuid.uuid4()),
+        document_type="OBITUARY",
+        display_name="Obituary",
+        vertical="fraud",
+        schema_fields=[{"name": "deceased_full_name", "type": "name", "description": "Full name", "required": True}],
+        version=1,
+        is_active=True,
+        parse_strategy="claude",
+        default_confidence_threshold=0.75,
+    )
+    db.add(schema)
+    db.commit()
+    result = get_schema_for_type("OBITUARY", db, workspace_vertical="general")
+    assert result is None
+
+
+def test_obituary_schema_available_in_fraud_workspace(db):
+    """OBITUARY schema is available in fraud workspaces."""
+    from app.models.document_schema import DocumentSchema
+    import uuid
+    schema = DocumentSchema(
+        id=str(uuid.uuid4()),
+        document_type="OBITUARY",
+        display_name="Obituary",
+        vertical="fraud",
+        schema_fields=[{"name": "deceased_full_name", "type": "name", "description": "Full name", "required": True}],
+        version=1,
+        is_active=True,
+        parse_strategy="claude",
+        default_confidence_threshold=0.75,
+    )
+    db.add(schema)
+    db.commit()
+    result = get_schema_for_type("OBITUARY", db, workspace_vertical="fraud")
+    assert result is not None
+    assert result.vertical == "fraud"

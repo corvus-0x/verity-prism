@@ -1511,7 +1511,7 @@ def seed_obituary_schema(db):
     schema = DocumentSchema(
         document_type="OBITUARY",
         display_name="Obituary",
-        vertical="general",
+        vertical="fraud",
         schema_fields=schema_fields,
         extraction_prompt=OBITUARY_EXTRACTION_PROMPT,
         parse_strategy="claude",
