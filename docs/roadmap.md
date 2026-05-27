@@ -1,6 +1,6 @@
 # Verity Prism — Product Roadmap
 
-**Last updated:** 2026-05-26  
+**Last updated:** 2026-05-26 (evening)  
 **Core principle:** Verity Prism is an Intelligent Document Processing platform first. Verticals are plug-and-play caps that tell the platform what to care about. The engine ships to every customer. The cap ships only to the relevant vertical.
 
 ---
@@ -99,12 +99,61 @@ Shared schemas (PARCEL-RECORD, for example) can belong to multiple verticals. Th
 
 ---
 
+## Engine Core Hardening (between Phase 1 and Phase 2)
+**What it is:** Non-negotiable fixes identified in principal dev review. The core must be locked down before any vertical work starts.  
+**Status:** ✅ COMPLETE (2026-05-26)
+
+### Completed
+- `list_documents` now filters soft-deleted documents
+- CORS origins moved to config (`CORS_ORIGINS` env var) — deployment-ready
+- `get_workspace_or_404` raises 404 instead of silently returning None
+- File size limit added to config (`MAX_UPLOAD_BYTES`, default 50 MB)
+- Alembic verified on fresh database — all 3 migrations apply cleanly, head = `a3b8e1f92d44`
+
+### Deferred (not blocking Phase 2, but tracked)
+- **Three Anthropic client instances** (`extraction_engine.py`, `search_service.py`, `ai_engine.py`) — consolidate into shared `app/services/claude_client.py` before adding retry logic or spend tracking
+- **Signal type seed data in findings router** — move to cap installer before Insurance Vertical starts
+- **Frontend test coverage** — Vitest suite exists in the plan but test count is not tracked; establish baseline before Phase 3
+
+---
+
 ## Phase 2 — IDP Engine Capabilities
 **What it is:** The engine gets smarter and more connected. No vertical logic — these capabilities serve all verticals equally.  
-**Status:** In progress — 2C tool-use chat agent complete. Extraction eval + observability + connectors + signal framework remaining.
+**Status:** In progress — 2C tool-use chat agent complete. Extraction eval + observability next; connectors + signal framework after.
 
-### 2A — Data Connectors
-Public data sources feed directly into the pipeline. Any vertical can use any connector.
+### 2A — Intelligence Layer: Agentic Hardening
+The engine's intelligence layer is functional. These builds make it measurable and trustworthy. **Must complete before connectors or signal detection** — connectors bring more documents; signal detection reads extracted fields. Both are only as good as extraction is reliable. Measure reliability first.
+
+**Tool-use chat agent** ✅ DONE (2026-05-26):  
+Replaced static context dump with native Anthropic tool-use loop. Claude calls 6 read-only tools to pull exactly what it needs. 10-round cap with synthesis pass fallback. Workspace-scoped dispatcher.
+
+**Extraction evaluation loop** 🔲 Next build:  
+After `extract_fields()` runs, an evaluator pass checks confidence scores, retries low-confidence fields with a different prompt strategy, and escalates to a human-review lead if retry fails. Architecture: spec → extract → evaluate → retry/escalate. Produces the first real data on where Claude extraction fails systematically — which field types fail, which document types fail, which schemas need work.  
+*Spec:* `docs/superpowers/specs/` (to be written)
+
+**Observability layer** 🔲 Build alongside extraction eval:  
+Log every Claude call with model, latency, token counts, confidence distribution per document type, which fields fail most often. Not for cost — for understanding where the engine breaks. The extraction evaluator writes to this. Schema improvements come from reading it.  
+*Spec:* `docs/superpowers/specs/` (to be written)
+
+### 2B — Signal Detection Framework
+The engine gains the ability to define and evaluate signals. The signals themselves are defined by verticals — this is the framework that runs them. **Requires 2A complete** — signals fire on extracted field values; those values need to be reliable before signals mean anything.
+
+**How it works:**
+- A `signal_rules` table stores pattern definitions (field + operator + threshold + signal code)
+- After extraction completes, the signal engine evaluates all active rules for the workspace's vertical
+- Matching rules auto-create Findings with evidence links
+- New signals = new rows in `signal_rules`, no code change
+
+**What the framework provides:**
+- Rule evaluation engine (queries `document_extractions`, compares values)
+- Cross-document rules (compare fields across multiple documents for same entity)
+- Time-series rules (compare field values across filing years)
+- Threshold rules (field value > X, or ratio between two fields > Y)
+
+**What the framework does NOT contain:** Any specific rule definitions. Those live in the vertical cap.
+
+### 2C — Data Connectors
+Public data sources feed directly into the pipeline. Any vertical can use any connector. **Can run parallel to 2B** — connectors are input to the pipeline, not dependent on the intelligence layer.
 
 **Architecture:** `app/services/connectors/` — each connector fetches data, converts to a file, hands to the pipeline. The connector doesn't know which vertical is using it.
 
@@ -123,46 +172,15 @@ POST /workspaces/{id}/connectors/ohio-sos
 POST /workspaces/{id}/connectors/county-auditor
 ```
 
-**Existing asset:** `scripts/fetch_990_xml.py` is the core IRS TEOS logic. Phase 2A wraps it in the connector service.  
+**Existing asset:** `scripts/fetch_990_xml.py` is the core IRS TEOS logic. Phase 2C wraps it in the connector service.  
 **Scheduled option:** Background job checks for new filings on watched EINs annually.  
-**Cross-vertical use:** Fraud uses IRS TEOS for 990s. A tax compliance vertical uses the same connector for the same reason. Insurance uses county auditor for property data.
-
-### 2B — Signal Detection Framework
-The engine gains the ability to define and evaluate signals. The signals themselves are defined by verticals — this is the framework that runs them.
-
-**How it works:**
-- A `signal_rules` table stores pattern definitions (field + operator + threshold + signal code)
-- After extraction completes, the signal engine evaluates all active rules for the workspace's vertical
-- Matching rules auto-create Findings with evidence links
-- New signals = new rows in `signal_rules`, no code change
-
-**What the framework provides:**
-- Rule evaluation engine (queries `document_extractions`, compares values)
-- Cross-document rules (compare fields across multiple documents for same entity)
-- Time-series rules (compare field values across filing years)
-- Threshold rules (field value > X, or ratio between two fields > Y)
-
-**What the framework does NOT contain:** Any specific rule definitions. Those live in the vertical cap.
-
-### 2C — Intelligence Layer: Agentic Hardening
-The engine's intelligence layer is functional. These three builds harden it from working to production-reliable.
-
-**Tool-use chat agent** ✅ DONE (2026-05-26):  
-Replaced static context dump with native Anthropic tool-use loop. Claude calls 6 read-only tools (`search_documents`, `get_entity`, `query_extractions`, `get_transactions`, `get_findings`, `get_leads`) to pull exactly what it needs. 10-round cap with synthesis pass fallback. Workspace-scoped dispatcher — `workspace_id` is never a parameter Claude can set. Vertical tool registry extensible for fraud/insurance caps.
-
-**Extraction evaluation loop** 🔲 Next:  
-After `extract_fields()` runs, an evaluator pass checks confidence scores, retries low-confidence fields with a different prompt strategy, and escalates to a human-review lead if retry fails. Architecture: spec → extract → evaluate → retry/escalate. Produces the first real data on where Claude extraction fails systematically.  
-*Spec:* `docs/superpowers/specs/` (to be written)
-
-**Observability layer** 🔲 After extraction eval:  
-Log every Claude call with model, latency, token counts, confidence distribution per document type, which fields fail most often. Not for cost — for understanding where the engine breaks. Feeds the extraction evaluator and informs schema improvements.  
-*Spec:* `docs/superpowers/specs/` (to be written)
+**Cross-vertical use:** Fraud uses IRS TEOS for 990s. Insurance uses county auditor for property data. Same connector serves both.
 
 ---
 
 ## Phase 3 — Vertical Packaging
 **What it is:** The engine gets its first two caps. Each vertical is a complete, installable package.  
-**Trigger:** Phase 2 engine capabilities stable. At least one full end-to-end case has run.
+**Trigger:** Phase 2A (extraction eval + observability) complete. Engine extraction is measured and reliable. At least one full end-to-end case has run against real documents with observable confidence metrics.
 
 ### 3A — Fraud Vertical v1.0
 **Installs:** Fraud schema set + SR signal definitions + investigation workflow + referral export
@@ -268,7 +286,9 @@ The fraud vertical was built first because it's the hardest case. If the engine 
 
 | Phase | Done when |
 |---|---|
-| Phase 1 | ✅ All backend tasks pass. Frontend delivers working workspace with upload, search, and AI chat. Documents flow through the full pipeline end-to-end. |
-| Phase 2 | Three connectors integrated and tested. Extraction evaluation loop running with retry/escalate. Observability layer logging all Claude calls. Signal framework evaluates rules without code changes. |
+| Core Hardening | ✅ CORS configurable, file size bounded, soft-delete consistent, Alembic verified on fresh DB. |
+| Phase 1 | ✅ All backend tasks pass. Frontend working. Documents flow through full pipeline end-to-end. |
+| Phase 2 | Extraction eval loop running with retry/escalate. Observability logging all Claude calls with confidence distribution. Signal framework evaluates rules without code changes. Three connectors integrated. |
+| Phase 3 | **No vertical work starts until:** extraction reliability is measurable (2A complete) and at least one full case has run with observable confidence metrics. Fraud vertical installs as a complete package. Insurance vertical processes a real claim end-to-end. Both run on the same engine with no engine modifications. |
 | Phase 3 | Fraud vertical installs as a complete package. Insurance vertical processes a real claim end-to-end. Both verticals run on the same engine with no engine modifications. |
 | Phase 4 | Platform runs on AWS. Two paying clients in different verticals. New vertical takes one week to install, not one month. |
