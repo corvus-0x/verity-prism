@@ -32,10 +32,10 @@ def _repeating(prefix, count, fields):
 # ── Field sections ────────────────────────────────────────────────────────────
 
 IDENTITY = [
-    {"name": "parcel_number",       "type": "id_number", "description": "Official county parcel identifier at the top of the document", "required": True},
-    {"name": "owner_name",          "type": "name",      "description": "Current owner of record as shown in the Location section", "required": True},
-    {"name": "property_address",    "type": "address",   "description": "Physical property address", "required": True},
-    {"name": "county",              "type": "text",      "description": "County name (e.g. Darke County, Mercer County)", "required": True},
+    {"name": "parcel_number",       "type": "id_number", "description": "Official county parcel identifier at the top of the document", "required": True, "confidence_threshold": 0.95},
+    {"name": "owner_name",          "type": "name",      "description": "Current owner of record as shown in the Location section", "required": True, "confidence_threshold": 0.88},
+    {"name": "property_address",    "type": "address",   "description": "Physical property address", "required": True, "confidence_threshold": 0.88},
+    {"name": "county",              "type": "text",      "description": "County name (e.g. Darke County, Mercer County)", "required": True, "confidence_threshold": 0.92},
     {"name": "township",            "type": "text",      "description": "Township (e.g. PATTERSON TWP)", "required": False},
     {"name": "municipality",        "type": "text",      "description": "Municipality (e.g. OSGOOD CORP, UNINCORPORATED)", "required": False},
     {"name": "school_district",     "type": "text",      "description": "School district name", "required": False},
@@ -324,6 +324,8 @@ def seed_parcel_record_schema(db):
         vertical="general",
         schema_fields=schema_fields,
         extraction_prompt=EXTRACTION_PROMPT,
+        parse_strategy="claude",
+        default_confidence_threshold=0.75,
         version=1,
         is_active=True,
     )
@@ -337,15 +339,15 @@ def seed_parcel_record_schema(db):
 # ── DEED schema ───────────────────────────────────────────────────────────────
 
 DEED_RECORDING = [
-    {"name": "instrument_number",   "type": "id_number", "description": "Official instrument/recording number assigned by the county recorder", "required": True},
+    {"name": "instrument_number",   "type": "id_number", "description": "Official instrument/recording number assigned by the county recorder", "required": True, "confidence_threshold": 0.92},
     {"name": "book",                "type": "id_number", "description": "Official Records book or volume number", "required": False},
     {"name": "page",                "type": "id_number", "description": "Page number within the book", "required": False},
     {"name": "pages",               "type": "text",      "description": "Total number of pages in the instrument", "required": False},
-    {"name": "recording_date",      "type": "date",      "description": "Date the instrument was recorded with the county recorder", "required": True},
+    {"name": "recording_date",      "type": "date",      "description": "Date the instrument was recorded with the county recorder", "required": True, "confidence_threshold": 0.90},
     {"name": "recording_time",      "type": "text",      "description": "Time of recording (e.g. 10:46 AM)", "required": False},
     {"name": "recording_fee",       "type": "currency",  "description": "Fee paid to the recorder to file this instrument", "required": False},
     {"name": "recorder_name",       "type": "name",      "description": "Name of the county recorder who accepted the filing", "required": False},
-    {"name": "recording_county",    "type": "text",      "description": "County where the deed was recorded", "required": True},
+    {"name": "recording_county",    "type": "text",      "description": "County where the deed was recorded", "required": True, "confidence_threshold": 0.90},
     {"name": "recording_state",     "type": "text",      "description": "State where the deed was recorded", "required": False},
 ]
 
@@ -372,7 +374,7 @@ DEED_DATES = [
 ]
 
 DEED_GRANTOR = [
-    {"name": "grantor_name",              "type": "name", "description": "Full legal name of the grantor (seller/transferor)", "required": True},
+    {"name": "grantor_name",              "type": "name", "description": "Full legal name of the grantor (seller/transferor)", "required": True, "confidence_threshold": 0.88},
     {"name": "grantor_entity_type",       "type": "text", "description": "Type of grantor entity: individual, LLC, nonprofit corporation, trust, revocable living trust, etc.", "required": False},
     {"name": "grantor_state",             "type": "text", "description": "State where the grantor entity is organized", "required": False},
     {"name": "grantor_signatory",         "type": "name", "description": "Name of the person who physically signed on behalf of the grantor", "required": False},
@@ -381,7 +383,7 @@ DEED_GRANTOR = [
 ]
 
 DEED_GRANTEE = [
-    {"name": "grantee_name",         "type": "name",    "description": "Full legal name of the grantee (buyer/recipient)", "required": True},
+    {"name": "grantee_name",         "type": "name",    "description": "Full legal name of the grantee (buyer/recipient)", "required": True, "confidence_threshold": 0.88},
     {"name": "grantee_entity_type",  "type": "text",    "description": "Type of grantee entity: individual, LLC, nonprofit corporation, trust, etc.", "required": False},
     {"name": "grantee_state",        "type": "text",    "description": "State where the grantee entity is organized", "required": False},
     {"name": "grantee_mailing_address","type": "address","description": "Tax mailing address for the grantee as stated in the deed body", "required": False},
@@ -531,6 +533,8 @@ def seed_deed_schema(db):
         vertical="general",
         schema_fields=schema_fields,
         extraction_prompt=DEED_EXTRACTION_PROMPT,
+        parse_strategy="claude",
+        default_confidence_threshold=0.75,
         version=1,
         is_active=True,
     )
@@ -792,6 +796,8 @@ def seed_990_schema(db):
         vertical="general",
         schema_fields=schema_fields,
         extraction_prompt=F990_EXTRACTION_PROMPT,
+        parse_strategy="xml_direct",
+        default_confidence_threshold=1.0,
         version=1,
         is_active=True,
     )
@@ -934,6 +940,8 @@ def seed_sos_filing_schema(db):
         vertical="general",
         schema_fields=schema_fields,
         extraction_prompt=SOS_EXTRACTION_PROMPT,
+        parse_strategy="claude",
+        default_confidence_threshold=0.75,
         version=1,
         is_active=True,
     )
@@ -1063,6 +1071,8 @@ def seed_ucc_schema(db):
         vertical="general",
         schema_fields=schema_fields,
         extraction_prompt=UCC_EXTRACTION_PROMPT,
+        parse_strategy="claude",
+        default_confidence_threshold=0.75,
         version=1,
         is_active=True,
     )
@@ -1147,6 +1157,8 @@ def seed_building_permit_schema(db):
         vertical="general",
         schema_fields=PERMIT_FIELDS,
         extraction_prompt=PERMIT_EXTRACTION_PROMPT,
+        parse_strategy="claude",
+        default_confidence_threshold=0.75,
         version=1,
         is_active=True,
     )
@@ -1299,6 +1311,8 @@ def seed_audit_report_schema(db):
         vertical="general",
         schema_fields=schema_fields,
         extraction_prompt=AUDIT_EXTRACTION_PROMPT,
+        parse_strategy="claude",
+        default_confidence_threshold=0.75,
         version=1,
         is_active=True,
     )
@@ -1390,6 +1404,8 @@ def seed_screenshot_schema(db):
         vertical="general",
         schema_fields=schema_fields,
         extraction_prompt=SCREENSHOT_EXTRACTION_PROMPT,
+        parse_strategy="claude",
+        default_confidence_threshold=0.75,
         version=1,
         is_active=True,
     )
@@ -1498,6 +1514,8 @@ def seed_obituary_schema(db):
         vertical="general",
         schema_fields=schema_fields,
         extraction_prompt=OBITUARY_EXTRACTION_PROMPT,
+        parse_strategy="claude",
+        default_confidence_threshold=0.75,
         version=1,
         is_active=True,
     )
@@ -1616,6 +1634,8 @@ def seed_plat_schema(db):
         vertical="general",
         schema_fields=schema_fields,
         extraction_prompt=PLAT_EXTRACTION_PROMPT,
+        parse_strategy="claude",
+        default_confidence_threshold=0.75,
         version=1,
         is_active=True,
     )
@@ -1709,6 +1729,8 @@ def seed_correspondence_schema(db):
         vertical="general",
         schema_fields=schema_fields,
         extraction_prompt=CORRESPONDENCE_EXTRACTION_PROMPT,
+        parse_strategy="claude",
+        default_confidence_threshold=0.75,
         version=1,
         is_active=True,
     )
