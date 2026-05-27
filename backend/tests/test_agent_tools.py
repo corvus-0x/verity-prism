@@ -218,6 +218,8 @@ def test_query_extractions_eq(db, workspace, extraction):
     )
     assert result["count"] == 1
     assert result["extractions"][0]["field_value"] == "John Smith"
+    assert result["extractions"][0]["filename"] == "test_deed.pdf"
+    assert result["extractions"][0]["doc_type"] == "DEED"
 
 
 def test_query_extractions_contains(db, workspace, extraction):
@@ -226,6 +228,8 @@ def test_query_extractions_contains(db, workspace, extraction):
         field_name="grantor", operator="contains", value="Smith"
     )
     assert result["count"] == 1
+    assert result["extractions"][0]["filename"] == "test_deed.pdf"
+    assert result["extractions"][0]["doc_type"] == "DEED"
 
 
 def test_query_extractions_gt(db, workspace, extraction):

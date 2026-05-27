@@ -91,12 +91,17 @@ def query_extractions(
     workspace_id: str, db: Session, field_name: str, operator: str, value: str
 ) -> dict:
     """Query document_extractions by field name and value. Operators: eq, contains, gt, lt.
-    Returns up to 50 matching rows with document_id, field_name, field_value.
+    Returns up to 50 matching rows with document_id, filename, doc_type, field_name, field_value.
+    Joins Document to include filename so Claude can reference documents by name.
     """
-    q = db.query(DocumentExtraction).filter(
-        DocumentExtraction.workspace_id == workspace_id,
-        DocumentExtraction.field_name == field_name,
-        DocumentExtraction.field_value.isnot(None),
+    q = (
+        db.query(DocumentExtraction, Document.filename, Document.detected_doc_type)
+        .join(Document, Document.id == DocumentExtraction.document_id)
+        .filter(
+            DocumentExtraction.workspace_id == workspace_id,
+            DocumentExtraction.field_name == field_name,
+            DocumentExtraction.field_value.isnot(None),
+        )
     )
     if operator == "eq":
         q = q.filter(DocumentExtraction.field_value == value)
@@ -116,11 +121,13 @@ def query_extractions(
     return {
         "extractions": [
             {
-                "document_id": r.document_id,
-                "field_name": r.field_name,
-                "field_value": r.field_value,
+                "document_id": row.DocumentExtraction.document_id,
+                "filename": row.filename,
+                "doc_type": row.detected_doc_type,
+                "field_name": row.DocumentExtraction.field_name,
+                "field_value": row.DocumentExtraction.field_value,
             }
-            for r in rows
+            for row in rows
         ],
         "count": len(rows),
     }

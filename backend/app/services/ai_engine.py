@@ -98,10 +98,12 @@ def chat(
                         len(str(result)),
                         elapsed,
                     )
+                    is_error = "error" in result
                     tool_results.append({
                         "type": "tool_result",
                         "tool_use_id": block.id,
                         "content": json.dumps(result),
+                        "is_error": is_error,
                     })
             messages.append({"role": "user", "content": tool_results})
             rounds += 1
