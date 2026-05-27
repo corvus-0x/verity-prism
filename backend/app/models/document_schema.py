@@ -1,6 +1,7 @@
 import uuid
 from datetime import datetime, timezone
-from sqlalchemy import String, DateTime, Integer, Boolean, Text
+from sqlalchemy import String, DateTime, Integer, Boolean, Text, Float
+from sqlalchemy import Enum as SAEnum
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 from app.database import Base
@@ -16,4 +17,14 @@ class DocumentSchema(Base):
     extraction_prompt: Mapped[str] = mapped_column(Text, nullable=True)
     version: Mapped[int] = mapped_column(Integer, default=1)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    parse_strategy: Mapped[str] = mapped_column(
+        SAEnum("claude", "xml_direct", name="parse_strategy"),
+        default="claude",
+        nullable=False,
+    )
+    default_confidence_threshold: Mapped[float] = mapped_column(
+        Float, default=0.7, nullable=False
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+    )
