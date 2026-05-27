@@ -6,10 +6,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What This Is
 
-**Verity Prism** — An **Intelligent Document Processing (IDP) platform** built by Verity. that ingests documents, extracts every data point into structured database fields, and makes everything searchable via plain English queries. Fraud investigation is Vertical 1 (the proving ground). Insurance automation is Vertical 2. Additional verticals follow.
+**Verity Prism** — An **Intelligent Document Processing (IDP) platform** that ingests documents, extracts every data point into structured database fields, and makes everything searchable via plain English queries. Fraud investigation is Vertical 1. Insurance automation is Vertical 2. Additional verticals follow.
 
-Full design spec: `docs/superpowers/specs/2026-05-17-phase1-core-foundation-design.md`
-Implementation plans: `docs/superpowers/plans/`
+Full component detail: `docs/build-inventory.md`
+Roadmap + phase status: `docs/roadmap.md`
+Design specs + plans: `docs/superpowers/`
 Private/sensitive case files: `private/` (gitignored — never commit)
 
 ---
@@ -43,20 +44,14 @@ cd backend
 uvicorn app.main:app --reload
 ```
 
-### Run all tests
+### Run all tests (Docker — required for DB access)
 ```bash
-cd backend
-pytest tests/ -v
+docker-compose run --rm -e TEST_DATABASE_URL=postgresql://catalyst:catalyst@db:5432/catalyst_test backend pytest tests/ -v
 ```
 
 ### Run a single test file
 ```bash
-pytest tests/test_documents.py -v
-```
-
-### Run one specific test
-```bash
-pytest tests/test_documents.py::test_upload_creates_document_record -v
+docker-compose run --rm -e TEST_DATABASE_URL=postgresql://catalyst:catalyst@db:5432/catalyst_test backend pytest tests/test_documents.py -v
 ```
 
 ### Database migrations
@@ -76,15 +71,17 @@ docker-compose exec db psql -U catalyst -d catalyst
 
 ## Architecture
 
-### Five-layer system
+### Engine vs. Cap
+
+The engine ships to every customer. Vertical caps install on top for domain-specific logic.
 
 ```
 Document Sources → Ingestion → Extraction Pipeline → Knowledge Base → Verticals → UI
 ```
 
-**Layer 2 (Extraction)** is the IDP core — Claude detects document type, selects the matching schema from `document_schemas`, extracts every field into `document_extractions` (one row per field), then updates the FTS search index.
+**Engine** — processes documents, extracts fields, indexes data, answers queries. No domain knowledge.
 
-**Layer 4 (Verticals)** is where fraud-specific logic lives — signal types, findings, investigation leads. These are modules built on top of the IDP core, not baked into it.
+**Vertical cap** — signal definitions, workflow config, export formats. Fraud cap never ships to an insurance customer.
 
 ### Backend layout
 
@@ -101,27 +98,19 @@ app/
 
 ### Key design decisions
 
-**`document_extractions` is the central IDP table.** One row per extracted field per document. A deed with 11 fields = 11 rows. This makes every data point individually queryable without JSON parsing.
+**`document_extractions` is the central IDP table.** One row per extracted field per document. A deed with 64 fields = 64 rows. Every data point is individually queryable without JSON parsing.
 
-**`document_schemas` drives AI extraction.** Each document type (DEED, 990, UCC, etc.) has a schema defining what fields to extract and the prompt to use. Schemas are in the database so they can be updated without redeploying.
+**`document_schemas` drives extraction and routing.** Each document type has a schema with `parse_strategy` (`claude` or `xml_direct`), `default_confidence_threshold`, and field definitions. Adding a new document type is a database operation — no code changes.
 
 **`workspaces` is the general term** for what the fraud vertical UI calls a "Case." The backend always uses `workspace_id`. Frontend labels it per vertical.
 
-**Audit log is immutable.** A PostgreSQL trigger (`audit_log_immutable`) prevents UPDATE or DELETE on `audit_log` at the database level — not just in code. Call `audit.log()` from services after every meaningful action.
+**Audit log is immutable.** A PostgreSQL trigger (`audit_log_immutable`) prevents UPDATE or DELETE on `audit_log` at the database level. Call `audit.log()` from services after every meaningful action.
 
 **SHA-256 hash is always first.** In `document_pipeline.py`, the hash is computed before OCR, before extraction, before naming. This is the evidence lock.
 
 **Soft deletes everywhere.** Nothing is hard-deleted. Set `is_deleted = True` and `deleted_at = now()`. Filter active records with `.filter(Entity.is_deleted == False)`.
 
-### NLP Search
-
-User query → `search_service.py` → Claude translates to structured filters → PostgreSQL FTS (`search_vector @@ plainto_tsquery(...)`) + field-level filters on `document_extractions` → document cards with matched fields.
-
-The `documents.search_vector` column is a `tsvector` updated after every extraction to include both OCR text and extracted field values.
-
-### AI Chat context
-
-`ai_engine.build_workspace_context()` loads entities, transactions, findings, open leads, and document list into a text block. This is the system prompt context for every chat message. Richer workspace data = better answers.
+**AI chat uses native tool use.** `ai_engine.chat()` runs a loop of up to 10 Claude rounds. Claude calls tools (`search_documents`, `get_entity`, `query_extractions`, etc.) to pull workspace data on demand. `workspace_id` is injected by the dispatcher — never a parameter Claude can set.
 
 ---
 
@@ -130,27 +119,10 @@ The `documents.search_vector` column is a `tsvector` updated after every extract
 Every function in `app/services/` gets a docstring. One concise block — no multi-paragraph essays. Cover:
 
 - **What it does** (one line, plain English)
-- **Why it works this way** — only if the constraint isn't obvious from the name (e.g., immutability guarantees, ordering requirements, coupling to another system)
-- **How callers use it** — only if it's a FastAPI dependency, requires specific argument shapes, or has a non-obvious return
+- **Why it works this way** — only if the constraint isn't obvious from the name
+- **How callers use it** — only if it's a FastAPI dependency or has a non-obvious return
 
-Routers, models, and schemas do **not** need docstrings — their structure and naming are self-documenting. Services contain business logic, so the *why* lives there.
-
-**Example (good):**
-```python
-def log(...):
-    """Write an immutable audit entry.
-
-    The audit_log table has a PostgreSQL trigger that blocks UPDATE and DELETE,
-    so every call here is a permanent record. Call from services after every
-    meaningful action — create, update, soft-delete, login, etc.
-    """
-```
-
-**Example (skip it — name says it all):**
-```python
-def hash_password(password: str) -> str:
-    """Return a bcrypt hash of the given password."""  # fine, but one line is enough
-```
+Routers, models, and schemas do **not** need docstrings.
 
 ---
 
@@ -159,8 +131,7 @@ def hash_password(password: str) -> str:
 - Test database: `catalyst_test` (separate from dev database)
 - `conftest.py` drops and recreates all tables before each test — every test starts clean
 - `auth_headers` fixture handles login and returns `{"Authorization": "Bearer <token>"}`
-- `workspace_id` fixture creates a workspace and returns its ID
-- Mock Claude API calls with `unittest.mock.patch("app.services.<module>.Anthropic")`
+- Mock Claude API calls with `unittest.mock.patch("app.services.ai_engine.client")` — patch the module-level client instance, not the class
 - TDD: write the failing test first, confirm it fails, then implement
 
 ---
@@ -173,6 +144,8 @@ DATABASE_URL=postgresql://catalyst:catalyst@localhost:5432/catalyst
 SECRET_KEY=<long random string>
 ANTHROPIC_API_KEY=sk-ant-...
 UPLOAD_DIR=./uploads
+CORS_ORIGINS=["http://localhost:5173"]
+MAX_UPLOAD_BYTES=52428800
 ```
 
 ---
@@ -184,8 +157,7 @@ Blog posts live in `docs/blog/`. Always start from `docs/blog/template.md`.
 **Voice — Corvus (alias, never connect to real name):**
 - Reasoning over announcement — walk through *how* you got there, not *what* you decided
 - Confident without being loud — don't say it's good, let the work demonstrate it
-- The mystery is in what's NOT said — don't over-explain, don't tie every bow
-- Metaphors from the physical world — water, weight, pressure, animals. Accurate, not decorative. Reach for them when abstract language won't carry the weight.
+- Metaphors from the physical world — water, weight, pressure, animals. Accurate, not decorative.
 - Never: "excited to share", "thrilled to announce", "game-changing", "amazing"
 - Posts are about the work, not about Corvus
 
@@ -196,12 +168,4 @@ Blog posts live in `docs/blog/`. Always start from `docs/blog/template.md`.
 4. Why it had to be this way — connect to the larger purpose
 5. Quiet close — what works now, what it proves, one paragraph, no triumphalism
 
-**Naming:** `post-NNN-kebab-case-title.md`
-
-**Published on:** Hashnode, under the alias `-corvus`, blog "From Case to Code"
-
----
-
-## What Is Not Built Yet
-
-Phase 1 backend is the current build target. Frontend, public data integrations (IRS TEOS, Ohio SOS), network graph, referral generation, and team collaboration are later phases. See `docs/superpowers/plans/` for the full task breakdown.
+**Naming:** `post-NNN-kebab-case-title.md` | **Published on:** Hashnode, alias `-corvus`, blog "From Case to Code"

@@ -11,11 +11,11 @@ export default defineConfig({
   },
   server: {
     port: 5173,
+    // API_TARGET is set to http://backend:8000 in Docker, localhost:8000 locally
     proxy: {
-      '/api': {
-        target: 'http://localhost:8000',
-        rewrite: (path) => path.replace(/^\/api/, ''),
-      },
+      '/auth': { target: process.env.API_TARGET || 'http://localhost:8000' },
+      '/workspaces': { target: process.env.API_TARGET || 'http://localhost:8000' },
+      '/signal-types': { target: process.env.API_TARGET || 'http://localhost:8000' },
     },
   },
 })
