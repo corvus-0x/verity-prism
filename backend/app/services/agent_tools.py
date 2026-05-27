@@ -180,11 +180,41 @@ def get_transactions(
 
 
 def get_findings(workspace_id: str, db: Session) -> dict:
-    pass  # implemented in Task 5
+    """List all findings in the workspace with title, severity, status, and description."""
+    findings = db.query(Finding).filter(Finding.workspace_id == workspace_id).all()
+    return {
+        "findings": [
+            {
+                "id": f.id,
+                "title": f.title,
+                "severity": f.severity,
+                "status": f.status,
+                "description": f.description,
+            }
+            for f in findings
+        ],
+        "count": len(findings),
+    }
 
 
 def get_leads(workspace_id: str, db: Session, status: str = "pending") -> dict:
-    pass  # implemented in Task 5
+    """List investigation leads filtered by status (pending, in_progress, or all)."""
+    q = db.query(InvestigationLead).filter(InvestigationLead.workspace_id == workspace_id)
+    if status != "all":
+        q = q.filter(InvestigationLead.status == status)
+    leads = q.all()
+    return {
+        "leads": [
+            {
+                "id": lead.id,
+                "question": lead.question,
+                "status": lead.status,
+                "source": lead.originated_by,
+            }
+            for lead in leads
+        ],
+        "count": len(leads),
+    }
 
 
 def execute(tool_name: str, workspace_id: str, db: Session, params: dict) -> dict:

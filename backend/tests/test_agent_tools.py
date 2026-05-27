@@ -329,3 +329,69 @@ def test_get_transactions_zero_amount_serializes_as_string(db, workspace, user):
     txn = next(r for r in result["transactions"] if r["instrument_number"] == "2021-zero")
     assert float(txn["amount_paid"]) == 0.0  # stored as 0.00 by Postgres; Decimal("0") is falsy — must use is not None
     assert txn["overpay_pct"] == -100.0  # (0 - 200000) / 200000 * 100 = -100.0
+
+
+from app.services.agent_tools import get_findings, get_leads
+from app.models.finding import Finding
+from app.models.lead import InvestigationLead
+
+
+def test_get_findings_returns_all(db, workspace, user):
+    f = Finding(
+        id=str(uuid.uuid4()),
+        workspace_id=workspace.id,
+        title="Overpayment Pattern",
+        severity="high",
+        status="open",
+        description="Consistent above-market transactions",
+        created_by=user.id,
+    )
+    db.add(f)
+    db.commit()
+    result = get_findings(workspace_id=workspace.id, db=db)
+    assert result["count"] == 1
+    assert result["findings"][0]["title"] == "Overpayment Pattern"
+    assert result["findings"][0]["severity"] == "high"
+
+
+def test_get_findings_empty(db, workspace):
+    result = get_findings(workspace_id=workspace.id, db=db)
+    assert result["count"] == 0
+    assert result["findings"] == []
+
+
+def test_get_leads_pending_by_default(db, workspace, user):
+    lead = InvestigationLead(
+        id=str(uuid.uuid4()),
+        workspace_id=workspace.id,
+        question="Who are the grantees in all deeds?",
+        status="pending",
+        originated_by="ai",
+    )
+    done = InvestigationLead(
+        id=str(uuid.uuid4()),
+        workspace_id=workspace.id,
+        question="Completed lead",
+        status="complete",
+        originated_by="user",
+    )
+    db.add(lead)
+    db.add(done)
+    db.commit()
+    result = get_leads(workspace_id=workspace.id, db=db)
+    assert result["count"] == 1
+    assert result["leads"][0]["status"] == "pending"
+
+
+def test_get_leads_all_status(db, workspace, user):
+    for status in ("pending", "in_progress", "complete"):
+        db.add(InvestigationLead(
+            id=str(uuid.uuid4()),
+            workspace_id=workspace.id,
+            question=f"Lead {status}",
+            status=status,
+            originated_by="user",
+        ))
+    db.commit()
+    result = get_leads(workspace_id=workspace.id, db=db, status="all")
+    assert result["count"] == 3
