@@ -70,3 +70,44 @@ def test_conversation_title_set_from_first_message(client, auth_headers, workspa
     ).json()
     conv_updated = next(c for c in updated if c["id"] == conv["id"])
     assert conv_updated["title"] is not None
+
+
+def test_multi_turn_conversation_no_duplicate_user_message(client, auth_headers, workspace_id):
+    conv = client.post(
+        f"/workspaces/{workspace_id}/conversations", headers=auth_headers
+    ).json()
+
+    with patch("app.services.ai_engine.client") as mock_client:
+        mock_client.messages.create.return_value = _mock_end_turn("First answer.")
+        client.post(
+            f"/workspaces/{workspace_id}/conversations/{conv['id']}/messages",
+            json={"content": "First question"},
+            headers=auth_headers,
+        )
+
+    with patch("app.services.ai_engine.client") as mock_client:
+        mock_client.messages.create.return_value = _mock_end_turn("Second answer.")
+        response = client.post(
+            f"/workspaces/{workspace_id}/conversations/{conv['id']}/messages",
+            json={"content": "Second question"},
+            headers=auth_headers,
+        )
+
+    assert response.status_code == 201
+    assert response.json()["content"] == "Second answer."
+
+    # Verify the messages list sent to Claude on the second call has no duplicate user turns
+    with patch("app.services.ai_engine.client") as mock_client:
+        mock_client.messages.create.return_value = _mock_end_turn("Third answer.")
+        client.post(
+            f"/workspaces/{workspace_id}/conversations/{conv['id']}/messages",
+            json={"content": "Third question"},
+            headers=auth_headers,
+        )
+        # The messages sent to Claude should alternate user/assistant properly
+        call_args = mock_client.messages.create.call_args
+        messages_sent = call_args[1]["messages"]
+        roles = [m["role"] for m in messages_sent]
+        # Should alternate: user, assistant, user, assistant, user — no consecutive duplicates
+        for i in range(len(roles) - 1):
+            assert roles[i] != roles[i + 1], f"Duplicate consecutive role at index {i}: {roles}"

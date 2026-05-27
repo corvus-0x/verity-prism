@@ -60,21 +60,19 @@ def send_message(
     if not conv:
         raise HTTPException(status_code=404, detail="Conversation not found")
 
-    # Store user message
-    user_msg = AIMessage(
-        conversation_id=conversation_id, role="user", content=payload.content
-    )
-    db.add(user_msg)
-    db.commit()
-
-    # Title auto-set from the first message
+    # Title auto-set from the first message (no DB query needed — just reads payload)
     if not conv.title:
         conv.title = payload.content[:60] + ("..." if len(payload.content) > 60 else "")
         db.commit()
 
-    # Get Claude's response with full workspace context
+    # Get Claude's response — history is loaded inside chat(), save messages after
     response_text = chat(workspace_id, conversation_id, payload.content, db)
 
+    # Save both messages after chat() completes so history doesn't include current turn
+    user_msg = AIMessage(
+        conversation_id=conversation_id, role="user", content=payload.content
+    )
+    db.add(user_msg)
     assistant_msg = AIMessage(
         conversation_id=conversation_id, role="assistant", content=response_text
     )
