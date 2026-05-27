@@ -21,12 +21,19 @@ client = Anthropic(api_key=settings.anthropic_api_key)
 # output, well within the 8192 limit and leaving headroom for formatting.
 BATCH_SIZE = 40
 
-KNOWN_DOCUMENT_TYPES = [
-    "DEED", "PLAT", "990", "990-T", "UCC", "SOS-FILING", "BUILDING-PERMIT",
-    "PARCEL-RECORD", "AUDIT-REPORT", "INSURANCE-FORM", "COURT-FILING",
-    "CORRESPONDENCE", "OBITUARY", "NEWS-ARTICLE", "SCREENSHOT", "SPREADSHEET",
-    "OTHER",
-]
+def _load_known_types(db: Session) -> list[str]:
+    """Load distinct active document types from document_schemas.
+    Returns DB-registered types plus 'OTHER' as a catch-all.
+    Called on every detect_document_type() invocation — adding a schema row
+    immediately makes that type detectable without redeployment.
+    """
+    rows = (
+        db.query(DocumentSchema.document_type)
+        .filter(DocumentSchema.is_active == True)
+        .distinct()
+        .all()
+    )
+    return [r[0] for r in rows] + ["OTHER"]
 
 
 def _get_schema_for_vertical(
@@ -52,16 +59,20 @@ def _get_schema_for_vertical(
     ).first()
 
 
-def detect_document_type(ocr_text: str) -> str:
+def detect_document_type(ocr_text: str, db: Session) -> str:
     """
     Ask Claude to identify the document type from the first 1500 characters.
-    Returns one of KNOWN_DOCUMENT_TYPES; falls back to 'OTHER' on any error.
+    Known types are loaded from document_schemas at call time — adding a
+    schema row immediately makes that type detectable without redeployment.
+    Falls back to 'OTHER' on any error or unrecognized type.
     """
+    known_types = _load_known_types(db)
+
     prompt = f"""You are analyzing a document to determine its type.
 Based on the text below, identify the document type.
 
 Choose EXACTLY ONE from this list:
-{', '.join(KNOWN_DOCUMENT_TYPES)}
+{', '.join(known_types)}
 
 Respond with JSON only — no markdown, no explanation:
 {{"document_type": "TYPE_HERE"}}
@@ -77,7 +88,7 @@ Document text (first 1500 characters):
         )
         result = json.loads(strip_json_fences(response.content[0].text))
         detected = result.get("document_type", "OTHER")
-        return detected if detected in KNOWN_DOCUMENT_TYPES else "OTHER"
+        return detected if detected in known_types else "OTHER"
     except Exception as e:
         logger.warning(f"Type detection failed: {e}")
         return "OTHER"

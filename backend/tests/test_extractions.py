@@ -204,3 +204,42 @@ def test_pipeline_uses_claude_when_parse_strategy_is_claude(db):
 
     mock_claude.assert_called_once()
     mock_xml.assert_not_called()
+
+
+from app.services.extraction_engine import detect_document_type
+
+
+def test_detect_document_type_uses_db_schemas(db):
+    """detect_document_type accepts types registered in document_schemas, not a hardcoded list."""
+    schema = DocumentSchema(
+        id=str(uuid.uuid4()),
+        document_type="CUSTOM-DOC",
+        display_name="Custom Doc",
+        vertical="general",
+        schema_fields=[],
+        version=1,
+        is_active=True,
+        parse_strategy="claude",
+        default_confidence_threshold=0.7,
+    )
+    db.add(schema)
+    db.commit()
+
+    with patch("app.services.extraction_engine.client") as mock_client:
+        mock_resp = MagicMock()
+        mock_resp.content = [MagicMock(text='{"document_type": "CUSTOM-DOC"}')]
+        mock_client.messages.create.return_value = mock_resp
+        result = detect_document_type("some ocr text", db)
+
+    assert result == "CUSTOM-DOC"
+
+
+def test_detect_document_type_falls_back_to_other_for_unknown_type(db):
+    """If Claude returns a type not in the DB, fall back to OTHER."""
+    with patch("app.services.extraction_engine.client") as mock_client:
+        mock_resp = MagicMock()
+        mock_resp.content = [MagicMock(text='{"document_type": "TOTALLY-UNKNOWN"}')]
+        mock_client.messages.create.return_value = mock_resp
+        result = detect_document_type("some ocr text", db)
+
+    assert result == "OTHER"

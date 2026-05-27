@@ -190,7 +190,7 @@ def _run_pipeline(
 
     # ── Step 4: Detect document type ────────────────────────────────────────
     try:
-        doc_type = detect_document_type(ocr_text)
+        doc_type = detect_document_type(ocr_text, db)
     except Exception as e:
         _fail(doc, f"Type detection failed: {e}", db)
         return
