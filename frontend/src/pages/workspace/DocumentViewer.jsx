@@ -70,8 +70,8 @@ export default function DocumentViewer() {
 
   if (error) {
     return (
-      <div className="flex gap-6 h-full">
-        <div className="w-52 shrink-0 space-y-2 overflow-y-auto">
+      <div className="flex -m-6 h-[calc(100vh-4rem)]">
+        <div className="w-52 shrink-0 bg-slate-900 border-r border-slate-700 p-3 overflow-y-auto">
           <DocumentList documents={docList} selectedId={documentId} workspaceId={workspaceId} />
         </div>
         <div className="flex-1 flex items-center justify-center">
