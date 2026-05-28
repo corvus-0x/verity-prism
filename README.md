@@ -89,6 +89,14 @@ Documents → Ingestion Pipeline → Extraction Engine → Knowledge Base → Ve
 
 ---
 
+## Build Journal
+
+8 posts on how and why this platform was built — not feature announcements, but the reasoning behind specific decisions: why the database is structured the way it is, why the AI agent uses tool use instead of context injection, how a real document set shaped the schema design.
+
+[From Case to Code](https://corvus-0x.hashnode.dev) on Hashnode.
+
+---
+
 ## Stack
 
 | Layer | Technology |
@@ -107,12 +115,13 @@ Documents → Ingestion Pipeline → Extraction Engine → Knowledge Base → Ve
 
 ## Documentation
 
-- `docs/roadmap.md` — phase status and what's next
-- `docs/build-inventory.md` — every component, what it does, what it connects to
-- `docs/superpowers/specs/` — design specifications
-- `docs/superpowers/plans/` — implementation plans
+**Start here if you want to understand the architecture:**
 
-Build journal: [From Case to Code](https://corvus-0x.hashnode.dev) — writing down what was built and why.
+- [`docs/decisions/`](docs/decisions/) — Architecture Decision Records: why the database is structured as row-per-field, why adding a document type requires no code change, why the engine knows nothing about fraud or insurance
+- [`docs/roadmap.md`](docs/roadmap.md) — phase status, what's complete, what's next, and why each phase gates the next
+- [`docs/build-inventory.md`](docs/build-inventory.md) — every component, what it does, what it connects to, and what's planned
+- [`docs/superpowers/specs/`](docs/superpowers/specs/) — design specifications written before each build
+- [`docs/superpowers/plans/`](docs/superpowers/plans/) — implementation plans
 
 ---
 
