@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { listDocuments, getDocument, getExtractions, getDocumentFile } from '../../api/documents'
 import DocumentList from '../../components/documents/DocumentList'
+import ExtractionTable from '../../components/documents/ExtractionTable'
 import LoadingSpinner from '../../components/shared/LoadingSpinner'
 import { Document, Page, pdfjs } from 'react-pdf'
 import 'react-pdf/dist/Page/AnnotationLayer.css'
@@ -208,5 +209,12 @@ function FieldsPane({ doc, extractions }) {
       </p>
     )
   }
-  return <p className="text-slate-600 text-sm">Fields table — wired in Task 6</p>
+  return (
+    <div>
+      <p className="text-slate-500 text-xs font-semibold uppercase tracking-wider mb-3">
+        Extracted Fields
+      </p>
+      <ExtractionTable extractions={extractions} />
+    </div>
+  )
 }

@@ -157,7 +157,7 @@ The engine's intelligence layer. Understands documents, answers questions, surfa
 | `search.py` | POST /workspaces/{id}/search/ | Engine | ✅ |
 | `ai.py` | POST + GET /conversations, POST /conversations/{id}/messages | Engine | ✅ |
 | `schemas.py` | GET /schemas/ | Engine | ✅ |
-| `documents.py` (Phase 2) | GET /documents/{id}/file — serve raw file for viewer | Engine | 🔲 Phase 2 |
+| `documents.py` | GET /documents/{id}/file — serve raw file for viewer | Engine | ✅ |
 | `documents.py` (Phase 2) | GET /documents/{id}/extractions.csv, /extractions.json — export | Engine | 🔲 Phase 2 |
 | `documents.py` (Phase 2) | GET /documents/{id}/status/stream — SSE for real-time status | Engine | 🔲 Phase 2 |
 | `workspaces.py` (Phase 2) | GET /workspaces/{id}/extractions.csv — workspace-level export | Engine | 🔲 Phase 2 |
@@ -230,13 +230,14 @@ All 11 schemas are `vertical = "general"` — available in every workspace regar
 | `pages/workspace/WorkspaceLayout.jsx` | `/workspaces/:id` | Wraps workspace in `WorkspaceProvider`. Renders AppShell + WorkspaceSidebar + page outlet. | ✅ |
 | `pages/workspace/Overview.jsx` | `/workspaces/:id` | Summary stats. Reads vertical from context — General shows Documents + Entities; Fraud adds Findings. Grid adapts to card count. | ✅ |
 | `pages/workspace/Documents.jsx` | `.../documents` | Document list, upload dropzone | ✅ |
+| `components/documents/DocumentList.jsx` | — | Shared document list used by Documents and DocumentViewer. Cards are Links; selected card highlighted. | ✅ |
 | `pages/workspace/Search.jsx` | `.../search` | Plain-English search | ✅ |
 | `pages/workspace/Entities.jsx` | `.../entities` | Entity list and detail | ✅ |
 | `pages/workspace/AIChat.jsx` | `.../chat` | AI chat interface | ✅ |
 | `pages/workspace/Transactions.jsx` | `.../transactions` | Fraud cap only — financial transactions | ✅ |
 | `pages/workspace/Findings.jsx` | `.../findings` | Fraud cap only — signal findings | ✅ |
 | `pages/workspace/Leads.jsx` | `.../leads` | Fraud cap only — investigation leads | ✅ |
-| `pages/workspace/DocumentViewer.jsx` | `.../documents/:id` | **Phase 2** — PDF viewer + extraction field panel side by side. File served from `GET /documents/{id}/file`. | 🔲 Phase 2 |
+| `pages/workspace/DocumentViewer.jsx` | `.../documents/:id` | Split-pane PDF viewer (65%) + extracted fields panel (35%). react-pdf renders in-browser, no plugin needed. Status-aware fields panel surfaces extraction_error on failure. | ✅ |
 | `pages/workspace/ExtractionReview.jsx` | `.../review` | **Phase 2** — Review queue for low-confidence fields. Requires document viewer. | 🔲 Phase 2 |
 | `pages/workspace/AuditLog.jsx` | `.../audit` | **Phase 2** — Chronological immutable log per workspace. | 🔲 Phase 2 |
 
@@ -246,7 +247,7 @@ All 11 schemas are `vertical = "general"` — available in every workspace regar
 |---|---|---|
 | `auth.js` | POST /auth/login, /auth/register | ✅ |
 | `workspaces.js` | CRUD /workspaces | ✅ |
-| `documents.js` | POST + GET /documents | ✅ |
+| `documents.js` | POST + GET /documents, getDocumentFile | ✅ |
 | `entities.js` | CRUD /entities | ✅ |
 | `findings.js` | CRUD /findings | ✅ |
 | `transactions.js` | CRUD /transactions | ✅ |
@@ -379,3 +380,4 @@ Investigation workflow + referral export
 | 2026-05-26 | Tool-use chat agent. Added agent_tools.py (6 tools + dispatcher), agent_registry.py (schemas + vertical registry). Rewrote ai_engine.py with native Anthropic tool-use loop — 10-round cap, synthesis pass, per-call logging, is_error flag on failures. Added migration a3b8e1f92d44 (is_deleted on documents). Router fix: message save timing. 67/67 tests. |
 | 2026-05-26 (evening) | Core hardening + IDP expansion architecture. Core: CORS config, file size limit, soft-delete on list_documents, workspace null guard. Expansion: parse_strategy + default_confidence_threshold on DocumentSchema (migrations d4e9f2a + c8dd75f); detect_document_type and generate_standardized_name load types from DB; pipeline routes on schema.parse_strategy; is_parseable_xml removed. Schema cleanup: OBITUARY → vertical=fraud; SR signal codes and fraud commentary removed from 9 general schemas. 75/75 tests. |
 | 2026-05-28 | Frontend vertical separation: WorkspaceContext; vertical-aware sidebar and overview; workspace creation modal with vertical picker. Schema Library: GET /schemas/ endpoint, SchemaLibrary page, AppShell nav link, schemas API client, vite proxy. Full schema cleanup: all case-specific content removed from all 11 schemas in seed file and live DB; seed functions converted to upserts. Frontend inventory section added. Roadmap updated with document viewer (Phase 2A next), extraction review UI, Engine UI section (real-time status, export, audit log), multi-user in Phase 4A. |
+| 2026-05-28 | Document viewer complete (Phase 2A). GET /documents/{id}/file endpoint. DocumentList extracted. DocumentViewer with react-pdf (10.x), 65/35 split, status-aware fields panel, blob URL lifecycle management. 77/77 tests. |
