@@ -9,6 +9,7 @@ export function WorkspaceProvider({ children }) {
   const [workspace, setWorkspace] = useState(null)
 
   useEffect(() => {
+    if (!workspaceId) return
     getWorkspace(workspaceId).then((res) => setWorkspace(res.data))
   }, [workspaceId])
 
