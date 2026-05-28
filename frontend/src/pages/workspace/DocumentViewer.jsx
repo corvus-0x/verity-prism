@@ -3,6 +3,14 @@ import { useParams, Link } from 'react-router-dom'
 import { listDocuments, getDocument, getExtractions, getDocumentFile } from '../../api/documents'
 import DocumentList from '../../components/documents/DocumentList'
 import LoadingSpinner from '../../components/shared/LoadingSpinner'
+import { Document, Page, pdfjs } from 'react-pdf'
+import 'react-pdf/dist/Page/AnnotationLayer.css'
+import 'react-pdf/dist/Page/TextLayer.css'
+
+pdfjs.GlobalWorkerOptions.workerSrc = new URL(
+  'pdfjs-dist/build/pdf.worker.min.mjs',
+  import.meta.url,
+).toString()
 
 export default function DocumentViewer() {
   const { workspaceId, documentId } = useParams()
@@ -147,8 +155,25 @@ export default function DocumentViewer() {
                   ← Back to documents
                 </Link>
               </div>
+            ) : fileUrl ? (
+              <Document
+                file={fileUrl}
+                onLoadSuccess={({ numPages }) => {
+                  setTotalPages(numPages)
+                  setCurrentPage(1)
+                }}
+                loading={<LoadingSpinner />}
+                error={<p className="text-slate-400 text-sm p-4">Could not load PDF.</p>}
+              >
+                <Page
+                  pageNumber={currentPage}
+                  renderTextLayer={false}
+                  renderAnnotationLayer={false}
+                  className="shadow-2xl"
+                />
+              </Document>
             ) : (
-              <p className="text-slate-600 text-sm">PDF renders here — wired in Task 5</p>
+              <LoadingSpinner />
             )}
           </div>
 
