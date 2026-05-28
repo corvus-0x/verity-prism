@@ -126,7 +126,7 @@ Shared schemas (PARCEL-RECORD, for example) can belong to multiple verticals. Th
 
 ## Phase 2 — IDP Engine Capabilities
 **What it is:** The engine gets smarter and more connected. No vertical logic — these capabilities serve all verticals equally.  
-**Status:** In progress — 2C tool-use chat agent complete. Document viewer next; extraction eval + observability follow; connectors + signal framework after.
+**Status:** In progress — 2A tool-use chat agent + document viewer complete. Next: extraction evaluation loop + observability layer. 2B signal framework and 2C UI completeness follow.
 
 ### 2A — Intelligence Layer: Agentic Hardening + Document Viewer
 The engine's intelligence layer is functional. These builds make it measurable and trustworthy, and give it a human interface for reviewing what it produces. **Must complete before connectors or signal detection** — connectors bring more documents; signal detection reads extracted fields. Both are only as good as extraction is reliable. Measure reliability first.
@@ -134,13 +134,13 @@ The engine's intelligence layer is functional. These builds make it measurable a
 **Tool-use chat agent** ✅ DONE (2026-05-26):  
 Replaced static context dump with native Anthropic tool-use loop. Claude calls 6 read-only tools to pull exactly what it needs. 10-round cap with synthesis pass fallback. Workspace-scoped dispatcher.
 
-**Document viewer** 🔲 Next build:  
-Split-pane view: source document (PDF rendered in-browser) on the left, extracted fields on the right. Page navigation. Field-level linking — clicking a field highlights where it was found in the document. This is the human interface for trusting and correcting extraction output. Every IDP product requires it. Also the primary demo surface — seeing the document and its structured output side by side is the moment the platform clicks for a new user.  
-*Architecture:* PDF served from the backend via a new `GET /workspaces/{id}/documents/{doc_id}/file` endpoint. Frontend renders with a PDF library (pdf.js or react-pdf). Field panel reuses the existing `ExtractionTable` component.  
-*Spec:* `docs/superpowers/specs/` (to be written)
+**Document viewer** ✅ DONE (2026-05-28):  
+Split-pane view: PDF rendered in-browser (react-pdf, pdf.js bundled — no plugin required) on the left, extracted fields on the right. 65/35 split. Route-based navigation — each document has its own URL at `.../documents/:id`. Document list stays visible with selected doc highlighted. Status-aware fields panel: surfaces `extraction_error` text on failure, informative messages for pending/no_schema. File served from `GET /documents/{id}/file` behind JWT auth. Blob URL lifecycle managed to prevent memory leaks on navigation.  
+*Spec:* `docs/superpowers/specs/2026-05-28-document-viewer-design.md`  
+**Field-level linking deferred** — clicking a field to highlight its location in the PDF is the next pass after the extraction evaluator ships (requires text layer, built on existing react-pdf foundation).
 
-**Extraction evaluation loop** 🔲 Build alongside document viewer:  
-After `extract_fields()` runs, an evaluator pass checks confidence scores, retries low-confidence fields with a different prompt strategy, and escalates to a human-review lead if retry fails. Architecture: spec → extract → evaluate → retry/escalate. Produces the first real data on where Claude extraction fails systematically — which field types fail, which document types fail, which schemas need work.  
+**Extraction evaluation loop** 🔲 Next build:  
+After `extract_fields()` runs, an evaluator pass checks confidence scores, retries low-confidence fields with a different prompt strategy, and escalates to a human-review lead if retry fails. Architecture: spec → extract → evaluate → retry/escalate. Produces the first real data on where Claude extraction fails systematically — which field types fail, which document types fail, which schemas need work. Document viewer is the prerequisite (✅ done).  
 *Spec:* `docs/superpowers/specs/` (to be written)
 
 **Extraction review UI** 🔲 Frontend companion to evaluation loop:  
@@ -325,6 +325,6 @@ The fraud vertical was built first because it's the hardest case. If the engine 
 |---|---|
 | Core Hardening | ✅ CORS configurable, file size bounded, soft-delete consistent, Alembic verified on fresh DB. |
 | Phase 1 | ✅ All backend tasks pass. Frontend working. Documents flow through full pipeline end-to-end. |
-| Phase 2 | Document viewer live with field-level linking. Extraction eval loop running with retry/escalate. Observability logging all Claude calls with confidence distribution. Real-time extraction status via SSE. Export working for documents and workspaces. Audit log UI live. Signal framework evaluates rules without code changes. Three connectors integrated. |
+| Phase 2 | ✅ Document viewer live (field-level linking deferred to follow-on). Extraction eval loop running with retry/escalate. Observability logging all Claude calls with confidence distribution. Real-time extraction status via SSE. Export working for documents and workspaces. Audit log UI live. Signal framework evaluates rules without code changes. Three connectors integrated. |
 | Phase 3 | **No vertical work starts until:** extraction reliability is measurable (2A complete) and at least one full case has run with observable confidence metrics. Fraud vertical installs as a complete package. Insurance vertical processes a real claim end-to-end. Both run on the same engine with no engine modifications. |
 | Phase 4 | Multi-user orgs with role-based access. Platform runs on AWS. Two paying clients in different verticals. New vertical takes one week to install, not one month. |
