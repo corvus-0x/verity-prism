@@ -1,4 +1,6 @@
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, UploadFile, File
+from fastapi.responses import FileResponse
+from pathlib import Path
 from sqlalchemy.orm import Session
 from app.config import settings
 from app.database import get_db
@@ -8,6 +10,7 @@ from app.models.user import User
 from app.schemas.document import DocumentOut, ExtractionOut
 from app.services.auth import get_current_user
 from app.services.document_pipeline import create_pending_document, process_upload_background
+from app.services import audit
 from app.routers.workspaces import get_workspace_or_404
 
 router = APIRouter(prefix="/workspaces/{workspace_id}", tags=["documents"])
@@ -102,3 +105,55 @@ def list_extractions(
     return db.query(DocumentExtraction).filter(
         DocumentExtraction.document_id == document_id
     ).all()
+
+
+_MEDIA_TYPES = {
+    ".pdf": "application/pdf",
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".tiff": "image/tiff",
+    ".tif": "image/tiff",
+    ".xml": "application/xml",
+}
+
+
+@router.get("/documents/{document_id}/file")
+def get_document_file(
+    workspace_id: str,
+    document_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Serve the raw source file for a document."""
+    get_workspace_or_404(workspace_id, user, db)
+    doc = db.query(Document).filter(
+        Document.id == document_id,
+        Document.workspace_id == workspace_id,
+        Document.is_deleted == False,
+    ).first()
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    file_path = Path(doc.file_path)
+    if not file_path.exists():
+        audit.log(
+            db,
+            action="document_file_missing",
+            workspace_id=workspace_id,
+            entity_type="document",
+            entity_id=document_id,
+        )
+        raise HTTPException(status_code=404, detail="File not found on disk")
+
+    audit.log(
+        db,
+        action="document_file_accessed",
+        user_id=user.id,
+        workspace_id=workspace_id,
+        entity_type="document",
+        entity_id=document_id,
+    )
+
+    media_type = _MEDIA_TYPES.get(file_path.suffix.lower(), "application/octet-stream")
+    return FileResponse(str(file_path), media_type=media_type)

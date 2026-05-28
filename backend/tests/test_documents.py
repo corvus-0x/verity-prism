@@ -62,3 +62,29 @@ def test_empty_file_returns_400(client, auth_headers, workspace_id):
         headers=auth_headers,
     )
     assert response.status_code == 400
+
+
+def test_get_document_file(client, auth_headers, workspace_id):
+    content = b"%PDF-1.4 test content"
+    upload_response = client.post(
+        f"/workspaces/{workspace_id}/documents",
+        files={"file": ("test.pdf", io.BytesIO(content), "application/pdf")},
+        headers=auth_headers,
+    )
+    doc_id = upload_response.json()["id"]
+
+    response = client.get(
+        f"/workspaces/{workspace_id}/documents/{doc_id}/file",
+        headers=auth_headers,
+    )
+    assert response.status_code == 200
+    assert "application/pdf" in response.headers["content-type"]
+    assert response.content == content
+
+
+def test_get_document_file_not_found(client, auth_headers, workspace_id):
+    response = client.get(
+        f"/workspaces/{workspace_id}/documents/nonexistent-id/file",
+        headers=auth_headers,
+    )
+    assert response.status_code == 404
