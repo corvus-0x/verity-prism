@@ -1,47 +1,118 @@
 # Verity Prism
 
-An intelligent document processing platform that refracts documents into every component they contain.
+An intelligent document processing (IDP) platform that ingests documents, extracts every data point into structured database fields, and makes everything searchable via plain English queries.
+
+Fraud investigation is the proving ground. The same engine runs insurance, legal, and compliance verticals without modification.
 
 ---
 
-## What It Does
+## What Works Now
 
-Verity Prism ingests documents in any format — PDFs, images, spreadsheets, XML — and automatically extracts every meaningful data point into structured, individually searchable fields. Every name, date, dollar amount, address, and ID number becomes its own record.
+**Document ingestion pipeline**
+- Upload PDF, image, or XML → SHA-256 hash (evidence lock) → OCR → type detection → field extraction → full-text search index
+- Background processing: upload returns immediately, pipeline runs async
+- 11 document type schemas: DEED, 990, SOS-FILING, UCC, PARCEL-RECORD, BUILDING-PERMIT, AUDIT-REPORT, SCREENSHOT, OBITUARY, PLAT, CORRESPONDENCE
+- XML direct parse for structured files (IRS 990 XML → 1.0 confidence, no OCR needed)
+- Unknown document types auto-create investigation leads instead of silently failing
 
-Search across everything in plain English. No SQL. No technical knowledge required.
+**Extraction engine**
+- Schema-driven: adding a new document type is one database row — no code change
+- One row per extracted field per document (`document_extractions` table) — every field individually queryable
+- Confidence scores per field; extraction errors stored and surfaced in the UI
+- Vertical-aware schema lookup: fraud-specific schemas only activate in fraud workspaces
 
-Built to work across industries. The fraud investigation vertical is the proving ground. Insurance, legal, and compliance follow the same pattern.
+**Document viewer**
+- Split-pane view: source PDF (65%) + extracted fields panel (35%)
+- react-pdf renders in-browser — no plugin or external viewer required
+- Each document has its own URL; document list stays visible with selected doc highlighted
+- Status-aware fields panel: surfaces `extraction_error` text on extraction failure
 
-## Status
+**NLP search**
+- Plain English queries → PostgreSQL full-text search + field-level filters on `document_extractions`
+- Numeric guard prevents CAST crashes on non-numeric values
+- No SQL required
 
-**Planning phase complete. Build in progress.**
+**Agentic AI chat**
+- Native Anthropic tool-use loop (up to 10 rounds, synthesis pass fallback)
+- 6 workspace-scoped read-only tools: `search_documents`, `get_entity`, `query_extractions`, `get_transactions`, `get_findings`, `get_leads`
+- `workspace_id` injected by dispatcher — Claude cannot access data outside the current workspace
+- Vertical tool registry: fraud workspaces get additional tools; engine tools ship to all verticals
 
-The architecture is designed. The database schema is defined. Implementation begins now.
+**Platform**
+- JWT authentication, workspace isolation, role-aware access
+- Immutable audit log (PostgreSQL trigger blocks UPDATE/DELETE at DB level)
+- Soft deletes everywhere — nothing is permanently removed
+- Schema library: browse all active document types, field definitions, parse strategies at `/schemas`
+- Vertical-aware UI: General workspaces show engine nav; Fraud workspaces add Transactions, Findings, Leads
 
-Follow the build: [From Case to Code](https://corvus-0x.hashnode.dev)
+**Test coverage**
+- 80 tests, all passing — auth, workspaces, documents, extractions, entities, findings, transactions, leads, notes, search, AI chat, agentic tool loop
 
-## Stack
+---
 
-- **Backend** — Python, FastAPI, PostgreSQL
-- **Frontend** — React, Vite, Tailwind CSS
-- **AI** — Claude API (document extraction, NLP search, chat)
-- **Infrastructure** — Docker, AWS
+## Quick Start
+
+```bash
+# Copy and fill in your Anthropic API key
+cp backend/.env.example backend/.env
+
+# Start everything
+docker-compose up --build
+```
+
+| Service | URL |
+|---|---|
+| Frontend | http://localhost:5173 |
+| Backend API | http://localhost:8000 |
+| API docs | http://localhost:8000/docs |
+
+**Seed document schemas** (required on first run):
+```bash
+docker-compose exec backend python -m app.seeds.document_schemas
+```
+
+---
 
 ## Architecture
 
-Five layers:
+```
+Documents → Ingestion Pipeline → Extraction Engine → Knowledge Base → Verticals → UI
+              (hash, OCR,          (type detect,        (PostgreSQL,    (fraud,
+               store)               field extract)       FTS, audit)     insurance, ...)
+```
 
-1. **Ingestion** — SHA-256 hash first (evidence lock), then store
-2. **Extraction** — OCR → document type detection → AI field extraction → one row per field
-3. **Knowledge base** — PostgreSQL with full-text search and field-level indexes
-4. **Vertical logic** — fraud investigation features sit here, not in the core
-5. **UI** — plain English search bar as the primary interface
+**Engine vs. cap:** The engine ships to every customer. A vertical cap installs on top — schema sets, signal definitions, workflow config, export formats. The fraud cap never ships to an insurance customer. Adding a new vertical means writing a cap, not modifying the engine.
+
+**`document_extractions` is the central table.** One row per extracted field per document. A deed with 64 fields = 64 rows. Every data point is individually queryable without JSON parsing.
+
+**`document_schemas` drives everything.** `parse_strategy` (`claude` or `xml_direct`) tells the pipeline how to extract. `vertical` scopes a schema to a specific vertical or `general` for all. No code change to add a new document type.
+
+---
+
+## Stack
+
+| Layer | Technology |
+|---|---|
+| Frontend | React 18 + Vite + Tailwind CSS |
+| Backend | Python 3.12 + FastAPI |
+| Database | PostgreSQL 16 |
+| ORM + Migrations | SQLAlchemy 2.0 + Alembic (5 migrations) |
+| AI | Anthropic Claude API (claude-sonnet-4-6) |
+| OCR | PyMuPDF + pytesseract |
+| Auth | JWT (python-jose + passlib/bcrypt) |
+| PDF rendering | react-pdf (pdf.js) |
+| Containers | Docker + docker-compose |
+
+---
 
 ## Documentation
 
+- `docs/roadmap.md` — phase status and what's next
+- `docs/build-inventory.md` — every component, what it does, what it connects to
 - `docs/superpowers/specs/` — design specifications
 - `docs/superpowers/plans/` — implementation plans
-- `docs/blog/` — blog post drafts
+
+Build journal: [From Case to Code](https://corvus-0x.hashnode.dev) — writing down what was built and why.
 
 ---
 
