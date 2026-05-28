@@ -84,6 +84,9 @@ go-learning/
 # Visual companion brainstorming session files
 .superpowers/
 
+# Playwright MCP screenshots and snapshots from browser testing
+.playwright-mcp/
+
 # macOS folder metadata
 .DS_Store
 
