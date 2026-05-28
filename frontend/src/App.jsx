@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import Login from './pages/Login'
 import WorkspacesHome from './pages/WorkspacesHome'
+import SchemaLibrary from './pages/SchemaLibrary'
 import WorkspaceLayout from './pages/workspace/WorkspaceLayout'
 import Overview from './pages/workspace/Overview'
 import Documents from './pages/workspace/Documents'
@@ -25,6 +26,9 @@ export default function App() {
         <Route path="/login" element={<Login />} />
         <Route path="/workspaces" element={
           <ProtectedRoute><WorkspacesHome /></ProtectedRoute>
+        } />
+        <Route path="/schemas" element={
+          <ProtectedRoute><SchemaLibrary /></ProtectedRoute>
         } />
         <Route path="/workspaces/:workspaceId" element={
           <ProtectedRoute><WorkspaceLayout /></ProtectedRoute>

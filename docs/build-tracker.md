@@ -55,6 +55,36 @@
 
 ---
 
+## Engine UI + Platform Layer — Status (2026-05-28)
+
+| Task | What It Builds | Status |
+|------|---------------|--------|
+| Frontend vertical separation | WorkspaceContext fetches workspace once at layout level; WorkspaceSidebar driven by workspace.vertical — engine nav always, cap nav only for matching vertical; Overview stat cards adapt to vertical; VERTICAL_SECTIONS map makes adding new vertical nav a one-line change | ✅ Done |
+| Workspace creation modal | Replaced browser prompt() with inline form — captures name + vertical (General / Fraud Investigation / Insurance); General is default; backend vertical field corrected from null to "general" | ✅ Done |
+| Schema Library — backend | GET /schemas/ endpoint in new schemas.py router; registered in main.py; returns all active schemas with field_count and full field list; /schemas proxy added to vite.config.js | ✅ Done |
+| Schema Library — frontend | SchemaLibrary.jsx at /schemas; cards grouped by vertical; expandable field list (name/type/description/required); "Schema Library" nav link in AppShell header; schemas.js API client | ✅ Done |
+| Schema cleanup — full pass | All case-specific content removed from all 11 schemas (county names, person names, org names, signal codes); seed functions converted from skip-if-exists to upsert — re-running seed updates live DB | ✅ Done |
+
+**Tests passing:** 75/75 (no backend changes requiring new tests)
+
+---
+
+## Phase 2 — Next Builds
+
+| Task | What It Builds | Phase | Status |
+|------|---------------|-------|--------|
+| Document viewer | Split-pane: PDF rendered in-browser (left) + extraction fields (right). New endpoint: GET /documents/{id}/file. Field-level linking. Prerequisite for extraction review UI. | 2A | 🔲 Next |
+| Extraction evaluation loop | Post-extract evaluator: confidence check → retry with alternate prompt → escalate to human review if retry fails. First systematic data on where extraction fails. | 2A | 🔲 |
+| Extraction review UI | Review queue for low-confidence fields. Reviewer sees document viewer + flagged fields. Accept or correct. Requires document viewer. | 2A | 🔲 |
+| Observability layer | Log every Claude call: model, latency, tokens, confidence distribution per doc type. Extraction evaluator writes to this. | 2A | 🔲 |
+| Real-time extraction status | SSE on GET /documents/{id}/status/stream — pushes pending→processing→complete to frontend. Document list updates live. | 2C | 🔲 |
+| Data export | GET /documents/{id}/extractions.csv + .json; GET /workspaces/{id}/extractions.csv. Generic engine export — vertical-specific formats stay in the cap. | 2C | 🔲 |
+| Audit log UI | Read-only chronological log per workspace. Surfaces the existing immutable audit_log table. Compliance selling point. | 2C | 🔲 |
+| Signal detection framework | signal_rules table + rule evaluator against document_extractions. Framework only — no specific rules (those are vertical cap content). | 2B | 🔲 |
+| Data connectors | irs_teos.py, ohio_sos.py, county_auditor.py, building_permits.py — each fetches public data, hands to pipeline. | 2D | 🔲 |
+
+---
+
 ## Known Issues / Decisions
 
 | Date | Issue | Resolution |
@@ -89,3 +119,4 @@
 | 2026-05-20 | Live demo hardening: 3 production bugs found and fixed — JSON fence stripping (shared utility), key name normalization (belt+suspenders), batched extraction (BATCH_SIZE=40, ends token truncation). Real deed: 41 fields extracted. NLP search and AI chat confirmed working against live extracted data. |
 | 2026-05-26 | Tool-use chat agent complete. Replaced static context dump with native Anthropic tool-use agentic loop (10-round cap, synthesis pass). 3 new service files: agent_tools.py (6 read-only tools + dispatcher), agent_registry.py (vertical registry), ai_engine.py rewritten. Router fix: user message saved after chat() returns to prevent duplicate history. 5 bugs caught in review: get_leads wrong column, Decimal zero falsy check, duplicate message timing, missing filename/doc_type in query_extractions, missing is_error flag. 67/67 tests. |
 | 2026-05-26 (evening) | IDP core hardening + expansion architecture. Core fixes: CORS config, file size limit, soft-delete on list_documents, workspace null guard, Alembic verified on fresh DB. Expansion: parse_strategy + default_confidence_threshold on DocumentSchema (migration + seeds); KNOWN_DOCUMENT_TYPES removed — detect_document_type now queries DB; pipeline routes on schema.parse_strategy not type strings; naming.py loads doc types from DB; is_parseable_xml removed (dead code). Schema cleanup: OBITUARY moved to vertical="fraud" (migration + seed); SR signal codes and fraud investigation commentary removed from 9 general schema descriptions and extraction prompts. 75/75 tests. |
+| 2026-05-28 | Engine UI + platform layer. Frontend vertical separation: WorkspaceContext, vertical-aware sidebar and overview, workspace creation modal with vertical picker (replaces prompt()). Schema Library: GET /schemas/ endpoint, SchemaLibrary page at /schemas, AppShell nav link, schemas API client, vite proxy. Full schema cleanup: case-specific content (county names, person names, org names, signal codes) scrubbed from all 11 schemas in seed file and live DB; seed functions converted to upserts. Roadmap + build inventory + build tracker updated. Phase 2 next builds: document viewer (next), extraction eval, review UI, real-time status, export, audit log UI, signal framework, connectors. 75/75 tests. |

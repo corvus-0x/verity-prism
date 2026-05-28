@@ -8,7 +8,7 @@ The database throws an error when you try to change history.
 
 Not a validation failure. Not a soft warning. A hard stop with a message I wrote myself: *audit_log rows are immutable — they cannot be modified or deleted.* I triggered it intentionally this session to confirm it holds. It holds.
 
-That's the design working. Everything else this session was making sure the rest of the engine deserved that standard.
+Everything else this session was making sure the rest of the engine deserved that standard.
 
 ---
 
@@ -32,7 +32,9 @@ Search: a plain-English query goes to Claude with the list of field names extrac
 
 Chat: Claude gets a text block containing every entity, every transaction, every finding, every open lead, every document name in the workspace. That block becomes the system prompt. The instruction says: answer from the data only, be precise with numbers and dates, when you see something uninvestigated flag it as a next lead.
 
-The quality of the answers is proportional to the quality of the workspace data. An empty workspace gets generic answers. A workspace with uploaded documents, created entities, recorded transactions, and confirmed findings gets specific answers that trace back to exact fields. That's the design. The chat exists because the extraction had to be right first.
+Ask it who transferred the property on a deed. It answers: the grantor, the grantee, the address, the attorney who prepared the instrument, and the date. From a scanned image. Nothing typed in manually. The quality of the answer is the quality of the extraction — an empty workspace gets generic answers, a full one traces back to exact fields.
+
+That's the design. The chat exists because the extraction had to be right first.
 
 ---
 
@@ -46,12 +48,12 @@ The practical consequence: all eleven document schemas are now tagged "general."
 
 Thirty-five tests passing. Phase 1 backend complete.
 
-The way I know it's complete: I uploaded a real deed, waited thirty seconds for the pipeline, and asked the system who transferred the property. It named the grantor, the grantee, the address, the attorney who prepared the instrument, and the date. From a scanned image. Without any of that data being typed in manually.
-
-The audit log records that upload as a permanent event. You can't change it. That's the bar the trigger set. The rest of the session was earning it.
+The way I know it's complete: I uploaded a real deed, waited thirty seconds for the pipeline, and asked the system who transferred the property. It answered. The audit log records that upload as a permanent event. You can't change it. That's the bar the trigger set. The rest of the session was earning it.
 
 ---
 
 *From Case to Code is a build journal. I'm building Verity Prism from scratch and writing down what I'm doing and why. If you've ever been buried in documents knowing the answer was in there somewhere — you know why this exists.*
+
+*Verity Prism is a rebuild of an earlier project — the origin story and the data model decision that led here are in posts 1 and 2.*
 
 *Follow along: `-corvus` on Hashnode.*

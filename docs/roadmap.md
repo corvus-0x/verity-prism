@@ -1,6 +1,6 @@
 # Verity Prism — Product Roadmap
 
-**Last updated:** 2026-05-26 (night)  
+**Last updated:** 2026-05-28  
 **Core principle:** Verity Prism is an Intelligent Document Processing platform first. Verticals are plug-and-play caps that tell the platform what to care about. The engine ships to every customer. The cap ships only to the relevant vertical.
 
 ---
@@ -114,6 +114,8 @@ Shared schemas (PARCEL-RECORD, for example) can belong to multiple verticals. Th
 - Pipeline routes on `schema.parse_strategy` not type strings — `is_parseable_xml` deleted
 - All 11 seeds include `parse_strategy` and `default_confidence_threshold`; OBITUARY moved to `vertical="fraud"`
 - SR signal codes and fraud investigation commentary removed from 9 general schema descriptions and extraction prompts
+- **Frontend vertical separation** (2026-05-28): sidebar and overview now driven by `workspace.vertical` — General workspaces show engine-only nav; Fraud workspaces add Transactions/Findings/Leads. Workspace creation modal replaced `prompt()` with a proper form that captures name and vertical. `WorkspaceContext` provides workspace data to all children without redundant fetches.
+- **Schema Library** (2026-05-28): platform-level page at `/schemas` showing all active document types grouped by vertical — field count, parse strategy, confidence threshold, and expandable full field list with name/type/description/required. Accessible from global header nav. Backend `GET /schemas/` endpoint added. All case-specific content (county names, person names, org names, signal codes) scrubbed from all 11 schemas in seed file and live DB. Seed functions now do upserts — re-running updates existing records.
 
 ### Deferred (not blocking Phase 2, but tracked)
 - **Three Anthropic client instances** (`extraction_engine.py`, `search_service.py`, `ai_engine.py`) — consolidate into shared `app/services/claude_client.py` before adding retry logic or spend tracking
@@ -124,17 +126,25 @@ Shared schemas (PARCEL-RECORD, for example) can belong to multiple verticals. Th
 
 ## Phase 2 — IDP Engine Capabilities
 **What it is:** The engine gets smarter and more connected. No vertical logic — these capabilities serve all verticals equally.  
-**Status:** In progress — 2C tool-use chat agent complete. Extraction eval + observability next; connectors + signal framework after.
+**Status:** In progress — 2C tool-use chat agent complete. Document viewer next; extraction eval + observability follow; connectors + signal framework after.
 
-### 2A — Intelligence Layer: Agentic Hardening
-The engine's intelligence layer is functional. These builds make it measurable and trustworthy. **Must complete before connectors or signal detection** — connectors bring more documents; signal detection reads extracted fields. Both are only as good as extraction is reliable. Measure reliability first.
+### 2A — Intelligence Layer: Agentic Hardening + Document Viewer
+The engine's intelligence layer is functional. These builds make it measurable and trustworthy, and give it a human interface for reviewing what it produces. **Must complete before connectors or signal detection** — connectors bring more documents; signal detection reads extracted fields. Both are only as good as extraction is reliable. Measure reliability first.
 
 **Tool-use chat agent** ✅ DONE (2026-05-26):  
 Replaced static context dump with native Anthropic tool-use loop. Claude calls 6 read-only tools to pull exactly what it needs. 10-round cap with synthesis pass fallback. Workspace-scoped dispatcher.
 
-**Extraction evaluation loop** 🔲 Next build:  
+**Document viewer** 🔲 Next build:  
+Split-pane view: source document (PDF rendered in-browser) on the left, extracted fields on the right. Page navigation. Field-level linking — clicking a field highlights where it was found in the document. This is the human interface for trusting and correcting extraction output. Every IDP product requires it. Also the primary demo surface — seeing the document and its structured output side by side is the moment the platform clicks for a new user.  
+*Architecture:* PDF served from the backend via a new `GET /workspaces/{id}/documents/{doc_id}/file` endpoint. Frontend renders with a PDF library (pdf.js or react-pdf). Field panel reuses the existing `ExtractionTable` component.  
+*Spec:* `docs/superpowers/specs/` (to be written)
+
+**Extraction evaluation loop** 🔲 Build alongside document viewer:  
 After `extract_fields()` runs, an evaluator pass checks confidence scores, retries low-confidence fields with a different prompt strategy, and escalates to a human-review lead if retry fails. Architecture: spec → extract → evaluate → retry/escalate. Produces the first real data on where Claude extraction fails systematically — which field types fail, which document types fail, which schemas need work.  
 *Spec:* `docs/superpowers/specs/` (to be written)
+
+**Extraction review UI** 🔲 Frontend companion to evaluation loop:  
+Review queue showing documents with fields below confidence threshold. Reviewer sees the document viewer on one side and the flagged fields on the other. Accept or correct each field. Corrections feed back to the observability layer and inform schema improvements. Cannot build this without the document viewer — the viewer is the prerequisite.
 
 **Observability layer** 🔲 Build alongside extraction eval:  
 Log every Claude call with model, latency, token counts, confidence distribution per document type, which fields fail most often. Not for cost — for understanding where the engine breaks. The extraction evaluator writes to this. Schema improvements come from reading it.  
@@ -157,8 +167,20 @@ The engine gains the ability to define and evaluate signals. The signals themsel
 
 **What the framework does NOT contain:** Any specific rule definitions. Those live in the vertical cap.
 
-### 2C — Data Connectors
-Public data sources feed directly into the pipeline. Any vertical can use any connector. **Can run parallel to 2B** — connectors are input to the pipeline, not dependent on the intelligence layer.
+### 2C — Engine UI Completeness
+These are engine-level UI capabilities that any vertical needs. Not vertical-specific — they ship with the engine and are available in every workspace.
+
+**Real-time extraction status** 🔲:  
+Currently the pipeline runs in the background with no feedback until the user polls. Server-sent events (SSE) on `GET /workspaces/{id}/documents/{doc_id}/status/stream` push `pending → processing → complete/failed` to the frontend in real time. The document list updates live without refresh. Pairs with the document viewer — the viewer opens when extraction completes.
+
+**Data export** 🔲:  
+`GET /workspaces/{id}/documents/{doc_id}/extractions.csv` and `/extractions.json` — download all extracted fields for a document as structured data. Also workspace-level export: all extractions across all documents in a workspace as a flat CSV. This is asked for in every evaluation. Generic export is engine-level; vertical-specific export formats (AG referral package, claims API push) remain in the vertical cap.
+
+**Audit log UI** 🔲:  
+The audit log is immutable at the DB level (PostgreSQL trigger). Surfacing it in the UI makes it a selling point. A simple chronological list per workspace: who did what, when, on which document. Read-only. Compliance language: "every action on every document is logged and tamper-proof."
+
+### 2D — Data Connectors
+Public data sources feed directly into the pipeline. Any vertical can use any connector. **Can run parallel to 2B** — connectors are input to the pipeline, not dependent on the intelligence layer. Can also run parallel to 2C.
 
 **Architecture:** `app/services/connectors/` — each connector fetches data, converts to a file, hands to the pipeline. The connector doesn't know which vertical is using it.
 
@@ -249,10 +271,20 @@ Structured PDF report for manual review
 **What it is:** Production infrastructure. The platform handles multiple clients, multiple verticals, at scale.  
 **Trigger:** Phase 3 complete. First paying customer in each of two verticals.
 
-### 4A — AWS Deployment
+### 4A — Multi-User and Organizations
+Currently a single-account system. Phase 4A adds the user model needed for team sales and multiple clients.
+
+- **Organizations** — a top-level tenant. Workspaces belong to an org, not a user.
+- **User roles** — Admin (manage users, billing), Analyst (full workspace access), Viewer (read-only). Role-based access enforced at the API level.
+- **Invitations** — invite by email, join an org, scoped to a vertical if needed.
+- **Workspace isolation** — one org cannot see another org's workspaces, documents, or extracted data.
+
+*Trigger:* First team sale. A single investigator or developer can use the platform without this. A firm with multiple analysts cannot.
+
+### 4B — AWS Deployment
 Docker Compose → AWS ECS/EKS. PostgreSQL → RDS. Files → S3. Background jobs → SQS. CDN for frontend.
 
-### 4B — Additional Vertical Caps
+### 4C — Additional Vertical Caps
 Each new vertical is a schema set + signal definitions + workflow config + export format. The engine doesn't change.
 
 **Candidates:**
@@ -263,7 +295,7 @@ Each new vertical is a schema set + signal definitions + workflow config + expor
 
 **Time to add a new vertical:** With the Phase 2 framework in place, a new vertical should take weeks, not months. Schema derivation (one session per document type, as established in Phase 1) + signal definitions + workflow config.
 
-### 4C — Vertical Marketplace
+### 4D — Vertical Marketplace
 Long-term: verticals become installable packages. A law firm buys the engine + legal cap. A title company buys the engine + real estate cap. An insurer buys the engine + insurance cap. They don't see each other's logic.
 
 ---
@@ -293,7 +325,6 @@ The fraud vertical was built first because it's the hardest case. If the engine 
 |---|---|
 | Core Hardening | ✅ CORS configurable, file size bounded, soft-delete consistent, Alembic verified on fresh DB. |
 | Phase 1 | ✅ All backend tasks pass. Frontend working. Documents flow through full pipeline end-to-end. |
-| Phase 2 | Extraction eval loop running with retry/escalate. Observability logging all Claude calls with confidence distribution. Signal framework evaluates rules without code changes. Three connectors integrated. |
+| Phase 2 | Document viewer live with field-level linking. Extraction eval loop running with retry/escalate. Observability logging all Claude calls with confidence distribution. Real-time extraction status via SSE. Export working for documents and workspaces. Audit log UI live. Signal framework evaluates rules without code changes. Three connectors integrated. |
 | Phase 3 | **No vertical work starts until:** extraction reliability is measurable (2A complete) and at least one full case has run with observable confidence metrics. Fraud vertical installs as a complete package. Insurance vertical processes a real claim end-to-end. Both run on the same engine with no engine modifications. |
-| Phase 3 | Fraud vertical installs as a complete package. Insurance vertical processes a real claim end-to-end. Both verticals run on the same engine with no engine modifications. |
-| Phase 4 | Platform runs on AWS. Two paying clients in different verticals. New vertical takes one week to install, not one month. |
+| Phase 4 | Multi-user orgs with role-based access. Platform runs on AWS. Two paying clients in different verticals. New vertical takes one week to install, not one month. |

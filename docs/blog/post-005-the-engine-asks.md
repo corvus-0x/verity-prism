@@ -62,4 +62,6 @@ That's next.
 
 *From Case to Code is a build journal. I'm building Verity Prism from scratch and writing down what I'm doing and why. If you've ever been buried in documents knowing the answer was in there somewhere — you know why this exists.*
 
+*The extraction pipeline and the first version of chat are in posts 3 and 4. The origin story is in post 1.*
+
 *Follow along: `-corvus` on Hashnode.*

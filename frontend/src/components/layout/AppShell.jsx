@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useNavigate, useParams, NavLink } from 'react-router-dom'
 import useAuthStore from '../../store/auth'
 
 export default function AppShell({ children }) {
@@ -17,7 +17,17 @@ export default function AppShell({ children }) {
   return (
     <div className="min-h-screen bg-slate-900 flex flex-col">
       <header className="bg-slate-800 border-b border-slate-700 px-6 py-3 flex items-center gap-4">
-        <span className="text-white font-bold text-lg shrink-0">Verity Prism</span>
+        <NavLink to="/workspaces" className="text-white font-bold text-lg shrink-0 hover:text-slate-200">
+          Verity Prism
+        </NavLink>
+        <NavLink
+          to="/schemas"
+          className={({ isActive }) =>
+            `text-sm shrink-0 transition-colors ${isActive ? 'text-white' : 'text-slate-400 hover:text-white'}`
+          }
+        >
+          Schema Library
+        </NavLink>
         <form onSubmit={handleSearch} className="flex-1 max-w-2xl">
           <input
             type="text"

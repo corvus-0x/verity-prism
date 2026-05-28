@@ -5,10 +5,93 @@ import AppShell from '../components/layout/AppShell'
 import Badge from '../components/shared/Badge'
 import LoadingSpinner from '../components/shared/LoadingSpinner'
 
+const VERTICALS = [
+  { value: 'general', label: 'General', description: 'Documents, search, AI — no vertical-specific tools' },
+  { value: 'fraud', label: 'Fraud Investigation', description: 'Adds transactions, findings, leads' },
+  { value: 'insurance', label: 'Insurance', description: 'Coming soon' },
+]
+
+function NewWorkspaceModal({ onClose, onCreate }) {
+  const [name, setName] = useState('')
+  const [vertical, setVertical] = useState('general')
+  const [saving, setSaving] = useState(false)
+
+  const handleSubmit = async (e) => {
+    e.preventDefault()
+    if (!name.trim()) return
+    setSaving(true)
+    try {
+      await onCreate({ name: name.trim(), vertical })
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
+      <div className="bg-slate-800 border border-slate-700 rounded-xl p-6 w-full max-w-md">
+        <h2 className="text-white font-semibold text-lg mb-5">New Workspace</h2>
+        <form onSubmit={handleSubmit} className="space-y-5">
+          <div>
+            <label className="block text-slate-400 text-sm mb-1.5">Name</label>
+            <input
+              autoFocus
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="e.g. Smith Estate Review"
+              className="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm
+                         text-white placeholder-slate-500 focus:outline-none focus:border-blue-500"
+            />
+          </div>
+          <div>
+            <label className="block text-slate-400 text-sm mb-1.5">Vertical</label>
+            <div className="space-y-2">
+              {VERTICALS.map(({ value, label, description }) => (
+                <button
+                  key={String(value)}
+                  type="button"
+                  onClick={() => setVertical(value)}
+                  className={`w-full text-left px-3 py-2.5 rounded-lg border text-sm transition-colors
+                    ${vertical === value
+                      ? 'border-blue-500 bg-blue-500/10 text-white'
+                      : 'border-slate-600 bg-slate-700/50 text-slate-300 hover:border-slate-500'
+                    }`}
+                >
+                  <span className="font-medium">{label}</span>
+                  <span className="text-slate-500 ml-2 text-xs">{description}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="flex gap-3 pt-1">
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex-1 px-4 py-2 rounded-lg border border-slate-600 text-slate-400
+                         hover:text-white hover:border-slate-500 text-sm transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={!name.trim() || saving}
+              className="flex-1 px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 disabled:opacity-50
+                         text-white text-sm transition-colors"
+            >
+              {saving ? 'Creating…' : 'Create'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  )
+}
+
 export default function WorkspacesHome() {
   const [workspaces, setWorkspaces] = useState([])
   const [loading, setLoading] = useState(true)
-  const [creating, setCreating] = useState(false)
+  const [showModal, setShowModal] = useState(false)
   const navigate = useNavigate()
 
   useEffect(() => {
@@ -17,16 +100,9 @@ export default function WorkspacesHome() {
       .finally(() => setLoading(false))
   }, [])
 
-  const handleCreate = async () => {
-    const name = prompt('Workspace name:')
-    if (!name) return
-    setCreating(true)
-    try {
-      const res = await createWorkspace({ name, vertical: 'fraud' })
-      navigate(`/workspaces/${res.data.id}`)
-    } finally {
-      setCreating(false)
-    }
+  const handleCreate = async ({ name, vertical }) => {
+    const res = await createWorkspace({ name, vertical })
+    navigate(`/workspaces/${res.data.id}`)
   }
 
   return (
@@ -35,8 +111,7 @@ export default function WorkspacesHome() {
         <div className="flex items-center justify-between mb-6">
           <h1 className="text-xl font-bold text-white">Workspaces</h1>
           <button
-            onClick={handleCreate}
-            disabled={creating}
+            onClick={() => setShowModal(true)}
             className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm"
           >
             + New Workspace
@@ -73,6 +148,12 @@ export default function WorkspacesHome() {
           </div>
         )}
       </div>
+      {showModal && (
+        <NewWorkspaceModal
+          onClose={() => setShowModal(false)}
+          onCreate={handleCreate}
+        />
+      )}
     </AppShell>
   )
 }

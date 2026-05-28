@@ -1,18 +1,27 @@
 import { NavLink, useParams } from 'react-router-dom'
+import { useWorkspace } from '../../context/WorkspaceContext'
 
-const sections = [
+const ENGINE_SECTIONS = [
   { path: '', label: 'Overview', end: true },
   { path: 'documents', label: 'Documents' },
   { path: 'search', label: 'Search' },
   { path: 'entities', label: 'Entities' },
-  { path: 'transactions', label: 'Transactions' },
-  { path: 'findings', label: 'Findings' },
-  { path: 'leads', label: 'Leads' },
   { path: 'chat', label: 'AI Chat' },
 ]
 
+const VERTICAL_SECTIONS = {
+  fraud: [
+    { path: 'transactions', label: 'Transactions' },
+    { path: 'findings', label: 'Findings' },
+    { path: 'leads', label: 'Leads' },
+  ],
+}
+
 export default function WorkspaceSidebar() {
   const { workspaceId } = useParams()
+  const workspace = useWorkspace()
+  const capSections = VERTICAL_SECTIONS[workspace?.vertical ?? 'general'] ?? []
+  const sections = [...ENGINE_SECTIONS, ...capSections]
 
   return (
     <nav className="w-48 bg-slate-900 border-r border-slate-800 p-3 flex flex-col gap-1 shrink-0">

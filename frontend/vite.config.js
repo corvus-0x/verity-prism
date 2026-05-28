@@ -16,6 +16,7 @@ export default defineConfig({
       '/auth': { target: process.env.API_TARGET || 'http://localhost:8000' },
       '/workspaces': { target: process.env.API_TARGET || 'http://localhost:8000' },
       '/signal-types': { target: process.env.API_TARGET || 'http://localhost:8000' },
+      '/schemas': { target: process.env.API_TARGET || 'http://localhost:8000' },
     },
   },
 })

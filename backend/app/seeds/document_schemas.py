@@ -1,5 +1,5 @@
 """
-Seed the document_schemas table with extraction schemas derived from real investigation documents.
+Seed the document_schemas table with extraction schemas for general document processing.
 Run inside Docker: docker-compose exec backend python -m app.seeds.document_schemas
 """
 import sys
@@ -35,9 +35,9 @@ IDENTITY = [
     {"name": "parcel_number",       "type": "id_number", "description": "Official county parcel identifier at the top of the document", "required": True, "confidence_threshold": 0.95},
     {"name": "owner_name",          "type": "name",      "description": "Current owner of record as shown in the Location section", "required": True, "confidence_threshold": 0.88},
     {"name": "property_address",    "type": "address",   "description": "Physical property address", "required": True, "confidence_threshold": 0.88},
-    {"name": "county",              "type": "text",      "description": "County name (e.g. Darke County, Mercer County)", "required": True, "confidence_threshold": 0.92},
-    {"name": "township",            "type": "text",      "description": "Township (e.g. PATTERSON TWP)", "required": False},
-    {"name": "municipality",        "type": "text",      "description": "Municipality (e.g. OSGOOD CORP, UNINCORPORATED)", "required": False},
+    {"name": "county",              "type": "text",      "description": "County name", "required": True, "confidence_threshold": 0.92},
+    {"name": "township",            "type": "text",      "description": "Township name", "required": False},
+    {"name": "municipality",        "type": "text",      "description": "Municipality (e.g. CENTERBURG CORP, UNINCORPORATED)", "required": False},
     {"name": "school_district",     "type": "text",      "description": "School district name", "required": False},
     {"name": "deeded_owner_name",   "type": "name",      "description": "Owner name from the Deeded Owner Address section", "required": False},
     {"name": "deeded_owner_address","type": "address",   "description": "Mailing address from the Deeded Owner section — may differ from taxpayer address", "required": False},
@@ -51,15 +51,15 @@ IDENTITY = [
 
 LEGAL = [
     {"name": "legal_description",        "type": "text",      "description": "Primary legal description from the Legal section", "required": False},
-    {"name": "legal_description_line_2", "type": "text",      "description": "Second line of legal description (Mercer County format)", "required": False},
-    {"name": "legal_description_line_3", "type": "text",      "description": "Third line of legal description (Mercer County format)", "required": False},
-    {"name": "rts_notation",             "type": "text",      "description": "Range-Township-Section notation (e.g. 003-07-26, Mercer County format)", "required": False},
+    {"name": "legal_description_line_2", "type": "text",      "description": "Second line of legal description (some county formats include multiple description lines)", "required": False},
+    {"name": "legal_description_line_3", "type": "text",      "description": "Third line of legal description (some county formats include multiple description lines)", "required": False},
+    {"name": "rts_notation",             "type": "text",      "description": "Range-Township-Section notation (e.g. 003-07-26)", "required": False},
     {"name": "legal_acres",              "type": "text",      "description": "Legal acreage from the Legal section", "required": False},
     {"name": "land_use_code",            "type": "text",      "description": "Numeric land use classification code (e.g. 430, 500, 510, 640, 680)", "required": False},
     {"name": "land_use_description",     "type": "text",      "description": "Human-readable land use description (e.g. Restaurant, Single Family Dwelling, Charitable Exempts)", "required": False},
     {"name": "map_number",               "type": "text",      "description": "Map reference number if present", "required": False},
     {"name": "neighborhood_code",        "type": "text",      "description": "Assessor neighborhood code (e.g. 00940, 003169)", "required": False},
-    {"name": "subdivision_name",         "type": "text",      "description": "Subdivision name from legal description (e.g. DO GOOD SUB DIV, MARION ACRES, BREWERS SOUTH ADDN)", "required": False},
+    {"name": "subdivision_name",         "type": "text",      "description": "Subdivision name from legal description (e.g. MAPLE RIDGE, RIVERSIDE ACRES, HIGHLAND ESTATES)", "required": False},
     {"name": "card_count",               "type": "text",      "description": "Number of appraisal cards. 0 means no structure on the parcel.", "required": False},
     {"name": "lender_id",                "type": "id_number", "description": "Lender ID from Legal section. 0 means no lender. Non-zero values identify a financing institution.", "required": False},
     {"name": "tax_lien",                 "type": "boolean",   "description": "Whether a tax lien exists on the property (Y/N or True/False)", "required": False},
@@ -279,26 +279,18 @@ Booleans:
 - Convert True/False text to true/false
 - Convert present/absent fields to true/false as appropriate
 
-Mercer County format differences:
-- Parcel number is purely numeric (no M51 prefix)
-- Legal section has separate utility fields (Electric, Gas, Water, Sewer) — extract these
-- Has a Deeds section separate from Sales section
-- Has a Special Notice section at the top
-- RTS notation (e.g. 003-07-26) appears in the Legal section
+County-specific format differences:
+- Some counties use purely numeric parcel numbers; others use alphanumeric prefixes
+- Some counties include a separate utility fields section (Electric, Gas, Water, Sewer) — extract if present
+- Some counties have a Deeds section separate from the Sales section
+- Some counties show a Special Notice section at the top of the record
+- RTS (Range-Township-Section) notation (e.g. 003-07-26) appears in the Legal section in some counties
 
 If a section is absent or says No Records Found — leave all fields in that section as null."""
 
 
 def seed_parcel_record_schema(db):
-    """Insert the PARCEL-RECORD schema if it doesn't already exist."""
-    existing = db.query(DocumentSchema).filter(
-        DocumentSchema.document_type == "PARCEL-RECORD"
-    ).first()
-
-    if existing:
-        print("PARCEL-RECORD schema already exists — skipping.")
-        return existing
-
+    """Insert or update the PARCEL-RECORD schema."""
     schema_fields = _fields(
         IDENTITY,
         LEGAL,
@@ -317,6 +309,16 @@ def seed_parcel_record_schema(db):
         ADDITIONS,
         LAND_SEGMENTS,
     )
+
+    existing = db.query(DocumentSchema).filter(
+        DocumentSchema.document_type == "PARCEL-RECORD"
+    ).first()
+    if existing:
+        existing.schema_fields = schema_fields
+        existing.extraction_prompt = EXTRACTION_PROMPT
+        db.commit()
+        print(f"PARCEL-RECORD schema updated — {len(schema_fields)} fields.")
+        return existing
 
     schema = DocumentSchema(
         document_type="PARCEL-RECORD",
@@ -353,14 +355,14 @@ DEED_RECORDING = [
 
 DEED_AUDITOR = [
     {"name": "auditor_name",                  "type": "name",      "description": "County auditor name from the transfer stamp", "required": False},
-    {"name": "auditor_signatory",             "type": "name",      "description": "Deputy who signed the auditor stamp line (e.g. Paula Schrader)", "required": False},
+    {"name": "auditor_signatory",             "type": "name",      "description": "Deputy or clerk who signed the auditor stamp line", "required": False},
     {"name": "auditor_review_date",           "type": "date",      "description": "Date the auditor reviewed and stamped the deed", "required": False},
     {"name": "engineer_review_date",          "type": "date",      "description": "Date the county engineer reviewed the deed", "required": False},
     {"name": "engineer_signatory",            "type": "text",      "description": "Initials or name on the county engineer review stamp", "required": False},
     {"name": "conveyance_fee_amount",         "type": "currency",  "description": "Conveyance fee paid to the county auditor. Use this to compute implied sale price.", "required": False},
     {"name": "conveyance_fee_exempt",         "type": "boolean",   "description": "True if the conveyance fee was waived/exempt (stamp shows Exempt)", "required": False},
     {"name": "conveyance_fee_exemption_code", "type": "text",      "description": "Specific ORC exemption code applied (e.g. EL). Identifies the legal basis for the exemption.", "required": False},
-    {"name": "implied_sale_price",            "type": "currency",  "description": "Computed sale price based on conveyance fee. Darke County rate: $0.005 per dollar ($5/$1,000). Mercer County may differ.", "required": False},
+    {"name": "implied_sale_price",            "type": "currency",  "description": "Computed sale price based on conveyance fee. Rate varies by county — check the county recorder's published fee schedule.", "required": False},
 ]
 
 DEED_TYPE = [
@@ -401,7 +403,7 @@ DEED_PROPERTY = [
     {"name": "property_municipality",        "type": "text",      "description": "Village, city, or township where the property is located", "required": False},
     {"name": "property_address",             "type": "address",   "description": "Street address of the property if stated in the deed", "required": False},
     {"name": "legal_description",            "type": "text",      "description": "Full verbatim legal description of the property being conveyed", "required": True},
-    {"name": "subdivision_name",             "type": "text",      "description": "Subdivision or addition name from the legal description (e.g. Do Good Subdivision, Brewer Addition, Marion Acres)", "required": False},
+    {"name": "subdivision_name",             "type": "text",      "description": "Subdivision or addition name from the legal description (e.g. Maple Ridge Subdivision, Riverside Addition, Highland Estates)", "required": False},
     {"name": "engineer_parcel_id",           "type": "id_number", "description": "County engineer parcel ID from the deed — may use different format than auditor parcel number", "required": False},
     {"name": "prior_deed_volume",            "type": "id_number", "description": "Volume/book of the prior deed in the chain of title", "required": False},
     {"name": "prior_deed_page",              "type": "id_number", "description": "Page of the prior deed in the chain of title", "required": False},
@@ -463,7 +465,7 @@ Parties:
 Consideration and sale price:
 - consideration_stated: true ONLY if a dollar amount appears in the deed body — rare in Ohio
 - consideration_text: copy the exact language ("for valuable consideration paid", "for $10 and other valuable consideration", etc.)
-- implied_sale_price: compute from conveyance_fee_amount. Darke County rate: divide fee by 0.005. Example: $260 fee ÷ 0.005 = $52,000. If conveyance_fee_exempt is true, implied_sale_price = 0.
+- implied_sale_price: compute from conveyance_fee_amount. Rate varies by county — check the county recorder's published fee schedule (common rate: $1–5 per $1,000 of sale price). If conveyance_fee_exempt is true, implied_sale_price = 0.
 - conveyance_fee_exemption_code: extract the specific code if shown (e.g. "EL"). This identifies WHY the transfer is exempt.
 
 Recording information:
@@ -502,15 +504,7 @@ If a field is not present in this document, leave it null."""
 
 
 def seed_deed_schema(db):
-    """Insert the DEED schema if it doesn't already exist."""
-    existing = db.query(DocumentSchema).filter(
-        DocumentSchema.document_type == "DEED"
-    ).first()
-
-    if existing:
-        print("DEED schema already exists — skipping.")
-        return existing
-
+    """Insert or update the DEED schema."""
     schema_fields = _fields(
         DEED_RECORDING,
         DEED_AUDITOR,
@@ -526,6 +520,16 @@ def seed_deed_schema(db):
         DEED_NOTARY,
         DEED_PREPARER,
     )
+
+    existing = db.query(DocumentSchema).filter(
+        DocumentSchema.document_type == "DEED"
+    ).first()
+    if existing:
+        existing.schema_fields = schema_fields
+        existing.extraction_prompt = DEED_EXTRACTION_PROMPT
+        db.commit()
+        print(f"DEED schema updated — {len(schema_fields)} fields.")
+        return existing
 
     schema = DocumentSchema(
         document_type="DEED",
@@ -764,15 +768,7 @@ Missing schedules:
 
 
 def seed_990_schema(db):
-    """Insert the IRS Form 990 schema if it doesn't already exist."""
-    existing = db.query(DocumentSchema).filter(
-        DocumentSchema.document_type == "990"
-    ).first()
-
-    if existing:
-        print("990 schema already exists — skipping.")
-        return existing
-
+    """Insert or update the IRS Form 990 schema."""
     schema_fields = _fields(
         F990_HEADER,
         F990_REVENUE,
@@ -788,6 +784,16 @@ def seed_990_schema(db):
         F990_SCHEDULE_R,
         F990_SCHEDULE_O,
     )
+
+    existing = db.query(DocumentSchema).filter(
+        DocumentSchema.document_type == "990"
+    ).first()
+    if existing:
+        existing.schema_fields = schema_fields
+        existing.extraction_prompt = F990_EXTRACTION_PROMPT
+        db.commit()
+        print(f"990 schema updated — {len(schema_fields)} fields.")
+        return existing
 
     schema = DocumentSchema(
         document_type="990",
@@ -915,15 +921,7 @@ If a field is not present in this filing type, leave it null."""
 
 
 def seed_sos_filing_schema(db):
-    """Insert the SOS-FILING schema if it doesn't already exist."""
-    existing = db.query(DocumentSchema).filter(
-        DocumentSchema.document_type == "SOS-FILING"
-    ).first()
-
-    if existing:
-        print("SOS-FILING schema already exists — skipping.")
-        return existing
-
+    """Insert or update the SOS-FILING schema."""
     schema_fields = _fields(
         SOS_CORE,
         SOS_ADDRESSES,
@@ -931,6 +929,16 @@ def seed_sos_filing_schema(db):
         SOS_FORMATION,
         SOS_STATUS,
     )
+
+    existing = db.query(DocumentSchema).filter(
+        DocumentSchema.document_type == "SOS-FILING"
+    ).first()
+    if existing:
+        existing.schema_fields = schema_fields
+        existing.extraction_prompt = SOS_EXTRACTION_PROMPT
+        db.commit()
+        print(f"SOS-FILING schema updated — {len(schema_fields)} fields.")
+        return existing
 
     schema = DocumentSchema(
         document_type="SOS-FILING",
@@ -958,7 +966,7 @@ UCC_CORE = [
     {"name": "filing_type",           "type": "text",      "description": "UCC1 (original financing statement), UCC3 Amendment, Continuation, Termination, Assignment", "required": True},
     {"name": "amendment_type",        "type": "text",      "description": "For UCC3 amendments: Debtor Add, Debtor Delete, Secured Party Change, Collateral Change, Continuation, Termination, Assignment — empty for UCC1 originals", "required": False},
     {"name": "filing_date",           "type": "date",      "description": "Date the filing was received and stamped by the SOS", "required": True},
-    {"name": "filing_time",           "type": "text",      "description": "Exact time of filing (HH:MM:SS) — CRITICAL for detecting UCC_BURST pattern where multiple amendments are filed within minutes of each other", "required": False},
+    {"name": "filing_time",           "type": "text",      "description": "Exact time of filing (HH:MM:SS) — useful for detecting coordinated batch submission patterns where multiple amendments are filed within minutes of each other", "required": False},
     {"name": "lapse_date",            "type": "date",      "description": "Date this financing statement expires if not continued (5 years from original filing for standard UCC1)", "required": False},
     {"name": "packet_number",         "type": "id_number", "description": "Internal packet number assigned by the filing agent (Diligenz, CSC) — sequential numbers confirm batch submissions", "required": False},
     {"name": "state",                 "type": "text",      "description": "State where the financing statement was filed", "required": False},
@@ -1014,7 +1022,7 @@ CRITICAL FIELDS:
 
 filing_time: Extract the EXACT time (HH:MM:SS) from the timestamp — not just the date.
   Multiple amendments filed within seconds or minutes of each other indicate a coordinated batch
-  submission. The time gap between sequential filings is investigatively significant. Format: HH:MM:SS as it appears in the document.
+  submission. The time gap between sequential filings is significant. Format: HH:MM:SS as it appears in the document.
 
 original_fs_number: For amendments, this is the FS number of the underlying financing statement
   being modified — NOT the SR/document number of this amendment itself. Always extract the original FS
@@ -1045,15 +1053,7 @@ If a field is not present in this document type (e.g. collateral on a continuati
 
 
 def seed_ucc_schema(db):
-    """Insert the UCC schema if it doesn't already exist."""
-    existing = db.query(DocumentSchema).filter(
-        DocumentSchema.document_type == "UCC"
-    ).first()
-
-    if existing:
-        print("UCC schema already exists — skipping.")
-        return existing
-
+    """Insert or update the UCC schema."""
     schema_fields = _fields(
         UCC_CORE,
         UCC_DEBTORS,
@@ -1061,6 +1061,16 @@ def seed_ucc_schema(db):
         UCC_COLLATERAL,
         UCC_FILER,
     )
+
+    existing = db.query(DocumentSchema).filter(
+        DocumentSchema.document_type == "UCC"
+    ).first()
+    if existing:
+        existing.schema_fields = schema_fields
+        existing.extraction_prompt = UCC_EXTRACTION_PROMPT
+        db.commit()
+        print(f"UCC schema updated — {len(schema_fields)} fields.")
+        return existing
 
     schema = DocumentSchema(
         document_type="UCC",
@@ -1091,7 +1101,7 @@ PERMIT_FIELDS = [
     {"name": "owner_name",       "type": "name",      "description": "Property owner name — first part of the OWNER OR BUILDER field before the slash separator", "required": False},
     {"name": "contractor_name",  "type": "name",      "description": "Contractor or builder name — second part of the OWNER OR BUILDER field after the slash.", "required": False},
     {"name": "property_address", "type": "address",   "description": "Street address of the permitted construction", "required": False},
-    {"name": "city_township",    "type": "text",      "description": "City or township abbreviation (e.g. OSGOOD, GV CORP, PATTERSON)", "required": False},
+    {"name": "city_township",    "type": "text",      "description": "City or township abbreviation as shown in the permit record", "required": False},
     {"name": "work_description", "type": "text",      "description": "Full description of the permitted work — verbatim from the TYPE column", "required": False},
     {"name": "estimated_value",  "type": "currency",  "description": "Estimated construction value in dollars.", "required": False},
     {"name": "square_footage",   "type": "text",      "description": "Square footage of the permitted work", "required": False},
@@ -1121,8 +1131,7 @@ permit_type: If this came from a commercial permit spreadsheet, set to "Commerci
 estimated_value: Extract as a plain integer (no $ sign or commas).
 
 work_description: Copy the complete TYPE field verbatim — do not summarize.
-  "NEW RESTAURANT & COMM. OUTREACH FACILITY" is more investigatively useful
-  than "new construction."
+  The full description is more investigatively useful than a generic summary.
 
 contractor_name: The construction company is often the investigative link.
   If the same contractor appears on multiple permits for the same owner,
@@ -1137,13 +1146,15 @@ If a field is not present, leave it null."""
 
 
 def seed_building_permit_schema(db):
-    """Insert the BUILDING-PERMIT schema if it doesn't already exist."""
+    """Insert or update the BUILDING-PERMIT schema."""
     existing = db.query(DocumentSchema).filter(
         DocumentSchema.document_type == "BUILDING-PERMIT"
     ).first()
-
     if existing:
-        print("BUILDING-PERMIT schema already exists — skipping.")
+        existing.schema_fields = PERMIT_FIELDS
+        existing.extraction_prompt = PERMIT_EXTRACTION_PROMPT
+        db.commit()
+        print(f"BUILDING-PERMIT schema updated — {len(PERMIT_FIELDS)} fields.")
         return existing
 
     schema = DocumentSchema(
@@ -1283,15 +1294,7 @@ If financial statements are absent (AUP or Basic Audit format), leave all financ
 
 
 def seed_audit_report_schema(db):
-    """Insert the AUDIT-REPORT schema if it doesn't already exist."""
-    existing = db.query(DocumentSchema).filter(
-        DocumentSchema.document_type == "AUDIT-REPORT"
-    ).first()
-
-    if existing:
-        print("AUDIT-REPORT schema already exists — skipping.")
-        return existing
-
+    """Insert or update the AUDIT-REPORT schema."""
     schema_fields = _fields(
         AUDIT_HEADER,
         AUDIT_FINANCIALS,
@@ -1299,6 +1302,16 @@ def seed_audit_report_schema(db):
         AUDIT_FINDINGS,
         AUDIT_FLAGS,
     )
+
+    existing = db.query(DocumentSchema).filter(
+        DocumentSchema.document_type == "AUDIT-REPORT"
+    ).first()
+    if existing:
+        existing.schema_fields = schema_fields
+        existing.extraction_prompt = AUDIT_EXTRACTION_PROMPT
+        db.commit()
+        print(f"AUDIT-REPORT schema updated — {len(schema_fields)} fields.")
+        return existing
 
     schema = DocumentSchema(
         document_type="AUDIT-REPORT",
@@ -1382,16 +1395,17 @@ If a field is not visible in the screenshot, leave it null."""
 
 
 def seed_screenshot_schema(db):
-    """Insert the SCREENSHOT schema if it doesn't already exist."""
+    """Insert or update the SCREENSHOT schema."""
+    schema_fields = _fields(SCREENSHOT_FIELDS, SCREENSHOT_COMMENTS)
     existing = db.query(DocumentSchema).filter(
         DocumentSchema.document_type == "SCREENSHOT"
     ).first()
-
     if existing:
-        print("SCREENSHOT schema already exists — skipping.")
+        existing.schema_fields = schema_fields
+        existing.extraction_prompt = SCREENSHOT_EXTRACTION_PROMPT
+        db.commit()
+        print(f"SCREENSHOT schema updated — {len(schema_fields)} fields.")
         return existing
-
-    schema_fields = _fields(SCREENSHOT_FIELDS, SCREENSHOT_COMMENTS)
 
     schema = DocumentSchema(
         document_type="SCREENSHOT",
@@ -1488,20 +1502,22 @@ If a field is not present or unclear, leave it null."""
 
 
 def seed_obituary_schema(db):
-    """Insert the OBITUARY schema if it doesn't already exist."""
-    existing = db.query(DocumentSchema).filter(
-        DocumentSchema.document_type == "OBITUARY"
-    ).first()
-
-    if existing:
-        print("OBITUARY schema already exists — skipping.")
-        return existing
-
+    """Insert or update the OBITUARY schema."""
     schema_fields = _fields(
         OBITUARY_FIELDS,
         OBITUARY_CHILDREN,
         OBITUARY_SIBLINGS,
     )
+
+    existing = db.query(DocumentSchema).filter(
+        DocumentSchema.document_type == "OBITUARY"
+    ).first()
+    if existing:
+        existing.schema_fields = schema_fields
+        existing.extraction_prompt = OBITUARY_EXTRACTION_PROMPT
+        db.commit()
+        print(f"OBITUARY schema updated — {len(schema_fields)} fields.")
+        return existing
 
     schema = DocumentSchema(
         document_type="OBITUARY",
@@ -1612,16 +1628,17 @@ If a field is not present on this plat, leave it null."""
 
 
 def seed_plat_schema(db):
-    """Insert the PLAT schema if it doesn't already exist."""
+    """Insert or update the PLAT schema."""
+    schema_fields = _fields(PLAT_FIELDS, PLAT_ADJACENT)
     existing = db.query(DocumentSchema).filter(
         DocumentSchema.document_type == "PLAT"
     ).first()
-
     if existing:
-        print("PLAT schema already exists — skipping.")
+        existing.schema_fields = schema_fields
+        existing.extraction_prompt = PLAT_EXTRACTION_PROMPT
+        db.commit()
+        print(f"PLAT schema updated — {len(schema_fields)} fields.")
         return existing
-
-    schema_fields = _fields(PLAT_FIELDS, PLAT_ADJACENT)
 
     schema = DocumentSchema(
         document_type="PLAT",
@@ -1707,16 +1724,17 @@ If a field is not present, leave it null."""
 
 
 def seed_correspondence_schema(db):
-    """Insert the CORRESPONDENCE schema if it doesn't already exist."""
+    """Insert or update the CORRESPONDENCE schema."""
+    schema_fields = _fields(CORRESPONDENCE_FIELDS, CORRESPONDENCE_ALLEGATIONS)
     existing = db.query(DocumentSchema).filter(
         DocumentSchema.document_type == "CORRESPONDENCE"
     ).first()
-
     if existing:
-        print("CORRESPONDENCE schema already exists — skipping.")
+        existing.schema_fields = schema_fields
+        existing.extraction_prompt = CORRESPONDENCE_EXTRACTION_PROMPT
+        db.commit()
+        print(f"CORRESPONDENCE schema updated — {len(schema_fields)} fields.")
         return existing
-
-    schema_fields = _fields(CORRESPONDENCE_FIELDS, CORRESPONDENCE_ALLEGATIONS)
 
     schema = DocumentSchema(
         document_type="CORRESPONDENCE",

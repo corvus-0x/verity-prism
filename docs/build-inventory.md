@@ -156,6 +156,12 @@ The engine's intelligence layer. Understands documents, answers questions, surfa
 | `documents.py` | POST /documents, GET list/detail/extractions | Engine | ✅ |
 | `search.py` | POST /workspaces/{id}/search/ | Engine | ✅ |
 | `ai.py` | POST + GET /conversations, POST /conversations/{id}/messages | Engine | ✅ |
+| `schemas.py` | GET /schemas/ | Engine | ✅ |
+| `documents.py` (Phase 2) | GET /documents/{id}/file — serve raw file for viewer | Engine | 🔲 Phase 2 |
+| `documents.py` (Phase 2) | GET /documents/{id}/extractions.csv, /extractions.json — export | Engine | 🔲 Phase 2 |
+| `documents.py` (Phase 2) | GET /documents/{id}/status/stream — SSE for real-time status | Engine | 🔲 Phase 2 |
+| `workspaces.py` (Phase 2) | GET /workspaces/{id}/extractions.csv — workspace-level export | Engine | 🔲 Phase 2 |
+| `audit.py` (Phase 2) | GET /workspaces/{id}/audit-log | Engine | 🔲 Phase 2 |
 | `connectors.py` | POST /connectors/{source} | Engine | 🔲 Phase 2 |
 
 ---
@@ -188,7 +194,67 @@ All 11 schemas are `vertical = "general"` — available in every workspace regar
 **Layer:** Engine  
 **How to run:** `docker-compose exec backend python -m app.seeds.document_schemas`  
 **To add a schema:** Add `seed_X_schema(db)` following existing pattern, add to `main()`.  
+**Upsert behavior:** All seed functions now UPDATE existing records (fields + extraction_prompt) if the schema already exists. Re-running the seed safely updates a live DB — no need to drop and recreate.  
+**Cleanliness rule:** Field descriptions and extraction prompts must contain no case-specific content — no real names, org names, county names, or signal codes. Use generic examples only.  
 **Status:** ✅ Connected
+
+---
+
+### Frontend (`frontend/src/`)
+
+#### Context
+
+| File | What it does | Status |
+|---|---|---|
+| `context/WorkspaceContext.jsx` | Fetches workspace once at layout level, provides to all children via context. Eliminates redundant per-component fetches. `useWorkspace()` hook for consumers. | ✅ |
+
+#### Layout Components
+
+| File | What it does | Status |
+|---|---|---|
+| `components/layout/AppShell.jsx` | Global shell — header with logo (links to /workspaces), "Schema Library" nav link, plain-English search bar, sign-out. | ✅ |
+| `components/layout/WorkspaceSidebar.jsx` | Vertical-aware nav. Engine items always shown: Overview, Documents, Search, Entities, AI Chat. Cap items shown only when `workspace.vertical` matches: Fraud → Transactions, Findings, Leads. `VERTICAL_SECTIONS` map — adding a new vertical's nav is one entry. | ✅ |
+
+#### Pages — Platform Level
+
+| File | Route | What it does | Status |
+|---|---|---|---|
+| `pages/Login.jsx` | `/login` | JWT login form | ✅ |
+| `pages/WorkspacesHome.jsx` | `/workspaces` | Workspace list + creation modal. Modal captures name and vertical (General / Fraud Investigation / Insurance). Defaults to General. No more `prompt()`. | ✅ |
+| `pages/SchemaLibrary.jsx` | `/schemas` | Platform-level Schema Library. All active schemas from DB grouped by vertical. Each card shows display name, document type key, field count, parse strategy, confidence threshold. Expandable field list: name, type, description, required flag. | ✅ |
+
+#### Pages — Workspace Level
+
+| File | Route | What it does | Status |
+|---|---|---|---|
+| `pages/workspace/WorkspaceLayout.jsx` | `/workspaces/:id` | Wraps workspace in `WorkspaceProvider`. Renders AppShell + WorkspaceSidebar + page outlet. | ✅ |
+| `pages/workspace/Overview.jsx` | `/workspaces/:id` | Summary stats. Reads vertical from context — General shows Documents + Entities; Fraud adds Findings. Grid adapts to card count. | ✅ |
+| `pages/workspace/Documents.jsx` | `.../documents` | Document list, upload dropzone | ✅ |
+| `pages/workspace/Search.jsx` | `.../search` | Plain-English search | ✅ |
+| `pages/workspace/Entities.jsx` | `.../entities` | Entity list and detail | ✅ |
+| `pages/workspace/AIChat.jsx` | `.../chat` | AI chat interface | ✅ |
+| `pages/workspace/Transactions.jsx` | `.../transactions` | Fraud cap only — financial transactions | ✅ |
+| `pages/workspace/Findings.jsx` | `.../findings` | Fraud cap only — signal findings | ✅ |
+| `pages/workspace/Leads.jsx` | `.../leads` | Fraud cap only — investigation leads | ✅ |
+| `pages/workspace/DocumentViewer.jsx` | `.../documents/:id` | **Phase 2** — PDF viewer + extraction field panel side by side. File served from `GET /documents/{id}/file`. | 🔲 Phase 2 |
+| `pages/workspace/ExtractionReview.jsx` | `.../review` | **Phase 2** — Review queue for low-confidence fields. Requires document viewer. | 🔲 Phase 2 |
+| `pages/workspace/AuditLog.jsx` | `.../audit` | **Phase 2** — Chronological immutable log per workspace. | 🔲 Phase 2 |
+
+#### API Clients (`frontend/src/api/`)
+
+| File | Calls | Status |
+|---|---|---|
+| `auth.js` | POST /auth/login, /auth/register | ✅ |
+| `workspaces.js` | CRUD /workspaces | ✅ |
+| `documents.js` | POST + GET /documents | ✅ |
+| `entities.js` | CRUD /entities | ✅ |
+| `findings.js` | CRUD /findings | ✅ |
+| `transactions.js` | CRUD /transactions | ✅ |
+| `leads.js` | CRUD /leads | ✅ |
+| `notes.js` | CRUD /notes | ✅ |
+| `search.js` | POST /search | ✅ |
+| `ai.js` | POST + GET /conversations | ✅ |
+| `schemas.js` | GET /schemas/ | ✅ |
 
 ---
 
@@ -312,3 +378,4 @@ Investigation workflow + referral export
 | 2026-05-20 | Live demo hardening: 3 bugs fixed — (1) Claude wraps JSON in markdown fences, strip before parsing. (2) Claude uses field/value keys instead of field_name/field_value, save_extractions accepts both. (3) max_tokens=2000 truncates 64-field extractions, raised to 4096. Real deed: 41 fields extracted, NLP search and AI chat both confirmed working. |
 | 2026-05-26 | Tool-use chat agent. Added agent_tools.py (6 tools + dispatcher), agent_registry.py (schemas + vertical registry). Rewrote ai_engine.py with native Anthropic tool-use loop — 10-round cap, synthesis pass, per-call logging, is_error flag on failures. Added migration a3b8e1f92d44 (is_deleted on documents). Router fix: message save timing. 67/67 tests. |
 | 2026-05-26 (evening) | Core hardening + IDP expansion architecture. Core: CORS config, file size limit, soft-delete on list_documents, workspace null guard. Expansion: parse_strategy + default_confidence_threshold on DocumentSchema (migrations d4e9f2a + c8dd75f); detect_document_type and generate_standardized_name load types from DB; pipeline routes on schema.parse_strategy; is_parseable_xml removed. Schema cleanup: OBITUARY → vertical=fraud; SR signal codes and fraud commentary removed from 9 general schemas. 75/75 tests. |
+| 2026-05-28 | Frontend vertical separation: WorkspaceContext; vertical-aware sidebar and overview; workspace creation modal with vertical picker. Schema Library: GET /schemas/ endpoint, SchemaLibrary page, AppShell nav link, schemas API client, vite proxy. Full schema cleanup: all case-specific content removed from all 11 schemas in seed file and live DB; seed functions converted to upserts. Frontend inventory section added. Roadmap updated with document viewer (Phase 2A next), extraction review UI, Engine UI section (real-time status, export, audit log), multi-user in Phase 4A. |
