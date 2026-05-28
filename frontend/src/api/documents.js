@@ -16,3 +16,8 @@ export const getDocument = (workspaceId, documentId) =>
 
 export const getExtractions = (workspaceId, documentId) =>
   client.get(`/workspaces/${workspaceId}/documents/${documentId}/extractions`)
+
+export const getDocumentFile = (workspaceId, documentId) =>
+  client.get(`/workspaces/${workspaceId}/documents/${documentId}/file`, {
+    responseType: 'blob',
+  })

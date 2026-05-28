@@ -5,6 +5,7 @@ import SchemaLibrary from './pages/SchemaLibrary'
 import WorkspaceLayout from './pages/workspace/WorkspaceLayout'
 import Overview from './pages/workspace/Overview'
 import Documents from './pages/workspace/Documents'
+import DocumentViewer from './pages/workspace/DocumentViewer'
 import Search from './pages/workspace/Search'
 import Entities from './pages/workspace/Entities'
 import Transactions from './pages/workspace/Transactions'
@@ -35,6 +36,7 @@ export default function App() {
         }>
           <Route index element={<Overview />} />
           <Route path="documents" element={<Documents />} />
+          <Route path="documents/:documentId" element={<DocumentViewer />} />
           <Route path="search" element={<Search />} />
           <Route path="entities" element={<Entities />} />
           <Route path="transactions" element={<Transactions />} />
