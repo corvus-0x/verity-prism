@@ -76,6 +76,9 @@ docker-compose.override.yml
 # Go learning exercises — not part of the project
 go-learning/
 
+# Private portfolio fixes / working notes — not for the public repo
+docs/fixes-todo.md
+
 
 # ============================================================
 # TOOLING
