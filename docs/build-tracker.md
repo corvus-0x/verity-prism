@@ -82,13 +82,24 @@
 
 ---
 
+## Phase 2C — UI Completeness (2026-05-28)
+
+| Task | What It Builds | Status |
+|------|---------------|--------|
+| Toast notifications | Global toast system: bottom-right, title+message, 4 variants (success/error/info/warning), 4s auto-dismiss, max 3 visible. `useToast` hook + `ToastContainer`. Timer cleanup on unmount, memoized context value, ARIA live region. | ✅ Done |
+| Document status badges | Pill badges on every document card — 5 extraction statuses with distinct colors. Updated `Badge.jsx` with `rounded-full`, `needs_review` (orange), `no_schema` (indigo), `failed` (red). | ✅ Done |
+| Real-time extraction status (SSE) | `GET /documents/{id}/status/stream` StreamingResponse polls DB every 2s, closes on terminal status or 5-min timeout. `useExtractionStream` hook uses fetch+ReadableStream (not EventSource) for Bearer auth, exponential backoff reconnect (base 1s, cap 32s, max 5 retries). | ✅ Done |
+| Data export | 4 backend endpoints: per-document CSV/JSON and workspace CSV/JSON. `_latest_extractions` helper reuses subquery pattern. ⋯ context menu on each document card (disabled when not exportable). "Export all" workspace button. | ✅ Done |
+| Audit log UI | `GET /audit-log?page&limit` paginated endpoint. Timeline UI with colored dots per action type. Client-side search + action filter. Pagination with Previous/Next. "Every action on every document is tamper-proof." | ✅ Done |
+
+**Tests passing:** 85/85
+
+---
+
 ## Phase 2 — Remaining Builds
 
 | Task | What It Builds | Phase | Status |
 |------|---------------|-------|--------|
-| Real-time extraction status | SSE on GET /documents/{id}/status/stream — pushes pending→processing→complete to frontend. Document list updates live. | 2C | 🔲 Next |
-| Data export | GET /documents/{id}/extractions.csv + .json; GET /workspaces/{id}/extractions.csv. Generic engine export — vertical-specific formats stay in the cap. | 2C | 🔲 |
-| Audit log UI | Read-only chronological log per workspace. Surfaces the existing immutable audit_log table. Compliance selling point. | 2C | 🔲 |
 | Signal detection framework | signal_rules table + rule evaluator against document_extractions. Framework only — no specific rules (those are vertical cap content). | 2B | 🔲 |
 | Data connectors | irs_teos.py, ohio_sos.py, county_auditor.py, building_permits.py — each fetches public data, hands to pipeline. | 2D | 🔲 |
 
@@ -130,3 +141,4 @@
 | 2026-05-26 (evening) | IDP core hardening + expansion architecture. Core fixes: CORS config, file size limit, soft-delete on list_documents, workspace null guard, Alembic verified on fresh DB. Expansion: parse_strategy + default_confidence_threshold on DocumentSchema (migration + seeds); KNOWN_DOCUMENT_TYPES removed — detect_document_type now queries DB; pipeline routes on schema.parse_strategy not type strings; naming.py loads doc types from DB; is_parseable_xml removed (dead code). Schema cleanup: OBITUARY moved to vertical="fraud" (migration + seed); SR signal codes and fraud investigation commentary removed from 9 general schema descriptions and extraction prompts. 75/75 tests. |
 | 2026-05-28 | Engine UI + platform layer. Frontend vertical separation: WorkspaceContext, vertical-aware sidebar and overview, workspace creation modal with vertical picker (replaces prompt()). Schema Library: GET /schemas/ endpoint, SchemaLibrary page at /schemas, AppShell nav link, schemas API client, vite proxy. Full schema cleanup: case-specific content (county names, person names, org names, signal codes) scrubbed from all 11 schemas in seed file and live DB; seed functions converted to upserts. Roadmap + build inventory + build tracker updated. Phase 2 next builds: document viewer (next), extraction eval, review UI, real-time status, export, audit log UI, signal framework, connectors. 75/75 tests. |
 | 2026-05-28 | Phase 2A complete. Extraction evaluation loop: evaluator runs after save_extractions(), retries only low-confidence fields as a mini-batch (attempt=2), flags needs_review if still below threshold. Observability: claude_call_logs table, every extraction Claude call logged with latency + tokens, isolated session. Review UI: /review queue page + DocumentViewer editable mode (?review=1) + ExtractionTable inline correction (attempt=3, confidence=1.0). list_extractions fixed to return latest-attempt-per-field by default (?include_history=true for full history). Migration e1f3a2b94c07: attempt column, needs_review enum value, claude_call_logs table. ADRs added (docs/decisions/). 80/80 tests. |
+| 2026-05-28 | Phase 2C complete. Toast system (useToast + ToastContainer, timer cleanup, ARIA). Document status pill badges (needs_review/no_schema/failed added to Badge.jsx). SSE real-time extraction status (StreamingResponse + useExtractionStream with exponential backoff). Data export: 4 endpoints (per-doc + workspace CSV/JSON) + ⋯ context menu frontend. Audit log: paginated backend + timeline UI with search/filter. 85/85 tests. |
