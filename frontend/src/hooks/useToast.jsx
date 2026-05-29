@@ -6,6 +6,7 @@ const ToastContext = createContext(null)
 export function ToastProvider({ children }) {
   const [toasts, setToasts] = useState([])
   const timerIds = useRef(new Map())
+  const nextId = useRef(0)
 
   useEffect(() => {
     const timers = timerIds.current
