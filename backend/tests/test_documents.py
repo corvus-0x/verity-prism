@@ -175,3 +175,35 @@ def test_export_json_returns_json(client, auth_headers, workspace_id, db):
     assert isinstance(data, list)
     assert data[0]["field_name"] == "grantor_name"
     assert data[0]["field_value"] == "John Smith"
+
+
+def test_export_csv_escapes_formula_injection(client, auth_headers, workspace_id, db):
+    import io as io_module
+    from unittest.mock import patch
+    from app.models.document import Document
+    from app.models.document_extraction import DocumentExtraction
+
+    with patch("app.routers.documents.process_upload_background"):
+        doc_id = client.post(
+            f"/workspaces/{workspace_id}/documents",
+            files={"file": ("inj.pdf", io_module.BytesIO(b"%PDF-1.4 x"), "application/pdf")},
+            headers=auth_headers,
+        ).json()["id"]
+
+    doc = db.query(Document).filter(Document.id == doc_id).first()
+    doc.extraction_status = "complete"
+    db.flush()
+    db.add(DocumentExtraction(
+        document_id=doc_id, workspace_id=workspace_id,
+        field_name="payee", field_value="=2+5+cmd",
+        field_type="text", confidence=0.9, attempt=1,
+    ))
+    db.commit()
+
+    res = client.get(
+        f"/workspaces/{workspace_id}/documents/{doc_id}/extractions.csv",
+        headers=auth_headers,
+    )
+    assert res.status_code == 200
+    assert "'=2+5+cmd" in res.text          # neutralized with a leading quote
+    assert "payee,=2+5+cmd" not in res.text  # never written as a bare formula

@@ -19,6 +19,7 @@ from app.schemas.document import DocumentOut, ExtractionOut
 from app.services import audit
 from app.services.auth import get_current_user
 from app.services.document_pipeline import create_pending_document, process_upload_background
+from app.utils.sanitize import escape_csv_cell
 
 router = APIRouter(prefix="/workspaces/{workspace_id}", tags=["documents"])
 
@@ -275,9 +276,9 @@ def download_extractions_csv(
     writer.writeheader()
     for e in extractions:
         writer.writerow({
-            "field_name": e.field_name,
-            "field_value": e.field_value or "",
-            "field_type": e.field_type,
+            "field_name": escape_csv_cell(e.field_name),
+            "field_value": escape_csv_cell(e.field_value),
+            "field_type": escape_csv_cell(e.field_type),
             "confidence": e.confidence,
             "attempt": e.attempt,
         })
@@ -347,11 +348,11 @@ def download_workspace_extractions_csv(
     for doc in docs:
         for e in _latest_extractions(doc.id, db):
             writer.writerow({
-                "document_filename": doc.filename,
-                "document_type": doc.detected_doc_type or "",
-                "field_name": e.field_name,
-                "field_value": e.field_value or "",
-                "field_type": e.field_type,
+                "document_filename": escape_csv_cell(doc.filename),
+                "document_type": escape_csv_cell(doc.detected_doc_type or ""),
+                "field_name": escape_csv_cell(e.field_name),
+                "field_value": escape_csv_cell(e.field_value),
+                "field_type": escape_csv_cell(e.field_type),
                 "confidence": e.confidence,
                 "attempt": e.attempt,
             })
