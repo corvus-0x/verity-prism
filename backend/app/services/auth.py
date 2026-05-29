@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -23,7 +23,7 @@ def verify_password(plain: str, hashed: str) -> bool:
 
 def create_access_token(user_id: str) -> str:
     """Return a signed JWT for user_id, expiring per settings.access_token_expire_minutes."""
-    expire = datetime.now(timezone.utc) + timedelta(minutes=settings.access_token_expire_minutes)
+    expire = datetime.now(UTC) + timedelta(minutes=settings.access_token_expire_minutes)
     payload = {"sub": user_id, "exp": expire}
     return jwt.encode(payload, settings.secret_key, algorithm="HS256")
 

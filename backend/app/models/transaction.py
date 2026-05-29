@@ -1,5 +1,5 @@
 import uuid
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 
 from sqlalchemy import Date, DateTime, ForeignKey, Numeric, String
 from sqlalchemy import Enum as SAEnum
@@ -31,4 +31,4 @@ class Transaction(Base):
     source_doc_id: Mapped[str] = mapped_column(String, ForeignKey("documents.id"), nullable=True)
     notes: Mapped[str] = mapped_column(String, nullable=True)
     created_by: Mapped[str] = mapped_column(String, ForeignKey("users.id"), nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC))

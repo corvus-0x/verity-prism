@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import ARRAY, DateTime, ForeignKey, String
 from sqlalchemy import Enum as SAEnum
@@ -35,7 +35,7 @@ class Finding(Base):
         SAEnum("open", "confirmed", "dismissed", name="finding_status"), default="open"
     )
     created_by: Mapped[str] = mapped_column(String, ForeignKey("users.id"), nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
 
 class FindingEvidence(Base):
     __tablename__ = "finding_evidence"
@@ -46,4 +46,4 @@ class FindingEvidence(Base):
     entity_id: Mapped[str] = mapped_column(String, ForeignKey("entities.id"), nullable=True)
     note: Mapped[str] = mapped_column(String, nullable=True)
     added_by: Mapped[str] = mapped_column(String, ForeignKey("users.id"), nullable=False)
-    added_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    added_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC))

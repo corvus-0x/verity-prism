@@ -1,31 +1,30 @@
 from datetime import datetime
-from typing import Optional
 
 from pydantic import BaseModel, ConfigDict
 
 
 class WorkspaceCreate(BaseModel):
     name: str
-    description: Optional[str] = None
-    subject_name: Optional[str] = None
-    jurisdiction: Optional[str] = None
+    description: str | None = None
+    subject_name: str | None = None
+    jurisdiction: str | None = None
     vertical: str = "general"
 
 class WorkspaceUpdate(BaseModel):
-    name: Optional[str] = None
-    description: Optional[str] = None
-    subject_name: Optional[str] = None
-    jurisdiction: Optional[str] = None
-    status: Optional[str] = None
+    name: str | None = None
+    description: str | None = None
+    subject_name: str | None = None
+    jurisdiction: str | None = None
+    status: str | None = None
 
 class WorkspaceOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: str
     name: str
-    description: Optional[str]
-    subject_name: Optional[str]
-    jurisdiction: Optional[str]
+    description: str | None
+    subject_name: str | None
+    jurisdiction: str | None
     vertical: str
     status: str
     created_by: str

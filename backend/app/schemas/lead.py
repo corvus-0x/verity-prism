@@ -1,32 +1,31 @@
 from datetime import datetime
-from typing import Optional
 
 from pydantic import BaseModel
 
 
 class LeadCreate(BaseModel):
     question: str
-    source: Optional[str] = None
+    source: str | None = None
     originated_by: str = "user"
-    triggered_by_id: Optional[str] = None
-    assigned_to: Optional[str] = None
+    triggered_by_id: str | None = None
+    assigned_to: str | None = None
 
 
 class LeadUpdate(BaseModel):
-    status: Optional[str] = None
-    result_summary: Optional[str] = None
-    source: Optional[str] = None
+    status: str | None = None
+    result_summary: str | None = None
+    source: str | None = None
 
 
 class LeadOut(BaseModel):
     id: str
     workspace_id: str
     question: str
-    source: Optional[str]
+    source: str | None
     status: str
     originated_by: str
-    triggered_by_id: Optional[str]
-    result_summary: Optional[str]
+    triggered_by_id: str | None
+    result_summary: str | None
     created_at: datetime
 
     class Config:

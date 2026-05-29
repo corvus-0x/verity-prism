@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { useParams } from 'react-router-dom'
 import client from '../../api/client'
 import LoadingSpinner from '../../components/shared/LoadingSpinner'
+import { useToast } from '../../hooks/useToast'
 
 const DOT_COLORS = {
   uploaded:               'bg-blue-400',
@@ -49,6 +50,7 @@ function formatTime(ts) {
 
 export default function AuditLog() {
   const { workspaceId } = useParams()
+  const { toast } = useToast()
   const [page, setPage] = useState(1)
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -60,6 +62,7 @@ export default function AuditLog() {
     client
       .get(`/workspaces/${workspaceId}/audit-log?page=${page}&limit=50`)
       .then((r) => setData(r.data))
+      .catch((err) => toast.error('Failed to load audit log', err?.message))
       .finally(() => setLoading(false))
   }, [workspaceId, page])
 

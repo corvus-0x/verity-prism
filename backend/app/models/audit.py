@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import DateTime, ForeignKey, String
 from sqlalchemy.dialects.postgresql import JSONB
@@ -21,5 +21,5 @@ class AuditLog(Base):
     after_state: Mapped[dict] = mapped_column(JSONB, nullable=True)
     ip_address: Mapped[str] = mapped_column(String, nullable=True)
     timestamp: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+        DateTime(timezone=True), default=lambda: datetime.now(UTC)
     )

@@ -1,5 +1,8 @@
+[project]
+requires-python = ">=3.11"
+
 [tool.ruff]
-target-version = "py312"
+target-version = "py311"
 line-length = 100
 
 [tool.ruff.lint]
@@ -12,6 +15,7 @@ select = [
 ]
 ignore = [
     "E501",  # line too long — handled by formatter
+    "E712",  # SQLAlchemy uses == False/True in filter expressions — not a Python bool comparison
 ]
 
 [tool.ruff.lint.per-file-ignores]

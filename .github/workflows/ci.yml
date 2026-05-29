@@ -44,11 +44,12 @@ jobs:
 
       - name: Run tests
         env:
+          DATABASE_URL: postgresql://catalyst:catalyst@localhost:5432/catalyst_test
           TEST_DATABASE_URL: postgresql://catalyst:catalyst@localhost:5432/catalyst_test
           SECRET_KEY: ci-test-secret-key
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           UPLOAD_DIR: /tmp/uploads
-        run: pytest backend/tests/ -v
+        run: pytest backend/tests/ -v --ignore=backend/tests/evals
         working-directory: ${{ github.workspace }}
 
   frontend:

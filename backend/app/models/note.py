@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import DateTime, ForeignKey, String, Text
 from sqlalchemy import Enum as SAEnum
@@ -20,4 +20,4 @@ class Note(Base):
     )
     entity_id: Mapped[str] = mapped_column(String, nullable=False)
     content: Mapped[str] = mapped_column(Text, nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC))

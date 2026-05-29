@@ -6,6 +6,7 @@ const ToastContext = createContext(null)
 export function ToastProvider({ children }) {
   const [toasts, setToasts] = useState([])
   const timerIds = useRef(new Map())
+  const nextId = useRef(0)
 
   useEffect(() => {
     const timers = timerIds.current
@@ -13,7 +14,7 @@ export function ToastProvider({ children }) {
   }, [])
 
   const addToast = useCallback((variant, title, message = '') => {
-    const id = Date.now() + Math.random()
+    const id = nextId.current++
     setToasts((prev) => [...prev, { id, variant, title, message }].slice(-3))
     const timerId = setTimeout(() => {
       setToasts((prev) => prev.filter((t) => t.id !== id))
@@ -30,8 +31,8 @@ export function ToastProvider({ children }) {
 
   const toast = useMemo(() => ({
     success: (title, message) => addToast('success', title, message),
-    error:   (title, message) => addToast('error',   title, message),
-    info:    (title, message) => addToast('info',    title, message),
+    error: (title, message) => addToast('error', title, message),
+    info: (title, message) => addToast('info', title, message),
     warning: (title, message) => addToast('warning', title, message),
   }), [addToast])
 
@@ -44,5 +45,9 @@ export function ToastProvider({ children }) {
 }
 
 export function useToast() {
-  return useContext(ToastContext)
+  const context = useContext(ToastContext)
+  if (!context) {
+    throw new Error('useToast must be used within a ToastProvider')
+  }
+  return context
 }

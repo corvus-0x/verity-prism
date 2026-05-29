@@ -3,14 +3,17 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { http, HttpResponse } from 'msw'
 import { server } from './mocks/server'
 import Documents from '../pages/workspace/Documents'
+import { ToastProvider } from '../hooks/useToast'
 
 const renderDocuments = () =>
   render(
-    <MemoryRouter initialEntries={['/workspaces/ws-1/documents']}>
-      <Routes>
-        <Route path="/workspaces/:workspaceId/documents" element={<Documents />} />
-      </Routes>
-    </MemoryRouter>
+    <ToastProvider>
+      <MemoryRouter initialEntries={['/workspaces/ws-1/documents']}>
+        <Routes>
+          <Route path="/workspaces/:workspaceId/documents" element={<Documents />} />
+        </Routes>
+      </MemoryRouter>
+    </ToastProvider>
   )
 
 test('shows upload area', async () => {
