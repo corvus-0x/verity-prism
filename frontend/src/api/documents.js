@@ -36,8 +36,10 @@ function triggerDownload(blob, filename) {
   const a = document.createElement('a')
   a.href = url
   a.download = filename
+  document.body.appendChild(a)
   a.click()
-  URL.revokeObjectURL(url)
+  document.body.removeChild(a)
+  setTimeout(() => URL.revokeObjectURL(url), 100)
 }
 
 export const getExtractionsCSV = async (workspaceId, documentId, docFilename) => {
