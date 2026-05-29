@@ -126,7 +126,7 @@ Shared schemas (PARCEL-RECORD, for example) can belong to multiple verticals. Th
 
 ## Phase 2 — IDP Engine Capabilities
 **What it is:** The engine gets smarter and more connected. No vertical logic — these capabilities serve all verticals equally.  
-**Status:** In progress — 2A complete. Next: 2C UI completeness (real-time status, export, audit log UI). 2B signal framework and 2D connectors follow.
+**Status:** In progress — 2A complete. Next: 2C UI completeness (real-time status, export, audit log UI). 2D connectors follow. Signal detection moved to Phase 3 — rules are domain logic, belongs in the fraud cap not the engine.
 
 ### 2A — Intelligence Layer: Agentic Hardening + Document Viewer
 The engine's intelligence layer is functional. These builds make it measurable and trustworthy, and give it a human interface for reviewing what it produces. **Must complete before connectors or signal detection** — connectors bring more documents; signal detection reads extracted fields. Both are only as good as extraction is reliable. Measure reliability first.
@@ -149,21 +149,7 @@ Split-pane view: PDF rendered in-browser (react-pdf, pdf.js bundled — no plugi
 `claude_call_logs` table. Every extraction Claude call (type detection, field batches, retry batches) logged with call_type, latency_ms, input_tokens, output_tokens, model, success. Written via isolated `SessionLocal` — logging failure never affects extraction. Indexes on `document_id` and `called_at`.
 
 ### 2B — Signal Detection Framework
-The engine gains the ability to define and evaluate signals. The signals themselves are defined by verticals — this is the framework that runs them. **Requires 2A complete** — signals fire on extracted field values; those values need to be reliable before signals mean anything.
-
-**How it works:**
-- A `signal_rules` table stores pattern definitions (field + operator + threshold + signal code)
-- After extraction completes, the signal engine evaluates all active rules for the workspace's vertical
-- Matching rules auto-create Findings with evidence links
-- New signals = new rows in `signal_rules`, no code change
-
-**What the framework provides:**
-- Rule evaluation engine (queries `document_extractions`, compares values)
-- Cross-document rules (compare fields across multiple documents for same entity)
-- Time-series rules (compare field values across filing years)
-- Threshold rules (field value > X, or ratio between two fields > Y)
-
-**What the framework does NOT contain:** Any specific rule definitions. Those live in the vertical cap.
+**Moved to Phase 3.** Signal rules are domain logic — every vertical has its own rule set with different operators, thresholds, and evidence patterns. Building a generic framework before two verticals exist means designing an abstraction for one use case. The fraud cap (Phase 3A) will define and build signal detection against fraud-specific field values. If insurance signals share enough structure, the common parts get extracted then — when we know what "common" actually means.
 
 ### 2C — Engine UI Completeness
 These are engine-level UI capabilities that any vertical needs. Not vertical-specific — they ship with the engine and are available in every workspace.
@@ -208,7 +194,8 @@ POST /workspaces/{id}/connectors/county-auditor
 **Trigger:** Phase 2A (extraction eval + observability) complete. Engine extraction is measured and reliable. At least one full end-to-end case has run against real documents with observable confidence metrics.
 
 ### 3A — Fraud Vertical v1.0
-**Installs:** Fraud schema set + SR signal definitions + investigation workflow + referral export
+**Installs:** Fraud schema set + SR signal definitions + signal detection engine + investigation workflow + referral export
+**Note:** Signal detection framework (originally Phase 2B) is built here, as fraud cap logic, not engine infrastructure.
 
 **Schema set (already built, just needs vertical packaging):**
 PARCEL-RECORD, DEED, 990, SOS-FILING, UCC, BUILDING-PERMIT, AUDIT-REPORT, SCREENSHOT, OBITUARY, PLAT, CORRESPONDENCE
