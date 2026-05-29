@@ -8,6 +8,7 @@ const ENGINE_SECTIONS = [
   { path: 'entities', label: 'Entities' },
   { path: 'chat', label: 'AI Chat' },
   { path: 'review', label: 'Review' },
+  { path: 'audit', label: 'Audit Log' },
 ]
 
 const VERTICAL_SECTIONS = {
