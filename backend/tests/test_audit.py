@@ -112,3 +112,48 @@ def test_fail_writes_upload_failed_audit_row(db, user_ws_doc):
     assert entry.user_id == user.id
     assert entry.workspace_id == ws.id
     assert "OCR failed" in entry.after_state["error"]
+
+
+# ── M4b: auth event audit ────────────────────────────────────────────────────
+
+def test_register_writes_audit_row(client, db):
+    client.post("/auth/register", json={
+        "email": "audit_reg@example.com",
+        "password": "TestPass123!",
+        "full_name": "Audit Reg",
+    })
+    entry = (
+        db.query(AuditLog)
+        .filter(AuditLog.action == "registered")
+        .first()
+    )
+    assert entry is not None
+    assert entry.workspace_id is None
+    assert entry.after_state["email"] == "audit_reg@example.com"
+
+
+def test_login_success_writes_audit_row(client, registered_user, db):
+    client.post("/auth/login", json=registered_user)
+    entry = (
+        db.query(AuditLog)
+        .filter(AuditLog.action == "login_success")
+        .first()
+    )
+    assert entry is not None
+    assert entry.user_id is not None
+    assert entry.workspace_id is None
+
+
+def test_login_failure_writes_audit_row(client, db):
+    client.post("/auth/login", json={
+        "email": "nobody@example.com",
+        "password": "wrongpassword",
+    })
+    entry = (
+        db.query(AuditLog)
+        .filter(AuditLog.action == "login_failed")
+        .first()
+    )
+    assert entry is not None
+    assert entry.user_id is None
+    assert entry.after_state["email"] == "nobody@example.com"
