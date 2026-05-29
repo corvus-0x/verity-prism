@@ -18,7 +18,6 @@ services:
       - "8000:8000"
     environment:
       DATABASE_URL: postgresql://catalyst:catalyst@db:5432/catalyst
-      SECRET_KEY: ${SECRET_KEY:-dev-secret-key-change-in-production}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
       UPLOAD_DIR: /app/uploads
     volumes:
