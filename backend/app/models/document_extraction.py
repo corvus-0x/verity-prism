@@ -1,8 +1,12 @@
 import uuid
 from datetime import datetime, timezone
-from sqlalchemy import String, DateTime, Enum as SAEnum, ForeignKey, Float, Integer
+
+from sqlalchemy import DateTime, Float, ForeignKey, Integer, String
+from sqlalchemy import Enum as SAEnum
 from sqlalchemy.orm import Mapped, mapped_column
+
 from app.database import Base
+
 
 class DocumentExtraction(Base):
     __tablename__ = "document_extractions"

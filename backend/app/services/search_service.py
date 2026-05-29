@@ -9,13 +9,15 @@ How it works:
 """
 import json
 import logging
+
 from anthropic import Anthropic
-from app.utils.json_helpers import strip_json_fences
-from sqlalchemy.orm import Session
 from sqlalchemy import text
+from sqlalchemy.orm import Session
+
 from app.config import settings
-from app.models.document_extraction import DocumentExtraction
 from app.models.document import Document
+from app.models.document_extraction import DocumentExtraction
+from app.utils.json_helpers import strip_json_fences
 
 logger = logging.getLogger(__name__)
 client = Anthropic(api_key=settings.anthropic_api_key)

@@ -21,25 +21,25 @@ import logging
 import uuid
 from pathlib import Path
 
-from sqlalchemy.orm import Session
 from sqlalchemy import text
+from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.database import SessionLocal
 from app.models.document import Document
-from app.models.lead import InvestigationLead
 from app.models.document_schema import DocumentSchema
+from app.models.lead import InvestigationLead
 from app.models.workspace import Workspace
-from app.services.ocr import extract_text
+from app.services import audit
 from app.services.extraction_engine import (
     detect_document_type,
-    get_schema_for_type,
     extract_fields,
+    get_schema_for_type,
     save_extractions,
 )
-from app.services.xml_parser import is_valid_xml_bytes, parse_xml_document
 from app.services.naming import generate_standardized_name
-from app.services import audit
+from app.services.ocr import extract_text
+from app.services.xml_parser import is_valid_xml_bytes, parse_xml_document
 
 logger = logging.getLogger(__name__)
 

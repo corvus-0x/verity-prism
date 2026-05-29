@@ -3,6 +3,7 @@ Seed the document_schemas table with extraction schemas for general document pro
 Run inside Docker: docker-compose exec backend python -m app.seeds.document_schemas
 """
 import sys
+
 from app.database import SessionLocal
 from app.models.document_schema import DocumentSchema
 

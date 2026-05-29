@@ -1,7 +1,22 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+
 from app.config import settings
-from app.routers import auth, workspaces, entities, findings, transactions, leads, notes, documents, search, ai, schemas, review, audit
+from app.routers import (
+    ai,
+    audit,
+    auth,
+    documents,
+    entities,
+    findings,
+    leads,
+    notes,
+    review,
+    schemas,
+    search,
+    transactions,
+    workspaces,
+)
 
 app = FastAPI(
     title="Verity Prism IDP Platform",

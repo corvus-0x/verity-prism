@@ -1,11 +1,12 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
+
 from app.database import get_db
-from app.models.workspace import Workspace, WorkspaceMember
 from app.models.user import User
-from app.schemas.workspace import WorkspaceCreate, WorkspaceUpdate, WorkspaceOut
-from app.services.auth import get_current_user
+from app.models.workspace import Workspace, WorkspaceMember
+from app.schemas.workspace import WorkspaceCreate, WorkspaceOut, WorkspaceUpdate
 from app.services import audit
+from app.services.auth import get_current_user
 
 router = APIRouter(prefix="/workspaces", tags=["workspaces"])
 

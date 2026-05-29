@@ -2,21 +2,23 @@ import asyncio
 import csv
 import io
 import json as json_module
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, UploadFile, File
-from fastapi.responses import FileResponse, Response, StreamingResponse
 from pathlib import Path
+
+from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Query, UploadFile
+from fastapi.responses import FileResponse, Response, StreamingResponse
 from sqlalchemy import func
 from sqlalchemy.orm import Session
+
 from app.config import settings
 from app.database import get_db
 from app.models.document import Document
 from app.models.document_extraction import DocumentExtraction
 from app.models.user import User
+from app.routers.workspaces import get_workspace_or_404
 from app.schemas.document import DocumentOut, ExtractionOut
+from app.services import audit
 from app.services.auth import get_current_user
 from app.services.document_pipeline import create_pending_document, process_upload_background
-from app.services import audit
-from app.routers.workspaces import get_workspace_or_404
 
 router = APIRouter(prefix="/workspaces/{workspace_id}", tags=["documents"])
 
@@ -98,9 +100,10 @@ async def stream_document_status(
     TERMINAL = {"complete", "failed", "no_schema", "needs_review"}
 
     async def event_generator():
+        from sqlalchemy import func as sqlfunc
+
         from app.database import SessionLocal
         from app.models.document_extraction import DocumentExtraction
-        from sqlalchemy import func as sqlfunc
 
         stream_db = SessionLocal()
         try:

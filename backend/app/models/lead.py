@@ -1,8 +1,12 @@
 import uuid
 from datetime import datetime, timezone
-from sqlalchemy import String, DateTime, Enum as SAEnum, ForeignKey
+
+from sqlalchemy import DateTime, ForeignKey, String
+from sqlalchemy import Enum as SAEnum
 from sqlalchemy.orm import Mapped, mapped_column
+
 from app.database import Base
+
 
 class InvestigationLead(Base):
     __tablename__ = "investigation_leads"

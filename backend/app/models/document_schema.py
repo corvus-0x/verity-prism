@@ -1,10 +1,13 @@
 import uuid
 from datetime import datetime, timezone
-from sqlalchemy import String, DateTime, Integer, Boolean, Text, Float
+
+from sqlalchemy import Boolean, DateTime, Float, Integer, String, Text
 from sqlalchemy import Enum as SAEnum
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
+
 from app.database import Base
+
 
 class DocumentSchema(Base):
     __tablename__ = "document_schemas"

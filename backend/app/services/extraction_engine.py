@@ -8,11 +8,13 @@ Each batch is an independent Claude call; results are merged at the end.
 import json
 import logging
 import time
+
 from anthropic import Anthropic
 from sqlalchemy.orm import Session
+
 from app.config import settings
-from app.models.document_schema import DocumentSchema
 from app.models.document_extraction import DocumentExtraction
+from app.models.document_schema import DocumentSchema
 from app.utils.json_helpers import strip_json_fences
 
 logger = logging.getLogger(__name__)

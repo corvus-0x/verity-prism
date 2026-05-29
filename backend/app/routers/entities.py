@@ -1,13 +1,21 @@
 from datetime import datetime, timezone
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
+
 from app.database import get_db
 from app.models.entity import Entity, Relationship
 from app.models.user import User
-from app.schemas.entity import EntityCreate, EntityUpdate, EntityOut, RelationshipCreate, RelationshipOut
-from app.services.auth import get_current_user
-from app.services import audit
 from app.routers.workspaces import get_workspace_or_404
+from app.schemas.entity import (
+    EntityCreate,
+    EntityOut,
+    EntityUpdate,
+    RelationshipCreate,
+    RelationshipOut,
+)
+from app.services import audit
+from app.services.auth import get_current_user
 
 router = APIRouter(prefix="/workspaces/{workspace_id}", tags=["entities"])
 
