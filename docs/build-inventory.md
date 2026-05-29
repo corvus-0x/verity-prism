@@ -55,7 +55,12 @@ Engine. The schema registry. `vertical = "general"` means available in all works
 New fields: `parse_strategy` enum (`claude` | `xml_direct`) — tells the pipeline how to extract this document type without hardcoding type strings. `default_confidence_threshold` float — per-schema baseline for the extraction evaluator (Phase 2A). Both set in the model and in all seeds.
 
 #### `document_extraction.py` ✅
-Engine. **The central IDP table.** One row per extracted field per document. No domain knowledge — just field_name, field_value, field_type, confidence. Every vertical's signals query this table.
+Engine. **The central IDP table.** One row per extracted field per document. No domain knowledge — just field_name, field_value, field_type, confidence, attempt. Every vertical's signals query this table.
+
+`attempt` column: 1 = initial Claude extraction, 2 = automated retry (evaluator pass), 3 = human correction (review UI). All rows are kept — history is never deleted. `list_extractions` returns the latest attempt per field_name by default; `?include_history=true` returns all rows.
+
+#### `claude_call_log.py` ✅
+Engine. Observability sink for every Claude call in the extraction pipeline. One row per API call: call_type (`type_detection` | `extraction_batch` | `extraction_retry`), document_id, workspace_id, schema_id, model, attempt, latency_ms, input_tokens, output_tokens, success, error_message. No FK constraints — log rows survive document soft-deletes. Written via isolated SessionLocal so logging failures never affect extraction transactions.
 
 #### `entity.py` ✅
 Engine. People and organizations. Soft-deleted. Relationships link entities. No fraud-specific fields.
@@ -124,6 +129,11 @@ Engine. Tool JSON schemas and vertical → tool list registry. `build_tool_schem
 #### `ai_engine.py` ✅
 Engine. Native Anthropic tool-use agentic loop. `chat()` runs up to 10 rounds: calls Claude with tool schemas, dispatches `tool_use` blocks via `agent_tools.execute()`, appends `tool_result` blocks, repeats until `end_turn`. On max rounds: `_synthesis_pass()` forces a final answer with tools disabled. `_extract_text()` extracts the first text block with fallback. `get_conversation_history()` fetches last 20 messages. Logs every tool call with name, params, result size, and latency. `build_workspace_context()` removed — Claude queries data via tools instead of reading a static dump.
 
+#### `extraction_evaluator.py` ✅
+Engine. Two functions:
+- `evaluate(extractions, threshold)` — pure function, no DB. Compares each field's confidence against the schema threshold, returns `EvaluationResult(low_confidence_fields, threshold_used, total_fields)`.
+- `run_retry(document_id, workspace_id, ocr_text, schema, low_confidence_field_names, db)` — builds a mini-batch of only the failing fields, calls `_extract_batch()`, saves results as `attempt=2` rows. Called by the pipeline between save_extractions() and filename generation.
+
 #### `connectors/` 🔲
 Engine. Phase 2 — public data sources feed into the pipeline.
 ```
@@ -157,6 +167,7 @@ The engine's intelligence layer. Understands documents, answers questions, surfa
 | `search.py` | POST /workspaces/{id}/search/ | Engine | ✅ |
 | `ai.py` | POST + GET /conversations, POST /conversations/{id}/messages | Engine | ✅ |
 | `schemas.py` | GET /schemas/ | Engine | ✅ |
+| `review.py` | GET /workspaces/{id}/review-queue, PATCH /documents/{id}/extractions/{id}/correct | Engine | ✅ |
 | `documents.py` (Phase 2) | GET /documents/{id}/extractions.csv, /extractions.json — export | Engine | 🔲 Phase 2 |
 | `documents.py` (Phase 2) | GET /documents/{id}/status/stream — SSE for real-time status | Engine | 🔲 Phase 2 |
 | `workspaces.py` (Phase 2) | GET /workspaces/{id}/extractions.csv — workspace-level export | Engine | 🔲 Phase 2 |
@@ -237,7 +248,7 @@ All 11 schemas are `vertical = "general"` — available in every workspace regar
 | `pages/workspace/Findings.jsx` | `.../findings` | Fraud cap only — signal findings | ✅ |
 | `pages/workspace/Leads.jsx` | `.../leads` | Fraud cap only — investigation leads | ✅ |
 | `pages/workspace/DocumentViewer.jsx` | `.../documents/:id` | Split-pane PDF viewer (65%) + extracted fields panel (35%). react-pdf renders in-browser, no plugin needed. Status-aware fields panel surfaces extraction_error on failure. | ✅ |
-| `pages/workspace/ExtractionReview.jsx` | `.../review` | **Phase 2** — Review queue for low-confidence fields. Requires document viewer. | 🔲 Phase 2 |
+| `pages/workspace/ExtractionReview.jsx` | `.../review` | Review queue for `needs_review` documents. Table shows filename, doc type, low-confidence field count. Review button opens DocumentViewer with `?review=1`. | ✅ |
 | `pages/workspace/AuditLog.jsx` | `.../audit` | **Phase 2** — Chronological immutable log per workspace. | 🔲 Phase 2 |
 
 #### API Clients (`frontend/src/api/`)
@@ -308,6 +319,7 @@ Layer: Engine. `docker-compose up -d` starts full stack.
 3. `a3b8e1f92d44_add_is_deleted_to_documents` — adds `is_deleted` and `deleted_at` columns to documents table (soft-delete compliance)
 4. `d4e9f2a83b17_add_parse_strategy_to_document_schemas` — adds `parse_strategy` enum (`claude`|`xml_direct`) and `default_confidence_threshold` float to `document_schemas`; sets 990 to `xml_direct`/`1.0`
 5. `c8dd75f9d15c_schema_cleanup_obituary_and_sr_` — moves OBITUARY to `vertical='fraud'`; strips SR signal codes from extraction_prompts; cleans fraud investigation commentary from 5 field descriptions
+6. `e1f3a2b94c07_add_attempt_needs_review_and_call_log` — adds `attempt` column (INTEGER NOT NULL DEFAULT 1) to `document_extractions`; adds `needs_review` to `extraction_status` enum; creates `claude_call_logs` table with indexes on `document_id` and `called_at`
 
 A clean `alembic upgrade head` produces the correct full schema.  
 **Status:** ✅ Connected
@@ -380,3 +392,4 @@ Investigation workflow + referral export
 | 2026-05-26 (evening) | Core hardening + IDP expansion architecture. Core: CORS config, file size limit, soft-delete on list_documents, workspace null guard. Expansion: parse_strategy + default_confidence_threshold on DocumentSchema (migrations d4e9f2a + c8dd75f); detect_document_type and generate_standardized_name load types from DB; pipeline routes on schema.parse_strategy; is_parseable_xml removed. Schema cleanup: OBITUARY → vertical=fraud; SR signal codes and fraud commentary removed from 9 general schemas. 75/75 tests. |
 | 2026-05-28 | Frontend vertical separation: WorkspaceContext; vertical-aware sidebar and overview; workspace creation modal with vertical picker. Schema Library: GET /schemas/ endpoint, SchemaLibrary page, AppShell nav link, schemas API client, vite proxy. Full schema cleanup: all case-specific content removed from all 11 schemas in seed file and live DB; seed functions converted to upserts. Frontend inventory section added. Roadmap updated with document viewer (Phase 2A next), extraction review UI, Engine UI section (real-time status, export, audit log), multi-user in Phase 4A. |
 | 2026-05-28 | Document viewer complete (Phase 2A). GET /documents/{id}/file endpoint. DocumentList extracted. DocumentViewer with react-pdf (10.x), 65/35 split, status-aware fields panel, blob URL lifecycle management. 80/80 tests. Known gap: GET /documents/{id} does not filter is_deleted — pre-existing, fix deferred. Blog post 008 written (post-008-the-source.md). |
+| 2026-05-28 | Phase 2A complete. extraction_evaluator.py (evaluate + run_retry), claude_call_log.py model, review.py router (GET review-queue + PATCH correct), ExtractionReview.jsx, ExtractionTable editable mode, DocumentViewer review mode (?review=1). list_extractions returns latest-attempt-per-field by default. Migration e1f3a2b94c07: attempt column, needs_review enum, claude_call_logs table. ADRs added to docs/decisions/. 80/80 tests. |

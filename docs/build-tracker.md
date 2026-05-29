@@ -69,15 +69,24 @@
 
 ---
 
-## Phase 2 — Next Builds
+## Phase 2A — Extraction Intelligence + Review (2026-05-28)
+
+| Task | What It Builds | Status |
+|------|---------------|--------|
+| Document viewer | Split-pane: PDF rendered in-browser (react-pdf, pdf.js bundled) + extracted fields panel. GET /documents/{id}/file endpoint. Route-based navigation, blob URL lifecycle management, status-aware fields panel. | ✅ Done |
+| Extraction evaluation loop | `extraction_evaluator.py`: pure `evaluate()` + `run_retry()`. After save_extractions(), checks confidence against schema threshold, retries only failing fields as a mini-batch (attempt=2). Documents still below threshold flagged `needs_review`. | ✅ Done |
+| Observability layer | `claude_call_logs` table + `_log_claude_call()` in extraction_engine.py. Every type detection and field extraction Claude call logged with model, latency_ms, input/output tokens. Isolated SessionLocal — logging never affects extraction transaction. | ✅ Done |
+| Extraction review UI | `ExtractionReview.jsx` at `/review` — queue of `needs_review` documents with low-confidence field counts. Review button opens DocumentViewer with `?review=1`. ExtractionTable gains `editable` mode: inline edit, Accept/Cancel, green Corrected badge on attempt=3. | ✅ Done |
+
+**Tests passing:** 80/80
+
+---
+
+## Phase 2 — Remaining Builds
 
 | Task | What It Builds | Phase | Status |
 |------|---------------|-------|--------|
-| Document viewer | Split-pane: PDF rendered in-browser (left) + extraction fields (right). New endpoint: GET /documents/{id}/file. Field-level linking. Prerequisite for extraction review UI. | 2A | 🔲 Next |
-| Extraction evaluation loop | Post-extract evaluator: confidence check → retry with alternate prompt → escalate to human review if retry fails. First systematic data on where extraction fails. | 2A | 🔲 |
-| Extraction review UI | Review queue for low-confidence fields. Reviewer sees document viewer + flagged fields. Accept or correct. Requires document viewer. | 2A | 🔲 |
-| Observability layer | Log every Claude call: model, latency, tokens, confidence distribution per doc type. Extraction evaluator writes to this. | 2A | 🔲 |
-| Real-time extraction status | SSE on GET /documents/{id}/status/stream — pushes pending→processing→complete to frontend. Document list updates live. | 2C | 🔲 |
+| Real-time extraction status | SSE on GET /documents/{id}/status/stream — pushes pending→processing→complete to frontend. Document list updates live. | 2C | 🔲 Next |
 | Data export | GET /documents/{id}/extractions.csv + .json; GET /workspaces/{id}/extractions.csv. Generic engine export — vertical-specific formats stay in the cap. | 2C | 🔲 |
 | Audit log UI | Read-only chronological log per workspace. Surfaces the existing immutable audit_log table. Compliance selling point. | 2C | 🔲 |
 | Signal detection framework | signal_rules table + rule evaluator against document_extractions. Framework only — no specific rules (those are vertical cap content). | 2B | 🔲 |
@@ -120,3 +129,4 @@
 | 2026-05-26 | Tool-use chat agent complete. Replaced static context dump with native Anthropic tool-use agentic loop (10-round cap, synthesis pass). 3 new service files: agent_tools.py (6 read-only tools + dispatcher), agent_registry.py (vertical registry), ai_engine.py rewritten. Router fix: user message saved after chat() returns to prevent duplicate history. 5 bugs caught in review: get_leads wrong column, Decimal zero falsy check, duplicate message timing, missing filename/doc_type in query_extractions, missing is_error flag. 67/67 tests. |
 | 2026-05-26 (evening) | IDP core hardening + expansion architecture. Core fixes: CORS config, file size limit, soft-delete on list_documents, workspace null guard, Alembic verified on fresh DB. Expansion: parse_strategy + default_confidence_threshold on DocumentSchema (migration + seeds); KNOWN_DOCUMENT_TYPES removed — detect_document_type now queries DB; pipeline routes on schema.parse_strategy not type strings; naming.py loads doc types from DB; is_parseable_xml removed (dead code). Schema cleanup: OBITUARY moved to vertical="fraud" (migration + seed); SR signal codes and fraud investigation commentary removed from 9 general schema descriptions and extraction prompts. 75/75 tests. |
 | 2026-05-28 | Engine UI + platform layer. Frontend vertical separation: WorkspaceContext, vertical-aware sidebar and overview, workspace creation modal with vertical picker (replaces prompt()). Schema Library: GET /schemas/ endpoint, SchemaLibrary page at /schemas, AppShell nav link, schemas API client, vite proxy. Full schema cleanup: case-specific content (county names, person names, org names, signal codes) scrubbed from all 11 schemas in seed file and live DB; seed functions converted to upserts. Roadmap + build inventory + build tracker updated. Phase 2 next builds: document viewer (next), extraction eval, review UI, real-time status, export, audit log UI, signal framework, connectors. 75/75 tests. |
+| 2026-05-28 | Phase 2A complete. Extraction evaluation loop: evaluator runs after save_extractions(), retries only low-confidence fields as a mini-batch (attempt=2), flags needs_review if still below threshold. Observability: claude_call_logs table, every extraction Claude call logged with latency + tokens, isolated session. Review UI: /review queue page + DocumentViewer editable mode (?review=1) + ExtractionTable inline correction (attempt=3, confidence=1.0). list_extractions fixed to return latest-attempt-per-field by default (?include_history=true for full history). Migration e1f3a2b94c07: attempt column, needs_review enum value, claude_call_logs table. ADRs added (docs/decisions/). 80/80 tests. |

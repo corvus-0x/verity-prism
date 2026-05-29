@@ -126,7 +126,7 @@ Shared schemas (PARCEL-RECORD, for example) can belong to multiple verticals. Th
 
 ## Phase 2 — IDP Engine Capabilities
 **What it is:** The engine gets smarter and more connected. No vertical logic — these capabilities serve all verticals equally.  
-**Status:** In progress — 2A tool-use chat agent + document viewer complete. Next: extraction evaluation loop + observability layer. 2B signal framework and 2C UI completeness follow.
+**Status:** In progress — 2A complete. Next: 2C UI completeness (real-time status, export, audit log UI). 2B signal framework and 2D connectors follow.
 
 ### 2A — Intelligence Layer: Agentic Hardening + Document Viewer
 The engine's intelligence layer is functional. These builds make it measurable and trustworthy, and give it a human interface for reviewing what it produces. **Must complete before connectors or signal detection** — connectors bring more documents; signal detection reads extracted fields. Both are only as good as extraction is reliable. Measure reliability first.
@@ -139,16 +139,14 @@ Split-pane view: PDF rendered in-browser (react-pdf, pdf.js bundled — no plugi
 *Spec:* `docs/superpowers/specs/2026-05-28-document-viewer-design.md`  
 **Field-level linking deferred** — clicking a field to highlight its location in the PDF is the next pass after the extraction evaluator ships (requires text layer, built on existing react-pdf foundation).
 
-**Extraction evaluation loop** 🔲 Next build:  
-After `extract_fields()` runs, an evaluator pass checks confidence scores, retries low-confidence fields with a different prompt strategy, and escalates to a human-review lead if retry fails. Architecture: spec → extract → evaluate → retry/escalate. Produces the first real data on where Claude extraction fails systematically — which field types fail, which document types fail, which schemas need work. Document viewer is the prerequisite (✅ done).  
-*Spec:* `docs/superpowers/specs/` (to be written)
+**Extraction evaluation loop** ✅ DONE (2026-05-28):  
+`extraction_evaluator.py` — pure `evaluate()` checks confidence against `schema.default_confidence_threshold`. `run_retry()` builds a mini-batch of only failing fields, calls Claude once more as `attempt=2`. If still below threshold after retry, document is flagged `needs_review`. XML-direct path skipped (always 1.0 confidence). Pipeline insertion: between `save_extractions()` and filename generation, gated on `schema.parse_strategy == "claude"`.
 
-**Extraction review UI** 🔲 Frontend companion to evaluation loop:  
-Review queue showing documents with fields below confidence threshold. Reviewer sees the document viewer on one side and the flagged fields on the other. Accept or correct each field. Corrections feed back to the observability layer and inform schema improvements. Cannot build this without the document viewer — the viewer is the prerequisite.
+**Extraction review UI** ✅ DONE (2026-05-28):  
+`ExtractionReview.jsx` at `/review` — queue of `needs_review` documents. Clicking Review opens `DocumentViewer?review=1`. Fields panel becomes editable: each row gets an Edit button, inline input, Accept/Cancel. Accepted corrections are saved as `attempt=3, confidence=1.0`. When all fields corrected, document status flips back to `complete`.
 
-**Observability layer** 🔲 Build alongside extraction eval:  
-Log every Claude call with model, latency, token counts, confidence distribution per document type, which fields fail most often. Not for cost — for understanding where the engine breaks. The extraction evaluator writes to this. Schema improvements come from reading it.  
-*Spec:* `docs/superpowers/specs/` (to be written)
+**Observability layer** ✅ DONE (2026-05-28):  
+`claude_call_logs` table. Every extraction Claude call (type detection, field batches, retry batches) logged with call_type, latency_ms, input_tokens, output_tokens, model, success. Written via isolated `SessionLocal` — logging failure never affects extraction. Indexes on `document_id` and `called_at`.
 
 ### 2B — Signal Detection Framework
 The engine gains the ability to define and evaluate signals. The signals themselves are defined by verticals — this is the framework that runs them. **Requires 2A complete** — signals fire on extracted field values; those values need to be reliable before signals mean anything.
