@@ -96,6 +96,21 @@
 
 ---
 
+## Phase 2C — Cleanup + CI Hardening (2026-05-29)
+
+| Task | What It Builds | Status |
+|------|---------------|--------|
+| Ruff import sorting | 54 import-sorting fixes across 19 backend files (I001). `pyproject.toml`: E712 ignored (SQLAlchemy `== False` pattern), `requires-python = ">=3.11"` added. | ✅ Done |
+| useToast.jsx rename | `useToast.js` → `useToast.jsx` — Vite/Vitest requires `.jsx` extension to parse JSX syntax. | ✅ Done |
+| ESLint JSX config | Added `languageOptions.parserOptions.ecmaFeatures.jsx` to `eslint.config.js` — ESLint was failing on all `.jsx` files with "Parsing error: Unexpected token <". | ✅ Done |
+| CI workflow fixes | Added `DATABASE_URL` to test env (required by `config.py` on import). Excluded `tests/evals/` from automated run — eval tests call real Claude API, run locally only. | ✅ Done |
+| CodeRabbit critical fix | `nextId = useRef(0)` added to `useToast.jsx` — `nextId.current++` was referenced before declaration, causing ReferenceError on every toast call. | ✅ Done |
+| test_documents.jsx | Wrapped render with `ToastProvider` — `Documents` component now calls `useToast()` and requires the provider to be present in tests. | ✅ Done |
+
+**Tests passing (CI):** 82/82 (evals excluded — require live API key)
+
+---
+
 ## Phase 2 — Remaining Builds
 
 | Task | What It Builds | Phase | Status |
@@ -141,4 +156,5 @@
 | 2026-05-26 (evening) | IDP core hardening + expansion architecture. Core fixes: CORS config, file size limit, soft-delete on list_documents, workspace null guard, Alembic verified on fresh DB. Expansion: parse_strategy + default_confidence_threshold on DocumentSchema (migration + seeds); KNOWN_DOCUMENT_TYPES removed — detect_document_type now queries DB; pipeline routes on schema.parse_strategy not type strings; naming.py loads doc types from DB; is_parseable_xml removed (dead code). Schema cleanup: OBITUARY moved to vertical="fraud" (migration + seed); SR signal codes and fraud investigation commentary removed from 9 general schema descriptions and extraction prompts. 75/75 tests. |
 | 2026-05-28 | Engine UI + platform layer. Frontend vertical separation: WorkspaceContext, vertical-aware sidebar and overview, workspace creation modal with vertical picker (replaces prompt()). Schema Library: GET /schemas/ endpoint, SchemaLibrary page at /schemas, AppShell nav link, schemas API client, vite proxy. Full schema cleanup: case-specific content (county names, person names, org names, signal codes) scrubbed from all 11 schemas in seed file and live DB; seed functions converted to upserts. Roadmap + build inventory + build tracker updated. Phase 2 next builds: document viewer (next), extraction eval, review UI, real-time status, export, audit log UI, signal framework, connectors. 75/75 tests. |
 | 2026-05-28 | Phase 2A complete. Extraction evaluation loop: evaluator runs after save_extractions(), retries only low-confidence fields as a mini-batch (attempt=2), flags needs_review if still below threshold. Observability: claude_call_logs table, every extraction Claude call logged with latency + tokens, isolated session. Review UI: /review queue page + DocumentViewer editable mode (?review=1) + ExtractionTable inline correction (attempt=3, confidence=1.0). list_extractions fixed to return latest-attempt-per-field by default (?include_history=true for full history). Migration e1f3a2b94c07: attempt column, needs_review enum value, claude_call_logs table. ADRs added (docs/decisions/). 80/80 tests. |
+| 2026-05-29 | Phase 2C cleanup + CI hardening (PR #3). Ruff UP017 + import sorting across 19 files. ESLint JSX parserOptions. useToast.js → useToast.jsx. DATABASE_URL in CI env. Eval tests excluded from CI. CodeRabbit caught missing nextId ref (critical — ReferenceError on every toast call). test_documents.jsx wrapped with ToastProvider. ADR-0004 written (SSE over polling). Blog post-009 written. 82/82 CI tests (evals excluded). |
 | 2026-05-28 | Phase 2C complete. Toast system (useToast + ToastContainer, timer cleanup, ARIA). Document status pill badges (needs_review/no_schema/failed added to Badge.jsx). SSE real-time extraction status (StreamingResponse + useExtractionStream with exponential backoff). Data export: 4 endpoints (per-doc + workspace CSV/JSON) + ⋯ context menu frontend. Audit log: paginated backend + timeline UI with search/filter. 85/85 tests. |

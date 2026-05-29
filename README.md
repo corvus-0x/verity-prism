@@ -117,7 +117,7 @@ Documents → Ingestion Pipeline → Extraction Engine → Knowledge Base → Ve
 
 **Start here if you want to understand the architecture:**
 
-- [`docs/decisions/`](docs/decisions/) — Architecture Decision Records: why the database is structured as row-per-field, why adding a document type requires no code change, why the engine knows nothing about fraud or insurance
+- [`docs/decisions/`](docs/decisions/) — Architecture Decision Records: why the database is structured as row-per-field, why adding a document type requires no code change, why the engine knows nothing about fraud or insurance, why SSE uses fetch+ReadableStream instead of native EventSource
 - [`docs/roadmap.md`](docs/roadmap.md) — phase status, what's complete, what's next, and why each phase gates the next
 - [`docs/build-inventory.md`](docs/build-inventory.md) — every component, what it does, what it connects to, and what's planned
 - [`docs/superpowers/specs/`](docs/superpowers/specs/) — design specifications written before each build
