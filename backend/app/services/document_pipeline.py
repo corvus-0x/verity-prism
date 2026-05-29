@@ -58,6 +58,18 @@ def _fail(doc: Document, error: str, db: Session) -> None:
     doc.extraction_error = error[:500]
     db.commit()
     logger.error(f"Pipeline failed for doc {doc.id}: {error}")
+    try:
+        audit.log(
+            db,
+            action="upload_failed",
+            user_id=doc.uploaded_by,
+            workspace_id=doc.workspace_id,
+            entity_type="document",
+            entity_id=doc.id,
+            after_state={"error": error[:500], "status": "failed"},
+        )
+    except Exception as e:
+        logger.warning(f"Audit log failed for _fail on doc {doc.id}: {e}")
 
 
 def _no_schema(doc: Document, doc_type: str, workspace_id: str, db: Session) -> None:
