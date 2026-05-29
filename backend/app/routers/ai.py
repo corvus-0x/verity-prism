@@ -1,13 +1,14 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
+
 from app.database import get_db
 from app.models.ai import AIConversation, AIMessage
 from app.models.user import User
-from app.schemas.ai import MessageCreate, ConversationOut, MessageOut
-from app.services.auth import get_current_user
-from app.services.ai_engine import chat
-from app.services import audit
 from app.routers.workspaces import get_workspace_or_404
+from app.schemas.ai import ConversationOut, MessageCreate, MessageOut
+from app.services import audit
+from app.services.ai_engine import chat
+from app.services.auth import get_current_user
 
 router = APIRouter(prefix="/workspaces/{workspace_id}", tags=["ai"])
 

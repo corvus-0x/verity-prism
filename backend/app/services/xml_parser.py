@@ -3,9 +3,10 @@ Direct XML parser for structured document types (IRS 990, etc.).
 Bypasses OCR and Claude extraction when the source is already structured XML.
 Field paths in the schema description are used to locate values in the XML tree.
 """
-import xml.etree.ElementTree as ET
-import re
 import logging
+import re
+import xml.etree.ElementTree as ET
+
 from app.models.document_schema import DocumentSchema
 
 logger = logging.getLogger(__name__)

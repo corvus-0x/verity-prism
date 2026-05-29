@@ -1,7 +1,9 @@
-import re
 import logging
+import re
+
 from anthropic import Anthropic
 from sqlalchemy.orm import Session
+
 from app.config import settings
 from app.models.document_schema import DocumentSchema
 

@@ -1,8 +1,12 @@
 import uuid
 from datetime import datetime, timezone
-from sqlalchemy import String, DateTime, Enum as SAEnum, ForeignKey, ARRAY
+
+from sqlalchemy import ARRAY, DateTime, ForeignKey, String
+from sqlalchemy import Enum as SAEnum
 from sqlalchemy.orm import Mapped, mapped_column
+
 from app.database import Base
+
 
 class SignalType(Base):
     __tablename__ = "signal_types"

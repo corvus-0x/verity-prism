@@ -1,8 +1,12 @@
 import uuid
-from datetime import datetime, timezone, date
-from sqlalchemy import String, DateTime, Enum as SAEnum, ForeignKey, Numeric, Date
+from datetime import date, datetime, timezone
+
+from sqlalchemy import Date, DateTime, ForeignKey, Numeric, String
+from sqlalchemy import Enum as SAEnum
 from sqlalchemy.orm import Mapped, mapped_column
+
 from app.database import Base
+
 
 class Transaction(Base):
     __tablename__ = "transactions"

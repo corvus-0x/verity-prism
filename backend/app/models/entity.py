@@ -1,9 +1,13 @@
 import uuid
 from datetime import datetime, timezone
-from sqlalchemy import String, DateTime, Enum as SAEnum, ForeignKey, Boolean, Date
+
+from sqlalchemy import Boolean, Date, DateTime, ForeignKey, String
+from sqlalchemy import Enum as SAEnum
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
+
 from app.database import Base
+
 
 class Entity(Base):
     __tablename__ = "entities"

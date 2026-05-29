@@ -168,10 +168,10 @@ The engine's intelligence layer. Understands documents, answers questions, surfa
 | `ai.py` | POST + GET /conversations, POST /conversations/{id}/messages | Engine | ✅ |
 | `schemas.py` | GET /schemas/ | Engine | ✅ |
 | `review.py` | GET /workspaces/{id}/review-queue, PATCH /documents/{id}/extractions/{id}/correct | Engine | ✅ |
-| `documents.py` (Phase 2) | GET /documents/{id}/extractions.csv, /extractions.json — export | Engine | 🔲 Phase 2 |
-| `documents.py` (Phase 2) | GET /documents/{id}/status/stream — SSE for real-time status | Engine | 🔲 Phase 2 |
-| `workspaces.py` (Phase 2) | GET /workspaces/{id}/extractions.csv — workspace-level export | Engine | 🔲 Phase 2 |
-| `audit.py` (Phase 2) | GET /workspaces/{id}/audit-log | Engine | 🔲 Phase 2 |
+| `documents.py` | GET /documents/{id}/extractions.csv, /extractions.json — per-document export | Engine | ✅ |
+| `documents.py` | GET /documents/{id}/status/stream — SSE for real-time status | Engine | ✅ |
+| `workspaces.py` | GET /workspaces/{id}/extractions.csv, /extractions.json — workspace-level export | Engine | ✅ |
+| `audit.py` | GET /workspaces/{id}/audit-log?page&limit | Engine | ✅ |
 | `connectors.py` | POST /connectors/{source} | Engine | 🔲 Phase 2 |
 
 ---
@@ -249,7 +249,17 @@ All 11 schemas are `vertical = "general"` — available in every workspace regar
 | `pages/workspace/Leads.jsx` | `.../leads` | Fraud cap only — investigation leads | ✅ |
 | `pages/workspace/DocumentViewer.jsx` | `.../documents/:id` | Split-pane PDF viewer (65%) + extracted fields panel (35%). react-pdf renders in-browser, no plugin needed. Status-aware fields panel surfaces extraction_error on failure. | ✅ |
 | `pages/workspace/ExtractionReview.jsx` | `.../review` | Review queue for `needs_review` documents. Table shows filename, doc type, low-confidence field count. Review button opens DocumentViewer with `?review=1`. | ✅ |
-| `pages/workspace/AuditLog.jsx` | `.../audit` | **Phase 2** — Chronological immutable log per workspace. | 🔲 Phase 2 |
+| `pages/workspace/AuditLog.jsx` | `.../audit` | Chronological audit log: timeline with colored dots, client-side search + action filter, pagination (50/page, Previous/Next). Subtitle: "Every action on every document is tamper-proof." | ✅ |
+
+#### Hooks + Global UI (`frontend/src/hooks/`, `frontend/src/components/shared/`)
+
+#### `hooks/useToast.js` + `components/shared/ToastContainer.jsx` ✅
+Engine. Global toast notification system. `ToastProvider` mounts once in WorkspaceLayout. Four variants: success (green), error (red), info (blue), warning (orange). Bottom-right position, title+message, 4s auto-dismiss, max 3 visible, timer cleanup on unmount, ARIA live region.
+
+#### `hooks/useExtractionStream.js` ✅
+Engine. SSE stream consumer for extraction status. fetch+ReadableStream (not EventSource) for Bearer token support. Closes on terminal status (complete/failed/no_schema/needs_review). Exponential backoff reconnect: base 1s, doubles each retry, cap 32s, max 5 retries.
+
+---
 
 #### API Clients (`frontend/src/api/`)
 
@@ -345,7 +355,9 @@ Applied via SQL in Task 2. GIN index on `documents.search_vector`. PostgreSQL tr
 | `test_agent_tools.py` | Engine | ✅ 27/27 |
 | `test_ai.py` (updated) | Engine | ✅ 8/8 |
 | `test_extractions.py` (expanded) | Engine | ✅ 11/11 |
-| **Total** | | **75/75** |
+| `test_export.py` | Engine | ✅ 3/3 |
+| `test_audit_log.py` | Engine | ✅ 2/2 |
+| **Total** | | **85/85** |
 
 ---
 
@@ -393,3 +405,4 @@ Investigation workflow + referral export
 | 2026-05-28 | Frontend vertical separation: WorkspaceContext; vertical-aware sidebar and overview; workspace creation modal with vertical picker. Schema Library: GET /schemas/ endpoint, SchemaLibrary page, AppShell nav link, schemas API client, vite proxy. Full schema cleanup: all case-specific content removed from all 11 schemas in seed file and live DB; seed functions converted to upserts. Frontend inventory section added. Roadmap updated with document viewer (Phase 2A next), extraction review UI, Engine UI section (real-time status, export, audit log), multi-user in Phase 4A. |
 | 2026-05-28 | Document viewer complete (Phase 2A). GET /documents/{id}/file endpoint. DocumentList extracted. DocumentViewer with react-pdf (10.x), 65/35 split, status-aware fields panel, blob URL lifecycle management. 80/80 tests. Known gap: GET /documents/{id} does not filter is_deleted — pre-existing, fix deferred. Blog post 008 written (post-008-the-source.md). |
 | 2026-05-28 | Phase 2A complete. extraction_evaluator.py (evaluate + run_retry), claude_call_log.py model, review.py router (GET review-queue + PATCH correct), ExtractionReview.jsx, ExtractionTable editable mode, DocumentViewer review mode (?review=1). list_extractions returns latest-attempt-per-field by default. Migration e1f3a2b94c07: attempt column, needs_review enum, claude_call_logs table. ADRs added to docs/decisions/. 80/80 tests. |
+| 2026-05-28 | Phase 2C complete. Toast system (useToast + ToastContainer, timer cleanup, ARIA). Document status pill badges (needs_review/no_schema/failed added to Badge.jsx). SSE real-time extraction status (StreamingResponse + useExtractionStream with exponential backoff). Data export: 4 endpoints (per-doc + workspace CSV/JSON) + ⋯ context menu frontend. Audit log: paginated backend + timeline UI with search/filter. 85/85 tests. |

@@ -169,3 +169,17 @@ Blog posts live in `docs/blog/`. Always start from `docs/blog/template.md`.
 5. Quiet close — what works now, what it proves, one paragraph, no triumphalism
 
 **Naming:** `post-NNN-kebab-case-title.md` | **Published on:** Hashnode, alias `-corvus`, blog "From Case to Code"
+
+---
+
+## Git Workflow
+
+**Branch per implementation plan. PR at completion.**
+
+1. Create `feat/<plan-name>` branch at the start of each implementation plan
+2. Commit each task to that branch as work progresses
+3. When all tasks are done: push branch, open PR against `main`
+4. CodeRabbit reviews the PR automatically
+5. Apply CodeRabbit fixes with `/coderabbit autofix` before merging
+
+Never commit directly to `main` during active implementation work. Main receives merges from reviewed PRs only.

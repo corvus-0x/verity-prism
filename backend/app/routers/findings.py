@@ -1,12 +1,13 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
+
 from app.database import get_db
-from app.models.finding import SignalType, Finding
+from app.models.finding import Finding, SignalType
 from app.models.user import User
-from app.schemas.finding import SignalTypeOut, FindingCreate, FindingUpdate, FindingOut
-from app.services.auth import get_current_user
-from app.services import audit
 from app.routers.workspaces import get_workspace_or_404
+from app.schemas.finding import FindingCreate, FindingOut, FindingUpdate, SignalTypeOut
+from app.services import audit
+from app.services.auth import get_current_user
 
 router = APIRouter(tags=["findings"])
 

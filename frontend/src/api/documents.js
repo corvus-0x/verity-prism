@@ -30,3 +30,46 @@ export const correctExtraction = (workspaceId, documentId, extractionId, fieldVa
     `/workspaces/${workspaceId}/documents/${documentId}/extractions/${extractionId}/correct`,
     { field_value: fieldValue }
   )
+
+function triggerDownload(blob, filename) {
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  setTimeout(() => URL.revokeObjectURL(url), 100)
+}
+
+export const getExtractionsCSV = async (workspaceId, documentId, docFilename) => {
+  const res = await client.get(
+    `/workspaces/${workspaceId}/documents/${documentId}/extractions.csv`,
+    { responseType: 'blob' }
+  )
+  triggerDownload(res.data, `${docFilename}_extractions.csv`)
+}
+
+export const getExtractionsJSON = async (workspaceId, documentId, docFilename) => {
+  const res = await client.get(
+    `/workspaces/${workspaceId}/documents/${documentId}/extractions.json`,
+    { responseType: 'blob' }
+  )
+  triggerDownload(res.data, `${docFilename}_extractions.json`)
+}
+
+export const getWorkspaceExtractionsCSV = async (workspaceId) => {
+  const res = await client.get(
+    `/workspaces/${workspaceId}/extractions.csv`,
+    { responseType: 'blob' }
+  )
+  triggerDownload(res.data, `workspace_extractions.csv`)
+}
+
+export const getWorkspaceExtractionsJSON = async (workspaceId) => {
+  const res = await client.get(
+    `/workspaces/${workspaceId}/extractions.json`,
+    { responseType: 'blob' }
+  )
+  triggerDownload(res.data, `workspace_extractions.json`)
+}

@@ -9,12 +9,14 @@ Message persistence is the router's responsibility — chat() returns a plain st
 import json
 import logging
 import time
+
 from anthropic import Anthropic
 from sqlalchemy.orm import Session
+
 from app.config import settings
-from app.models.workspace import Workspace
 from app.models.ai import AIMessage
-from app.services import agent_tools, agent_registry
+from app.models.workspace import Workspace
+from app.services import agent_registry, agent_tools
 
 logger = logging.getLogger(__name__)
 client = Anthropic(api_key=settings.anthropic_api_key)

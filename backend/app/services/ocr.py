@@ -1,7 +1,8 @@
+import io
+
 import fitz  # PyMuPDF
 import pytesseract
 from PIL import Image
-import io
 
 
 def extract_text_from_pdf(file_bytes: bytes) -> str:

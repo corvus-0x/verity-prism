@@ -1,13 +1,15 @@
 from datetime import datetime, timezone
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
+
 from app.database import get_db
 from app.models.lead import InvestigationLead
 from app.models.user import User
-from app.schemas.lead import LeadCreate, LeadUpdate, LeadOut
-from app.services.auth import get_current_user
-from app.services import audit
 from app.routers.workspaces import get_workspace_or_404
+from app.schemas.lead import LeadCreate, LeadOut, LeadUpdate
+from app.services import audit
+from app.services.auth import get_current_user
 
 router = APIRouter(prefix="/workspaces/{workspace_id}/leads", tags=["leads"])
 

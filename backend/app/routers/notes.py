@@ -1,12 +1,14 @@
+from typing import Optional
+
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
-from typing import Optional
+
 from app.database import get_db
 from app.models.note import Note
 from app.models.user import User
+from app.routers.workspaces import get_workspace_or_404
 from app.schemas.note import NoteCreate, NoteOut
 from app.services.auth import get_current_user
-from app.routers.workspaces import get_workspace_or_404
 
 router = APIRouter(prefix="/workspaces/{workspace_id}/notes", tags=["notes"])
 

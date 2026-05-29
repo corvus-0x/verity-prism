@@ -1,5 +1,7 @@
 from sqlalchemy.orm import Session
+
 from app.models.audit import AuditLog
+
 
 def log(
     db: Session,

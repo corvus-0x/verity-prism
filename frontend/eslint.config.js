@@ -7,6 +7,13 @@ export default [
   {
     files: ['**/*.{js,jsx}'],
     ...js.configs.recommended,
+    languageOptions: {
+      ecmaVersion: 2020,
+      sourceType: 'module',
+      parserOptions: {
+        ecmaFeatures: { jsx: true },
+      },
+    },
     plugins: {
       'react-hooks': reactHooks,
       'react-refresh': reactRefresh,

@@ -1,12 +1,14 @@
 import logging
-from sqlalchemy.orm import Session
+
 from sqlalchemy import text as sql_text
+from sqlalchemy.orm import Session
+
 from app.models.document import Document
 from app.models.document_extraction import DocumentExtraction
 from app.models.entity import Entity
-from app.models.transaction import Transaction
 from app.models.finding import Finding
 from app.models.lead import InvestigationLead
+from app.models.transaction import Transaction
 
 logger = logging.getLogger(__name__)
 
