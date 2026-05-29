@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import Boolean, DateTime, Float, Integer, String, Text
 from sqlalchemy import Enum as SAEnum
@@ -29,5 +29,5 @@ class DocumentSchema(Base):
         Float, default=0.7, nullable=False
     )
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+        DateTime(timezone=True), default=lambda: datetime.now(UTC)
     )

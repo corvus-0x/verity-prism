@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import DateTime, Float, ForeignKey, Integer, String
 from sqlalchemy import Enum as SAEnum
@@ -24,4 +24,4 @@ class DocumentExtraction(Base):
     confidence: Mapped[float] = mapped_column(Float, default=1.0)
     attempt: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
     schema_id: Mapped[str] = mapped_column(String, ForeignKey("document_schemas.id"), nullable=True)
-    extracted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    extracted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC))

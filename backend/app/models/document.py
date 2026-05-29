@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import BigInteger, Boolean, DateTime, ForeignKey, String, Text
 from sqlalchemy import Enum as SAEnum
@@ -36,6 +36,6 @@ class Document(Base):
     )
     extraction_error: Mapped[str] = mapped_column(String, nullable=True)
     uploaded_by: Mapped[str] = mapped_column(String, ForeignKey("users.id"), nullable=False)
-    uploaded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    uploaded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
     is_deleted: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     deleted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=True)

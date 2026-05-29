@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import DateTime, ForeignKey, String
 from sqlalchemy import Enum as SAEnum
@@ -26,5 +26,5 @@ class InvestigationLead(Base):
     )
     assigned_to: Mapped[str] = mapped_column(String, ForeignKey("users.id"), nullable=True)
     result_summary: Mapped[str] = mapped_column(String, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
     completed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=True)

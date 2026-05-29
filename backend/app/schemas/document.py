@@ -1,5 +1,4 @@
 from datetime import datetime
-from typing import Optional
 
 from pydantic import BaseModel
 
@@ -11,12 +10,12 @@ class DocumentOut(BaseModel):
     original_filename: str
     file_type: str
     sha256_hash: str
-    source_url: Optional[str]
+    source_url: str | None
     source_type: str
-    detected_doc_type: Optional[str]
+    detected_doc_type: str | None
     extraction_status: str
-    extraction_error: Optional[str]
-    size_bytes: Optional[int]
+    extraction_error: str | None
+    size_bytes: int | None
     uploaded_at: datetime
 
     class Config:
@@ -27,7 +26,7 @@ class ExtractionOut(BaseModel):
     id: str
     document_id: str
     field_name: str
-    field_value: Optional[str]
+    field_value: str | None
     field_type: str
     confidence: float
     attempt: int

@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import Boolean, Date, DateTime, ForeignKey, String
 from sqlalchemy import Enum as SAEnum
@@ -26,7 +26,7 @@ class Entity(Base):
     is_deleted: Mapped[bool] = mapped_column(Boolean, default=False)
     deleted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=True)
     created_by: Mapped[str] = mapped_column(String, ForeignKey("users.id"), nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
 
 class Relationship(Base):
     __tablename__ = "relationships"
@@ -41,4 +41,4 @@ class Relationship(Base):
     end_date: Mapped[datetime] = mapped_column(Date, nullable=True)
     source_doc_id: Mapped[str] = mapped_column(String, ForeignKey("documents.id"), nullable=True)
     created_by: Mapped[str] = mapped_column(String, ForeignKey("users.id"), nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
