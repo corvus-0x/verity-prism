@@ -19,7 +19,7 @@ const COLORS = {
 }
 
 export default function Badge({ label }) {
-  const key = label?.toLowerCase().replace(' ', '_')
+  const key = label?.toLowerCase().replaceAll(' ', '_')
   return (
     <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${COLORS[key] || 'bg-slate-700 text-slate-300'}`}>
       {label}
