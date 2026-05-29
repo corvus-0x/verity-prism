@@ -8,7 +8,7 @@ content_disposition()  — builds a CRLF-safe Content-Disposition with ASCII + R
 from urllib.parse import quote
 
 # Leading characters that trigger formula evaluation in Excel / Google Sheets.
-_CSV_FORMULA_TRIGGERS = ("=", "+", "-", "@", "\t", "\r")
+_CSV_FORMULA_TRIGGERS = ("=", "+", "-", "@", "\t", "\r", "\n")
 
 
 def escape_csv_cell(value) -> str:
@@ -35,9 +35,12 @@ def safe_header_filename(name: str) -> str:
     """
     if not name:
         return "download"
-    cleaned = "".join(c for c in name if c.isprintable() and c not in '"\\')
+    cleaned = "".join(c for c in name if c.isprintable() and ord(c) < 128 and c not in '"\\')
     cleaned = cleaned.strip()
     return cleaned or "download"
+
+
+_VALID_DISPOSITIONS = {"attachment", "inline"}
 
 
 def content_disposition(filename: str, disposition: str = "attachment") -> str:
@@ -47,6 +50,8 @@ def content_disposition(filename: str, disposition: str = "attachment") -> str:
     `filename*=UTF-8''<percent-encoded>` so user-controlled names cannot inject
     headers while still round-tripping unicode where the client supports it.
     """
+    if disposition not in _VALID_DISPOSITIONS:
+        raise ValueError(f"disposition must be one of {_VALID_DISPOSITIONS}, got {disposition!r}")
     ascii_name = safe_header_filename(filename)
     encoded = quote(filename or "download", safe="")
     return f"{disposition}; filename=\"{ascii_name}\"; filename*=UTF-8''{encoded}"

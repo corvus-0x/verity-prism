@@ -129,7 +129,7 @@ def test_register_writes_audit_row(client, db):
     )
     assert entry is not None
     assert entry.workspace_id is None
-    assert entry.after_state["email"] == "audit_reg@example.com"
+    assert entry.after_state is None  # no PII stored in immutable audit rows
 
 
 def test_login_success_writes_audit_row(client, registered_user, db):
@@ -156,4 +156,4 @@ def test_login_failure_writes_audit_row(client, db):
     )
     assert entry is not None
     assert entry.user_id is None
-    assert entry.after_state["email"] == "nobody@example.com"
+    assert entry.after_state["email"] == "nob***"  # masked: first 3 chars + ***

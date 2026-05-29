@@ -14,7 +14,7 @@
 
 After Task 2, `app.config` rejects a missing/weak `SECRET_KEY` **at import time**, so the test container must always receive a strong key or pytest can't even collect. Use this exact command (single line — Windows/PowerShell friendly) for **all** test runs in this plan. `<target>` is the file/test path for the step.
 
-```
+```text
 docker-compose run --rm -e TEST_DATABASE_URL=postgresql://catalyst:catalyst@db:5432/catalyst_test -e SECRET_KEY=ci-test-secret-key-please-change-0123456789abcdef backend pytest <target> -v
 ```
 
@@ -161,7 +161,7 @@ Expected: PASS (8 tests).
 
 - [ ] **Step 5: Commit**
 
-```
+```text
 git add backend/app/utils/sanitize.py backend/tests/test_sanitize.py
 git commit -m "feat: add sanitize utils (csv escaping, safe content-disposition)"
 ```
@@ -299,13 +299,13 @@ Leave the other `environment:` entries (`DATABASE_URL`, `ANTHROPIC_API_KEY`, `UP
 
 In `backend/.env.example`, replace this line:
 
-```
+```text
 SECRET_KEY=change-this-to-a-long-random-string-in-production
 ```
 
 with:
 
-```
+```text
 # Generate a strong key: python -c "import secrets; print(secrets.token_urlsafe(48))"
 SECRET_KEY=
 ```
@@ -317,7 +317,7 @@ Expected: PASS (all existing tests + the new config/sanitize tests). This confir
 
 - [ ] **Step 8: Commit**
 
-```
+```text
 git add backend/app/config.py backend/tests/test_config.py docker-compose.yml backend/.env.example
 git commit -m "fix(security): enforce strong SECRET_KEY at startup (H6)"
 ```
@@ -415,7 +415,7 @@ Expected: PASS (new test + existing export tests unaffected).
 
 - [ ] **Step 5: Commit**
 
-```
+```text
 git add backend/app/routers/documents.py backend/tests/test_documents.py
 git commit -m "fix(security): escape CSV formula injection in exports (M1)"
 ```
@@ -525,7 +525,7 @@ Expected: PASS (new test + existing tests, including `test_export_json_returns_j
 
 - [ ] **Step 5: Commit**
 
-```
+```text
 git add backend/app/routers/documents.py backend/tests/test_documents.py
 git commit -m "fix(security): sanitize Content-Disposition filenames (M2)"
 ```
@@ -663,7 +663,7 @@ Expected: PASS — including the existing `test_get_document_file` (still 200, n
 
 - [ ] **Step 5: Commit**
 
-```
+```text
 git add backend/app/routers/documents.py backend/tests/test_documents.py
 git commit -m "fix(security): enforce upload allowlist and safe file serving (M3)"
 ```

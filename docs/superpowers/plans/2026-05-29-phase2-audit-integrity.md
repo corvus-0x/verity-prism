@@ -14,7 +14,7 @@
 
 All test runs in this plan use:
 
-```
+```text
 docker-compose run --rm -e TEST_DATABASE_URL=postgresql://catalyst:catalyst@db:5432/catalyst_test -e SECRET_KEY=ci-test-secret-key-please-change-0123456789abcdef backend pytest <target> -v
 ```
 
@@ -192,7 +192,7 @@ Expected: `102 passed` (same count as Phase 1). The session output will show `al
 
 - [ ] **Step 4: Commit**
 
-```
+```text
 git add backend/alembic/env.py backend/tests/conftest.py
 git commit -m "fix(tests): run Alembic migrations in test session instead of create_all (H3)"
 ```
@@ -265,7 +265,7 @@ Expected: `test_insert_audit_log_succeeds` PASSES (inserts work now), `test_upda
 - [ ] **Step 3: Generate the migration file**
 
 Run inside the backend container:
-```
+```text
 docker-compose exec backend alembic revision -m "add_audit_log_immutable_trigger"
 ```
 
@@ -315,7 +315,7 @@ Expected: `105 passed` (102 prior + 3 new immutability tests).
 
 - [ ] **Step 6: Commit**
 
-```
+```text
 git add backend/alembic/versions/ backend/tests/test_audit_immutability.py
 git commit -m "fix(security): add audit_log immutability trigger (C1)"
 ```
@@ -432,7 +432,7 @@ Expected: PASS.
 
 - [ ] **Step 5: Commit**
 
-```
+```text
 git add backend/app/services/document_pipeline.py backend/tests/test_audit.py
 git commit -m "fix(audit): write upload_failed audit row on pipeline failure (M4)"
 ```
@@ -582,7 +582,7 @@ Expected: `109 passed` (105 prior + 4 new audit tests). Verify `test_auth.py` ex
 
 - [ ] **Step 6: Commit**
 
-```
+```text
 git add backend/app/routers/auth.py backend/tests/test_audit.py
 git commit -m "fix(audit): write audit rows for register and login events (M4)"
 ```

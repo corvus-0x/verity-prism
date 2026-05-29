@@ -60,7 +60,7 @@ New test files: `<list any created test files>`
 | Decisions / deferred scope | Phase spec file |
 | Commit list | `git log main..HEAD --oneline` |
 | Test count | Run the suite; check prior PR for baseline |
-| Migration revision ID | `git diff main...HEAD --name-only | grep alembic` |
+| Migration revision ID | `git diff main...HEAD --name-only \| grep alembic` |
 | Deferred items | Spec "out of scope" section |
 
 ## Common mistakes

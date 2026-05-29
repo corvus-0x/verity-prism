@@ -17,7 +17,7 @@ The architecture is sound and the workspace-isolation model is genuinely well bu
 
 ## Critical findings — fix before any real case data
 
-### C1 — The immutable audit-log trigger does not exist
+### C1 — The immutable audit-log trigger does not exist ✅ RESOLVED (Phase 2 — migration `3f29a7ad2392`)
 **Files:** `backend/alembic/versions/5a4ff7266708_initial_schema.py:79-93` (table created, no trigger); entire `backend/alembic/versions/` (no trigger anywhere); claim asserted in `backend/app/services/audit.py:19-21` and `CLAUDE.md`.
 
 `audit_log` is created as an ordinary table. The trigger is **confirmed absent from every place it could live**: no migration creates it (grep for `CREATE TRIGGER`/`BEFORE UPDATE`/`BEFORE DELETE`/`audit_log_immutable`/`CREATE FUNCTION` across `backend/` → nothing); there are **no `.sql` files anywhere** in the repo; and `docker-compose.yml`'s `db` service mounts **no** `docker-entrypoint-initdb.d` init script (only the data volume). The trigger DDL exists in exactly two places: the original plan (`docs/superpowers/plans/2026-05-17-phase1-backend-api.md:882`) and CLAUDE.md's claim that it's done. **It was specified, documented as built, and never implemented.** The immutability that `audit.py`'s docstring describes as a database-level control is enforced by **nothing** — any `UPDATE`/`DELETE` (accidental, malicious, or a future buggy cascade) will succeed. In an evidence context this is the difference between an audit trail and a suggestion.
@@ -61,7 +61,7 @@ When every Claude extraction call fails (API down, rate-limited, network), each 
 
 **Fix:** Change the column to `TSVECTOR` (`sqlalchemy.dialects.postgresql.TSVECTOR`), add a migration that alters the type and creates a `GIN` index, and ideally make it a generated column or trigger-maintained. Re-point the pipeline to write the tsvector directly.
 
-### H3 — Tests never run migrations, so migration-only guarantees are untested
+### H3 — Tests never run migrations, so migration-only guarantees are untested ✅ RESOLVED (Phase 2)
 **File:** `tests/conftest.py:17-21` (`Base.metadata.create_all` / `drop_all`).
 
 The test DB is built from the ORM models, not from Alembic. Everything that lives only in migrations is therefore absent in tests and **cannot be verified**: the (missing) audit trigger (C1), the `no_schema`/`needs_review` enum values, and any DDL drift between models and migrations. This is *why* C1 went unnoticed — there is no test that could have caught it. It also means production and test schemas can silently diverge.
@@ -114,7 +114,7 @@ Any extension is accepted. An uploaded `.html`/`.svg` served back without `nosni
 
 **Fix:** Enforce an allowlist of accepted types at upload; on the file route send `X-Content-Type-Options: nosniff` and `Content-Disposition: attachment` for anything not explicitly inline-safe.
 
-### M4 — Audit gaps on failures and on auth events
+### M4 — Audit gaps on failures and on auth events ✅ RESOLVED (Phase 2)
 **Files:** `document_pipeline.py:55-60` (`_fail` writes no audit), `:188,195,233` (failure returns skip audit); `routers/auth.py:11-30` (register/login unaudited); `routers/ai.py:16-27` (`create_conversation` unaudited).
 
 A failed evidence upload leaves **no audit record at all**. Authentication events (login success/failure, registration) are not audited — for a forensic platform, who-accessed-what-when should include auth. 
@@ -196,10 +196,14 @@ Services call `db.commit()` with no `try/except … rollback()`. If a commit fai
 
 ## Suggested fix order
 
-1. **H6** remove the weak default `SECRET_KEY` (one-line change, prevents token forgery).
-2. **C1** audit trigger + **H3** run migrations in tests (so the trigger is verified).
-3. **C2** stop reporting `complete` on failed/empty extraction.
-4. **H1** soft-delete filters in search/AI; **H5** extraction text window.
-5. **H4** real pipeline tests with mocked Claude.
-6. **H2** `tsvector` + GIN index.
-7. Mediums (M1 CSV injection and M4 audit-on-failure are quick, high-value wins).
+✅ Phase 1 complete: H6, M1, M2, M3
+✅ Phase 2 complete: H3, C1, M4
+
+Remaining open findings (Phases 3–6):
+
+1. **C2** stop reporting `complete` on failed/empty extraction.
+2. **H1** soft-delete filters in search/AI; **H5** extraction text window.
+3. **H4** real pipeline tests with mocked Claude.
+4. **H2** `tsvector` + GIN index.
+5. **M5** thin routers (router refactor).
+6. **M6** JWT → httpOnly cookie + frontend resilience (M7, L2, L4).

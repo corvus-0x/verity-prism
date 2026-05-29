@@ -13,6 +13,7 @@ TEST_DATABASE_URL = os.environ.get(
     "TEST_DATABASE_URL",
     "postgresql://catalyst:catalyst@localhost:5432/catalyst_test"
 )
+os.environ["TEST_DATABASE_URL"] = TEST_DATABASE_URL  # ensure env.py picks up the resolved value
 
 engine = create_engine(TEST_DATABASE_URL)
 TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)

@@ -26,12 +26,7 @@ def register(payload: UserRegister, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(user)
     try:
-        audit.log(
-            db,
-            action="registered",
-            user_id=user.id,
-            after_state={"email": user.email},
-        )
+        audit.log(db, action="registered", user_id=user.id)
     except Exception as e:
         logger.warning(f"Audit log failed for register user {user.id}: {e}")
     return user
@@ -42,21 +37,13 @@ def login(payload: UserLogin, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.email == payload.email).first()
     if not user or not verify_password(payload.password, user.password_hash):
         try:
-            audit.log(
-                db,
-                action="login_failed",
-                after_state={"email": payload.email},
-            )
+            masked = payload.email[:3] + "***" if payload.email else "***"
+            audit.log(db, action="login_failed", after_state={"email": masked})
         except Exception as e:
-            logger.warning(f"Audit log failed for login_failed {payload.email}: {e}")
+            logger.warning(f"Audit log failed for login_failed: {e}")
         raise HTTPException(status_code=401, detail="Invalid credentials")
     try:
-        audit.log(
-            db,
-            action="login_success",
-            user_id=user.id,
-            after_state={"email": user.email},
-        )
+        audit.log(db, action="login_success", user_id=user.id)
     except Exception as e:
         logger.warning(f"Audit log failed for login_success user {user.id}: {e}")
     return {"access_token": create_access_token(user.id)}
