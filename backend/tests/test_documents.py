@@ -88,3 +88,19 @@ def test_get_document_file_not_found(client, auth_headers, workspace_id):
         headers=auth_headers,
     )
     assert response.status_code == 404
+
+
+def test_status_stream_returns_event_stream(client, auth_headers, workspace_id):
+    content = b"%PDF-1.4 test"
+    doc_id = client.post(
+        f"/workspaces/{workspace_id}/documents",
+        files={"file": ("test.pdf", io.BytesIO(content), "application/pdf")},
+        headers=auth_headers,
+    ).json()["id"]
+
+    response = client.get(
+        f"/workspaces/{workspace_id}/documents/{doc_id}/status/stream",
+        headers=auth_headers,
+    )
+    assert response.status_code == 200
+    assert "text/event-stream" in response.headers["content-type"]

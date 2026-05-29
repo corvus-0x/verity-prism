@@ -1,5 +1,7 @@
+import asyncio
+import json as json_module
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, UploadFile, File
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from pathlib import Path
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -77,6 +79,89 @@ def list_documents(
         Document.workspace_id == workspace_id,
         Document.is_deleted == False,
     ).all()
+
+
+@router.get("/documents/{document_id}/status/stream")
+async def stream_document_status(
+    workspace_id: str,
+    document_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Stream extraction status updates via Server-Sent Events.
+    Polls every 2 seconds. Closes on terminal status or 5-minute timeout.
+    """
+    get_workspace_or_404(workspace_id, user, db)
+
+    TERMINAL = {"complete", "failed", "no_schema", "needs_review"}
+
+    async def event_generator():
+        from app.database import SessionLocal
+        from app.models.document_extraction import DocumentExtraction
+        from sqlalchemy import func as sqlfunc
+
+        stream_db = SessionLocal()
+        try:
+            elapsed = 0
+            max_seconds = 300
+            interval = 2
+
+            while elapsed < max_seconds:
+                stream_db.expire_all()
+                doc = stream_db.query(Document).filter(
+                    Document.id == document_id,
+                    Document.workspace_id == workspace_id,
+                ).first()
+
+                if not doc:
+                    yield f"data: {json_module.dumps({'error': 'not found'})}\n\n"
+                    return
+
+                status = doc.extraction_status
+                payload = {"extraction_status": status}
+
+                if status == "complete":
+                    latest_subq = (
+                        stream_db.query(
+                            DocumentExtraction.field_name,
+                            sqlfunc.max(DocumentExtraction.attempt).label("max_attempt"),
+                        )
+                        .filter(DocumentExtraction.document_id == document_id)
+                        .group_by(DocumentExtraction.field_name)
+                        .subquery()
+                    )
+                    field_count = (
+                        stream_db.query(sqlfunc.count(DocumentExtraction.id))
+                        .join(
+                            latest_subq,
+                            (DocumentExtraction.field_name == latest_subq.c.field_name)
+                            & (DocumentExtraction.attempt == latest_subq.c.max_attempt),
+                        )
+                        .filter(DocumentExtraction.document_id == document_id)
+                        .scalar()
+                    )
+                    payload["field_count"] = field_count
+                    payload["detected_doc_type"] = doc.detected_doc_type
+                elif status == "failed":
+                    payload["extraction_error"] = doc.extraction_error
+
+                yield f"data: {json_module.dumps(payload)}\n\n"
+
+                if status in TERMINAL:
+                    return
+
+                await asyncio.sleep(interval)
+                elapsed += interval
+
+            yield f"data: {json_module.dumps({'extraction_status': 'timeout'})}\n\n"
+        finally:
+            stream_db.close()
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 @router.get("/documents/{document_id}", response_model=DocumentOut)
