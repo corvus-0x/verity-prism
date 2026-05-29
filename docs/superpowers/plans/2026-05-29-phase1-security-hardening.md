@@ -283,19 +283,17 @@ settings = Settings()
 Run: `docker-compose run --rm -e TEST_DATABASE_URL=postgresql://catalyst:catalyst@db:5432/catalyst_test -e SECRET_KEY=ci-test-secret-key-please-change-0123456789abcdef backend pytest tests/test_config.py -v`
 Expected: PASS (4 tests).
 
-- [ ] **Step 5: Remove the insecure default in `docker-compose.yml`**
+- [ ] **Step 5: Remove the insecure `SECRET_KEY` injection from `docker-compose.yml`**
 
-In `docker-compose.yml`, under the `backend` service `environment:` block, change:
+The `backend` service injects `SECRET_KEY` as a container environment variable. pydantic-settings ranks env vars **above** the `.env` file, so this overrides `backend/.env`. Because neither the host shell nor the repo-root `.env` defines `SECRET_KEY`, the `:-` fallback resolves to the weak literal — the app silently runs on `dev-secret-key-change-in-production`, ignoring the real key in `backend/.env`. (A `${SECRET_KEY:?...}` form would instead break `docker-compose up`, since `SECRET_KEY` is absent host-side.)
+
+Delete this line from the `backend` service `environment:` block in `docker-compose.yml`:
 
 ```yaml
       SECRET_KEY: ${SECRET_KEY:-dev-secret-key-change-in-production}
 ```
 
-to:
-
-```yaml
-      SECRET_KEY: ${SECRET_KEY:?SECRET_KEY must be set - see backend/.env.example}
-```
+Leave the other `environment:` entries (`DATABASE_URL`, `ANTHROPIC_API_KEY`, `UPLOAD_DIR`) unchanged. With the line gone, the app reads `SECRET_KEY` from `backend/.env` (mounted at `/app/.env`), and the Step 3 validator guarantees it is strong.
 
 - [ ] **Step 6: Update `backend/.env.example`**
 

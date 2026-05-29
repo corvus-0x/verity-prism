@@ -41,7 +41,7 @@ Shared, pure, unit-testable helpers (mirrors the style of `utils/json_helpers.py
   - Caller emits RFC 5987 `filename*=UTF-8''<percent-encoded>` alongside the ASCII fallback.
 
 ### H6 — Weak default signing key
-- `docker-compose.yml`: change `SECRET_KEY: ${SECRET_KEY:-dev-secret-key-change-in-production}` → `SECRET_KEY: ${SECRET_KEY:?SECRET_KEY must be set (see backend/.env.example)}`.
+- `docker-compose.yml`: **remove** the `SECRET_KEY: ${SECRET_KEY:-dev-secret-key-change-in-production}` line entirely. It injects the weak literal as a container env var that overrides `backend/.env` (neither host nor repo-root `.env` defines `SECRET_KEY`), so the app currently runs on the weak default. Removing it lets the app read `SECRET_KEY` from `backend/.env`, with the config validator as the strength guarantee. (A `:?` form would break `docker-compose up` since `SECRET_KEY` is absent host-side.)
 - `backend/app/config.py`: add a Pydantic `field_validator` on `secret_key`:
   - reject empty / whitespace-only,
   - reject known weak literals: `dev-secret-key-change-in-production`, `change-this-to-a-long-random-string-in-production`,
