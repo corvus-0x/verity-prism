@@ -1,4 +1,3 @@
-from typing import Optional
 
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
@@ -26,8 +25,8 @@ def create_note(workspace_id: str, payload: NoteCreate,
 
 @router.get("/", response_model=list[NoteOut])
 def list_notes(workspace_id: str,
-               entity_type: Optional[str] = None,
-               entity_id: Optional[str] = None,
+               entity_type: str | None = None,
+               entity_id: str | None = None,
                db: Session = Depends(get_db),
                user: User = Depends(get_current_user)):
     get_workspace_or_404(workspace_id, user, db)

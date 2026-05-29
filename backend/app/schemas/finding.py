@@ -1,5 +1,4 @@
 from datetime import datetime
-from typing import List, Optional
 
 from pydantic import BaseModel, ConfigDict
 
@@ -12,28 +11,28 @@ class SignalTypeOut(BaseModel):
     name: str
     description: str
     severity: str
-    relevant_to: List[str]
+    relevant_to: list[str]
 
 class FindingCreate(BaseModel):
     title: str
-    description: Optional[str] = None
+    description: str | None = None
     severity: str
-    signal_type_id: Optional[str] = None
+    signal_type_id: str | None = None
 
 class FindingUpdate(BaseModel):
-    title: Optional[str] = None
-    description: Optional[str] = None
-    severity: Optional[str] = None
-    status: Optional[str] = None
+    title: str | None = None
+    description: str | None = None
+    severity: str | None = None
+    status: str | None = None
 
 class FindingOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: str
     workspace_id: str
-    signal_type_id: Optional[str]
+    signal_type_id: str | None
     title: str
-    description: Optional[str]
+    description: str | None
     severity: str
     status: str
     created_at: datetime

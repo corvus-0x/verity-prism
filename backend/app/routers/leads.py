@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
@@ -48,7 +48,7 @@ def update_lead(workspace_id: str, lead_id: str, payload: LeadUpdate,
     for field, value in payload.model_dump(exclude_unset=True).items():
         setattr(lead, field, value)
     if payload.status in ("complete", "dead_end"):
-        lead.completed_at = datetime.now(timezone.utc)
+        lead.completed_at = datetime.now(UTC)
     db.commit()
     db.refresh(lead)
     audit.log(db, action="updated", user_id=user.id, workspace_id=workspace_id,

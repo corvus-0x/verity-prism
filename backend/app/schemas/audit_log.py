@@ -1,5 +1,4 @@
 from datetime import datetime
-from typing import Optional
 
 from pydantic import BaseModel
 
@@ -7,11 +6,11 @@ from pydantic import BaseModel
 class AuditLogOut(BaseModel):
     id: str
     action: str
-    entity_type: Optional[str]
-    entity_id: Optional[str]
-    user_id: Optional[str]
-    before_state: Optional[dict]
-    after_state: Optional[dict]
+    entity_type: str | None
+    entity_id: str | None
+    user_id: str | None
+    before_state: dict | None
+    after_state: dict | None
     timestamp: datetime
 
     class Config:

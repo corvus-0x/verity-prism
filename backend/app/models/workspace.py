@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import DateTime, ForeignKey, String
 from sqlalchemy import Enum as SAEnum
@@ -23,11 +23,11 @@ class Workspace(Base):
         SAEnum("active", "closed", "archived", name="workspace_status"), default="active"
     )
     created_by: Mapped[str] = mapped_column(String, ForeignKey("users.id"), nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
-        default=lambda: datetime.now(timezone.utc),
-        onupdate=lambda: datetime.now(timezone.utc)
+        default=lambda: datetime.now(UTC),
+        onupdate=lambda: datetime.now(UTC)
     )
 
 class WorkspaceMember(Base):
@@ -39,4 +39,4 @@ class WorkspaceMember(Base):
     role: Mapped[str] = mapped_column(
         SAEnum("owner", "analyst", "viewer", name="member_role"), default="analyst"
     )
-    added_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    added_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC))

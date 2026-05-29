@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
@@ -68,7 +68,7 @@ def delete_entity(workspace_id: str, entity_id: str,
     if not entity:
         raise HTTPException(status_code=404, detail="Entity not found")
     entity.is_deleted = True
-    entity.deleted_at = datetime.now(timezone.utc)
+    entity.deleted_at = datetime.now(UTC)
     db.commit()
     audit.log(db, action="deleted", user_id=user.id, workspace_id=workspace_id,
               entity_type="entity", entity_id=entity.id)

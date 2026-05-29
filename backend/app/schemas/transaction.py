@@ -1,33 +1,32 @@
 from datetime import date, datetime
-from typing import Optional
 
 from pydantic import BaseModel
 
 
 class TransactionCreate(BaseModel):
     transaction_type: str
-    entity_from_id: Optional[str] = None
-    entity_to_id: Optional[str] = None
-    amount_paid: Optional[float] = None
-    appraised_value: Optional[float] = None
-    consideration: Optional[str] = None
-    transaction_date: Optional[date] = None
-    recorded_date: Optional[date] = None
-    instrument_number: Optional[str] = None
-    source_doc_id: Optional[str] = None
-    notes: Optional[str] = None
+    entity_from_id: str | None = None
+    entity_to_id: str | None = None
+    amount_paid: float | None = None
+    appraised_value: float | None = None
+    consideration: str | None = None
+    transaction_date: date | None = None
+    recorded_date: date | None = None
+    instrument_number: str | None = None
+    source_doc_id: str | None = None
+    notes: str | None = None
 
 
 class TransactionOut(BaseModel):
     id: str
     workspace_id: str
     transaction_type: str
-    amount_paid: Optional[float]
-    appraised_value: Optional[float]
-    consideration: Optional[str]
-    transaction_date: Optional[date]
-    instrument_number: Optional[str]
-    notes: Optional[str]
+    amount_paid: float | None
+    appraised_value: float | None
+    consideration: str | None
+    transaction_date: date | None
+    instrument_number: str | None
+    notes: str | None
     created_at: datetime
 
     class Config:

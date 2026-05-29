@@ -12,6 +12,7 @@ select = [
 ]
 ignore = [
     "E501",  # line too long — handled by formatter
+    "E712",  # SQLAlchemy uses == False/True in filter expressions — not a Python bool comparison
 ]
 
 [tool.ruff.lint.per-file-ignores]

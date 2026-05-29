@@ -1,5 +1,4 @@
 from datetime import datetime
-from typing import Optional
 
 from pydantic import BaseModel
 
@@ -12,7 +11,7 @@ class ConversationOut(BaseModel):
     id: str
     workspace_id: str
     user_id: str
-    title: Optional[str]
+    title: str | None
     created_at: datetime
 
     model_config = {"from_attributes": True}

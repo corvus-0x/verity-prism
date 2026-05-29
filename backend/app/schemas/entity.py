@@ -1,5 +1,4 @@
 from datetime import datetime
-from typing import Optional
 
 from pydantic import BaseModel, ConfigDict
 
@@ -11,9 +10,9 @@ class EntityCreate(BaseModel):
     data: dict = {}
 
 class EntityUpdate(BaseModel):
-    name: Optional[str] = None
-    status: Optional[str] = None
-    data: Optional[dict] = None
+    name: str | None = None
+    status: str | None = None
+    data: dict | None = None
 
 class EntityOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -30,10 +29,10 @@ class RelationshipCreate(BaseModel):
     entity_a_id: str
     entity_b_id: str
     type: str
-    description: Optional[str] = None
-    start_date: Optional[str] = None
-    end_date: Optional[str] = None
-    source_doc_id: Optional[str] = None
+    description: str | None = None
+    start_date: str | None = None
+    end_date: str | None = None
+    source_doc_id: str | None = None
 
 class RelationshipOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -43,5 +42,5 @@ class RelationshipOut(BaseModel):
     entity_a_id: str
     entity_b_id: str
     type: str
-    description: Optional[str]
+    description: str | None
     created_at: datetime

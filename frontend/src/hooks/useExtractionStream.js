@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import client from '../api/client'
 import useAuthStore from '../store/auth'
 
@@ -7,11 +7,13 @@ const API_BASE = client.defaults.baseURL || ''
 const MAX_RETRIES = 5
 
 export default function useExtractionStream(workspaceId, documentId, status, onUpdate) {
+  const onUpdateRef = useRef(onUpdate)
+  onUpdateRef.current = onUpdate
+
   useEffect(() => {
     if (status !== 'pending') return
     if (!workspaceId || !documentId) return
 
-    const token = useAuthStore.getState().token
     const url = `${API_BASE}/workspaces/${workspaceId}/documents/${documentId}/status/stream`
 
     let cancelled = false
@@ -20,6 +22,7 @@ export default function useExtractionStream(workspaceId, documentId, status, onU
 
     async function stream() {
       try {
+        const token = useAuthStore.getState().token
         const res = await fetch(url, {
           headers: { Authorization: `Bearer ${token}` },
         })
@@ -40,7 +43,7 @@ export default function useExtractionStream(workspaceId, documentId, status, onU
             if (line.startsWith('data: ')) {
               try {
                 const payload = JSON.parse(line.slice(6))
-                onUpdate(documentId, payload)
+                onUpdateRef.current(documentId, payload)
                 if (TERMINAL.has(payload.extraction_status)) {
                   cancelled = true
                   return
@@ -66,5 +69,5 @@ export default function useExtractionStream(workspaceId, documentId, status, onU
       cancelled = true
       if (backoffTimer) clearTimeout(backoffTimer)
     }
-  }, [workspaceId, documentId, status, onUpdate])
+  }, [workspaceId, documentId, status])
 }
