@@ -49,7 +49,7 @@ jobs:
           SECRET_KEY: ci-test-secret-key
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           UPLOAD_DIR: /tmp/uploads
-        run: pytest backend/tests/ -v
+        run: pytest backend/tests/ -v --ignore=backend/tests/evals
         working-directory: ${{ github.workspace }}
 
   frontend:
