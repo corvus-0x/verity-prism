@@ -7,6 +7,7 @@ Each batch is an independent Claude call; results are merged at the end.
 """
 import json
 import logging
+import time
 from anthropic import Anthropic
 from sqlalchemy.orm import Session
 from app.config import settings
@@ -20,6 +21,52 @@ client = Anthropic(api_key=settings.anthropic_api_key)
 # Fields per Claude extraction call. 40 fields × ~100 tokens each = ~4000 tokens
 # output, well within the 8192 limit and leaving headroom for formatting.
 BATCH_SIZE = 40
+
+
+def _log_claude_call(
+    call_type: str,
+    latency_ms: int,
+    prompt_chars: int,
+    response=None,
+    document_id: str | None = None,
+    workspace_id: str | None = None,
+    schema_id: str | None = None,
+    attempt: int | None = None,
+    error_message: str | None = None,
+) -> None:
+    """
+    Write one row to claude_call_logs. Opens its own session so logging
+    failures never corrupt the extraction transaction. Swallows all exceptions.
+    """
+    try:
+        from app.database import SessionLocal
+        from app.models.claude_call_log import ClaudeCallLog
+        db = SessionLocal()
+        try:
+            usage = getattr(response, "usage", None)
+            content = getattr(response, "content", None)
+            row = ClaudeCallLog(
+                call_type=call_type,
+                document_id=document_id,
+                workspace_id=workspace_id,
+                schema_id=schema_id,
+                model="claude-sonnet-4-6",
+                attempt=attempt,
+                success=response is not None,
+                latency_ms=latency_ms,
+                input_tokens=getattr(usage, "input_tokens", None),
+                output_tokens=getattr(usage, "output_tokens", None),
+                prompt_chars=prompt_chars,
+                response_chars=len(content[0].text) if content else None,
+                error_message=error_message,
+            )
+            db.add(row)
+            db.commit()
+        finally:
+            db.close()
+    except Exception as e:
+        logger.warning(f"claude_call_log write failed: {e}")
+
 
 def _load_known_types(db: Session) -> list[str]:
     """Load distinct active document types from document_schemas.
@@ -59,7 +106,7 @@ def _get_schema_for_vertical(
     ).first()
 
 
-def detect_document_type(ocr_text: str, db: Session) -> str:
+def detect_document_type(ocr_text: str, db: Session, document_id: str | None = None) -> str:
     """
     Ask Claude to identify the document type from the first 1500 characters.
     Known types are loaded from document_schemas at call time — adding a
@@ -80,16 +127,35 @@ Respond with JSON only — no markdown, no explanation:
 Document text (first 1500 characters):
 {ocr_text[:1500]}"""
 
+    start = time.time()
+    response = None
     try:
         response = client.messages.create(
             model="claude-sonnet-4-6",
             max_tokens=50,
             messages=[{"role": "user", "content": prompt}],
         )
+        latency_ms = int((time.time() - start) * 1000)
+        _log_claude_call(
+            call_type="type_detection",
+            latency_ms=latency_ms,
+            prompt_chars=len(prompt),
+            response=response,
+            document_id=document_id,
+        )
         result = json.loads(strip_json_fences(response.content[0].text))
         detected = result.get("document_type", "OTHER")
         return detected if detected in known_types else "OTHER"
     except Exception as e:
+        latency_ms = int((time.time() - start) * 1000)
+        _log_claude_call(
+            call_type="type_detection",
+            latency_ms=latency_ms,
+            prompt_chars=len(prompt),
+            response=response,
+            document_id=document_id,
+            error_message=str(e),
+        )
         logger.warning(f"Type detection failed: {e}")
         return "OTHER"
 
@@ -112,6 +178,10 @@ def _extract_batch(
     ocr_text: str,
     fields_batch: list[dict],
     schema: DocumentSchema,
+    document_id: str | None = None,
+    workspace_id: str | None = None,
+    call_type: str = "extraction_batch",
+    attempt: int = 1,
 ) -> list[dict]:
     """
     Ask Claude to extract a single batch of fields.
@@ -146,11 +216,24 @@ Document text:
     # Scale max_tokens to batch size: ~100 tokens per field + 200 overhead
     max_tokens = min(len(fields_batch) * 100 + 200, 4096)
 
+    start = time.time()
+    response = None
     try:
         response = client.messages.create(
             model="claude-sonnet-4-6",
             max_tokens=max_tokens,
             messages=[{"role": "user", "content": prompt}],
+        )
+        latency_ms = int((time.time() - start) * 1000)
+        _log_claude_call(
+            call_type=call_type,
+            latency_ms=latency_ms,
+            prompt_chars=len(prompt),
+            response=response,
+            document_id=document_id,
+            workspace_id=workspace_id,
+            schema_id=schema.id,
+            attempt=attempt,
         )
         result = json.loads(strip_json_fences(response.content[0].text))
         raw = result.get("extractions", [])
@@ -167,11 +250,28 @@ Document text:
             })
         return normalised
     except Exception as e:
+        latency_ms = int((time.time() - start) * 1000)
+        _log_claude_call(
+            call_type=call_type,
+            latency_ms=latency_ms,
+            prompt_chars=len(prompt),
+            response=response,
+            document_id=document_id,
+            workspace_id=workspace_id,
+            schema_id=schema.id,
+            attempt=attempt,
+            error_message=str(e),
+        )
         logger.warning(f"Batch extraction failed ({len(fields_batch)} fields): {e}")
         return []
 
 
-def extract_fields(ocr_text: str, schema: DocumentSchema) -> list[dict]:
+def extract_fields(
+    ocr_text: str,
+    schema: DocumentSchema,
+    document_id: str | None = None,
+    workspace_id: str | None = None,
+) -> list[dict]:
     """
     Extract all fields defined in the schema by running batched Claude calls.
     BATCH_SIZE fields per call prevents token-limit truncation on large schemas.
@@ -189,7 +289,15 @@ def extract_fields(ocr_text: str, schema: DocumentSchema) -> list[dict]:
             f"Extracting batch {idx + 1}/{len(batches)} "
             f"({len(batch)} fields) for schema {schema.document_type}"
         )
-        batch_results = _extract_batch(ocr_text, batch, schema)
+        batch_results = _extract_batch(
+            ocr_text,
+            batch,
+            schema,
+            document_id=document_id,
+            workspace_id=workspace_id,
+            call_type="extraction_batch",
+            attempt=1,
+        )
         all_extractions.extend(batch_results)
 
     logger.info(
@@ -205,9 +313,12 @@ def save_extractions(
     workspace_id: str,
     schema_id: str,
     db: Session,
+    attempt: int = 1,
 ) -> None:
     """
     Save each extracted field as one row in document_extractions.
+    attempt=1 for initial extraction, attempt=2 for automated retry,
+    attempt=3 for human correction (written by the review router).
     Tolerates both field_name/field_value and field/value key names
     from Claude in case normalisation in _extract_batch missed a variant.
     """
@@ -224,6 +335,7 @@ def save_extractions(
             field_type=item.get("field_type", "text"),
             confidence=item.get("confidence", 1.0),
             schema_id=schema_id,
+            attempt=attempt,
         )
         db.add(row)
     db.commit()

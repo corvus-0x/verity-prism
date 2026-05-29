@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { useParams, Link } from 'react-router-dom'
+import { useParams, useSearchParams, Link } from 'react-router-dom'
 import { listDocuments, getDocument, getExtractions, getDocumentFile } from '../../api/documents'
 import DocumentList from '../../components/documents/DocumentList'
 import ExtractionTable from '../../components/documents/ExtractionTable'
@@ -15,6 +15,8 @@ pdfjs.GlobalWorkerOptions.workerSrc = new URL(
 
 export default function DocumentViewer() {
   const { workspaceId, documentId } = useParams()
+  const [searchParams] = useSearchParams()
+  const reviewMode = searchParams.get('review') === '1'
   const [docList, setDocList] = useState([])
   const [doc, setDoc] = useState(null)
   const [extractions, setExtractions] = useState([])
@@ -180,7 +182,18 @@ export default function DocumentViewer() {
 
           {/* Fields pane — 35% */}
           <div className="flex-[35] overflow-y-auto p-4">
-            <FieldsPane doc={doc} extractions={extractions} />
+            <FieldsPane
+              doc={doc}
+              extractions={extractions}
+              editable={reviewMode}
+              workspaceId={workspaceId}
+              documentId={documentId}
+              onUpdate={(corrected) =>
+                setExtractions((prev) =>
+                  prev.map((e) => (e.field_name === corrected.field_name ? corrected : e))
+                )
+              }
+            />
           </div>
         </div>
       </div>
@@ -188,7 +201,7 @@ export default function DocumentViewer() {
   )
 }
 
-function FieldsPane({ doc, extractions }) {
+function FieldsPane({ doc, extractions, editable, workspaceId, documentId, onUpdate }) {
   if (doc.extraction_status === 'pending') {
     return <p className="text-slate-400 text-sm">Extraction in progress…</p>
   }
@@ -212,9 +225,20 @@ function FieldsPane({ doc, extractions }) {
   return (
     <div>
       <p className="text-slate-500 text-xs font-semibold uppercase tracking-wider mb-3">
-        Extracted Fields
+        {editable ? 'Review Fields' : 'Extracted Fields'}
       </p>
-      <ExtractionTable extractions={extractions} />
+      {editable && (
+        <p className="text-slate-400 text-xs mb-3">
+          Edit and accept low-confidence fields. Corrected fields are saved immediately.
+        </p>
+      )}
+      <ExtractionTable
+        extractions={extractions}
+        editable={editable}
+        workspaceId={workspaceId}
+        documentId={documentId}
+        onUpdate={onUpdate}
+      />
     </div>
   )
 }

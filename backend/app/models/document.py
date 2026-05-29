@@ -28,7 +28,7 @@ class Document(Base):
     metadata_: Mapped[dict] = mapped_column("metadata", JSONB, default=dict)
     size_bytes: Mapped[int] = mapped_column(BigInteger, nullable=True)
     extraction_status: Mapped[str] = mapped_column(
-        SAEnum("pending", "complete", "failed", "no_schema", name="extraction_status"), default="pending"
+        SAEnum("pending", "complete", "failed", "no_schema", "needs_review", name="extraction_status"), default="pending"
     )
     extraction_error: Mapped[str] = mapped_column(String, nullable=True)
     uploaded_by: Mapped[str] = mapped_column(String, ForeignKey("users.id"), nullable=False)

@@ -12,6 +12,7 @@ import Transactions from './pages/workspace/Transactions'
 import Findings from './pages/workspace/Findings'
 import Leads from './pages/workspace/Leads'
 import AIChat from './pages/workspace/AIChat'
+import ExtractionReview from './pages/workspace/ExtractionReview'
 import useAuthStore from './store/auth'
 
 function ProtectedRoute({ children }) {
@@ -43,6 +44,7 @@ export default function App() {
           <Route path="findings" element={<Findings />} />
           <Route path="leads" element={<Leads />} />
           <Route path="chat" element={<AIChat />} />
+          <Route path="review" element={<ExtractionReview />} />
         </Route>
         <Route path="*" element={<Navigate to="/workspaces" replace />} />
       </Routes>

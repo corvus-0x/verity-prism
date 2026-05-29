@@ -1,6 +1,7 @@
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, UploadFile, File
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, UploadFile, File
 from fastapi.responses import FileResponse
 from pathlib import Path
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 from app.config import settings
 from app.database import get_db
@@ -98,13 +99,46 @@ def get_document(
 def list_extractions(
     workspace_id: str,
     document_id: str,
+    include_history: bool = Query(default=False),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
+    """
+    Return extracted fields for a document.
+    Default: one row per field_name (the latest attempt).
+    ?include_history=true: all rows for all attempts, ordered by field_name then attempt.
+    """
     get_workspace_or_404(workspace_id, user, db)
-    return db.query(DocumentExtraction).filter(
-        DocumentExtraction.document_id == document_id
-    ).all()
+
+    if include_history:
+        return (
+            db.query(DocumentExtraction)
+            .filter(DocumentExtraction.document_id == document_id)
+            .order_by(DocumentExtraction.field_name, DocumentExtraction.attempt)
+            .all()
+        )
+
+    # Latest attempt per field_name via subquery — prevents duplicate field
+    # names appearing once attempt > 1 rows exist in the table.
+    latest_attempt_subq = (
+        db.query(
+            DocumentExtraction.field_name,
+            func.max(DocumentExtraction.attempt).label("max_attempt"),
+        )
+        .filter(DocumentExtraction.document_id == document_id)
+        .group_by(DocumentExtraction.field_name)
+        .subquery()
+    )
+    return (
+        db.query(DocumentExtraction)
+        .join(
+            latest_attempt_subq,
+            (DocumentExtraction.field_name == latest_attempt_subq.c.field_name)
+            & (DocumentExtraction.attempt == latest_attempt_subq.c.max_attempt),
+        )
+        .filter(DocumentExtraction.document_id == document_id)
+        .all()
+    )
 
 
 _MEDIA_TYPES = {

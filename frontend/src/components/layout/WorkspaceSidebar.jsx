@@ -7,6 +7,7 @@ const ENGINE_SECTIONS = [
   { path: 'search', label: 'Search' },
   { path: 'entities', label: 'Entities' },
   { path: 'chat', label: 'AI Chat' },
+  { path: 'review', label: 'Review' },
 ]
 
 const VERTICAL_SECTIONS = {

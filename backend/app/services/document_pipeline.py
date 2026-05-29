@@ -226,12 +226,49 @@ def _run_pipeline(
             raw_extractions = parse_xml_document(file_bytes, schema)
         else:
             # Claude extraction
-            raw_extractions = extract_fields(ocr_text, schema)
+            raw_extractions = extract_fields(ocr_text, schema, doc.id, workspace_id)
 
         save_extractions(raw_extractions, doc.id, workspace_id, schema.id, db)
     except Exception as e:
         _fail(doc, f"Extraction failed: {e}", db)
         return
+
+    # ── Step 6b: Evaluate confidence + retry low-confidence fields (claude only) ──
+    # XML direct always produces confidence=1.0 — skip evaluator entirely.
+    if schema.parse_strategy == "claude":
+        try:
+            from app.services.extraction_evaluator import evaluate, run_retry
+            eval_result = evaluate(raw_extractions, schema.default_confidence_threshold)
+            if eval_result.needs_review:
+                logger.info(
+                    f"Evaluator: {len(eval_result.low_confidence_fields)} low-confidence fields "
+                    f"in doc {doc.id} — retrying"
+                )
+                retry_extractions = run_retry(
+                    document_id=doc.id,
+                    workspace_id=workspace_id,
+                    ocr_text=ocr_text,
+                    schema=schema,
+                    low_confidence_field_names=eval_result.low_confidence_fields,
+                    db=db,
+                )
+                # Re-evaluate retry results — if still below threshold, flag for human review
+                if retry_extractions:
+                    final_eval = evaluate(retry_extractions, schema.default_confidence_threshold)
+                    if final_eval.needs_review:
+                        doc.extraction_status = "needs_review"
+                        db.commit()
+                        logger.info(
+                            f"Doc {doc.id} flagged needs_review: "
+                            f"{len(final_eval.low_confidence_fields)} fields still below threshold"
+                        )
+                else:
+                    # Retry produced nothing — flag for human review regardless
+                    doc.extraction_status = "needs_review"
+                    db.commit()
+        except Exception as e:
+            # Evaluator failure is non-fatal — document stays complete
+            logger.warning(f"Extraction evaluator failed for doc {doc.id}: {e}")
 
     # ── Step 7: Standardized filename ───────────────────────────────────────
     try:

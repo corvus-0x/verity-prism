@@ -21,3 +21,12 @@ export const getDocumentFile = (workspaceId, documentId) =>
   client.get(`/workspaces/${workspaceId}/documents/${documentId}/file`, {
     responseType: 'blob',
   })
+
+export const getReviewQueue = (workspaceId) =>
+  client.get(`/workspaces/${workspaceId}/review-queue`)
+
+export const correctExtraction = (workspaceId, documentId, extractionId, fieldValue) =>
+  client.patch(
+    `/workspaces/${workspaceId}/documents/${documentId}/extractions/${extractionId}/correct`,
+    { field_value: fieldValue }
+  )

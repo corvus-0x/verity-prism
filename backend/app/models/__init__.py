@@ -10,6 +10,7 @@ from app.models.lead import InvestigationLead
 from app.models.note import Note
 from app.models.ai import AIConversation, AIMessage
 from app.models.audit import AuditLog
+from app.models.claude_call_log import ClaudeCallLog
 
 __all__ = [
     "User", "Workspace", "WorkspaceMember",
@@ -18,4 +19,5 @@ __all__ = [
     "SignalType", "Finding", "FindingEvidence",
     "InvestigationLead", "Note",
     "AIConversation", "AIMessage", "AuditLog",
+    "ClaudeCallLog",
 ]
