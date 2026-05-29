@@ -4,6 +4,7 @@ import { listDocuments, uploadDocument } from '../../api/documents'
 import DropZone from '../../components/documents/DropZone'
 import DocumentList from '../../components/documents/DocumentList'
 import LoadingSpinner from '../../components/shared/LoadingSpinner'
+import { useWorkspaceExtractionStream } from '../../hooks/useWorkspaceExtractionStream'
 
 export default function Documents() {
   const { workspaceId } = useParams()
@@ -12,8 +13,28 @@ export default function Documents() {
   const [loading, setLoading] = useState(true)
   const [uploading, setUploading] = useState(false)
 
+  const handleUpdate = (docId, payload) => {
+    setDocuments((prev) =>
+      prev.map((d) => {
+        if (d.id !== docId) return d
+        const updated = { ...d, extraction_status: payload.extraction_status }
+        if (payload.detected_doc_type) updated.detected_doc_type = payload.detected_doc_type
+        return updated
+      })
+    )
+  }
+
+  const { trackDoc } = useWorkspaceExtractionStream(workspaceId, handleUpdate)
+
   useEffect(() => {
-    listDocuments(workspaceId).then((r) => setDocuments(r.data)).finally(() => setLoading(false))
+    listDocuments(workspaceId)
+      .then((r) => {
+        setDocuments(r.data)
+        r.data
+          .filter((d) => d.extraction_status === 'pending')
+          .forEach((d) => trackDoc(d.id))
+      })
+      .finally(() => setLoading(false))
   }, [workspaceId])
 
   const handleFile = async (file) => {
@@ -21,6 +42,7 @@ export default function Documents() {
     try {
       const res = await uploadDocument(workspaceId, file)
       setDocuments((prev) => [res.data, ...prev])
+      if (res.data.extraction_status === 'pending') trackDoc(res.data.id)
       navigate(`/workspaces/${workspaceId}/documents/${res.data.id}`)
     } finally {
       setUploading(false)

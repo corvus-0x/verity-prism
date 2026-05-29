@@ -75,7 +75,10 @@ toast.warning("3 fields below threshold", "Document flagged for review")
 - Polls DB every 2 seconds, pushes: `data: {"status": "complete", "extraction_status": "complete"}\n\n`
 - Closes stream when status reaches terminal state: `complete` | `failed` | `no_schema` | `needs_review`
 - Hard timeout at 5 minutes — stream closes regardless
-- No auth middleware change needed — uses existing `get_current_user` dependency
+- Auth: endpoint uses `get_current_user` dependency. The handler must enforce two checks before opening the stream:
+  1. **Workspace membership** — call `get_workspace_or_404(workspace_id, user, db)` to confirm the authenticated user has access to the workspace.
+  2. **Document ownership** — query `Document.id == document_id, Document.workspace_id == workspace_id` to confirm the document belongs to that workspace.
+  Both checks must pass. A workspace the user cannot access returns 403; a document not in that workspace returns 404. Neither opens a stream.
 
 **SSE message format:**
 ```
@@ -91,8 +94,18 @@ data: {"extraction_status": "failed", "extraction_error": "OCR failed: ..."}\n\n
 - `EventSource` closes automatically on terminal event or component unmount
 - Multiple pending documents = multiple parallel connections (acceptable at single-user scale)
 
+**SSE error handling and reconnect (in `useExtractionStream.js`):**
+- Wrap `EventSource` with `onopen`, `onmessage`, and `onerror` handlers.
+- On `onerror`: increment retry count and schedule a new `EventSource` with exponential backoff (base 1 s, doubles each attempt, cap 32 s). Max 5 retries total.
+- Stop retrying immediately if: (a) the last received message was a terminal status, (b) the component has unmounted.
+- After exhausting all retries without a terminal event, surface a final "failed" state.
+- Stream connection state exposed from the hook: `"connecting" | "connected" | "disconnected" | "failed"`. `Documents.jsx` reads this to show status and trigger toasts:
+  - First connection attempt fails → no toast (transient).
+  - All retries exhausted → `toast.error("Extraction stream lost", "<filename> — refresh to check status")`.
+- On unmount or terminal event: cancel any pending backoff timer and close the `EventSource`. No dangling connections.
+
 **New files:**
-- `frontend/src/hooks/useExtractionStream.js` — manages EventSource lifecycle for one document
+- `frontend/src/hooks/useExtractionStream.js` — manages EventSource lifecycle, exponential-backoff reconnect, and stream connection state for one document
 
 **Modified files:**
 - `backend/app/routers/documents.py` — add SSE endpoint
@@ -185,10 +198,23 @@ Pagination:
 - Fetches fresh page from backend on navigate
 - Search and filter reset on page change
 
-Detail line per entry: derived from `entity_type` + `after_state`. Examples:
-- `uploaded` + `after_state.filename` → "2021-03-15_DEED.pdf · DEED · 64 fields"
-- `extraction_corrected` + `after_state.field_name` → "sale_amount corrected on DEED.pdf"
-- `searched` + `after_state.query` → "\"deeds where sale amount above 200000\""
+Detail line per entry: derived from `action` + `entity_type` + `after_state`. Full mapping:
+
+| `action` | Detail string |
+|---|---|
+| `uploaded` | `{after_state.filename} · {entity_type} · {after_state.field_count} fields` |
+| `extraction_corrected` | `{after_state.field_name} corrected on {after_state.filename}` |
+| `document_file_accessed` | `{after_state.filename} accessed` |
+| `searched` | `"{after_state.query}"` (quoted) |
+| anything else | `{action} on {entity_type}` |
+
+**Null / missing field handling:**
+- Any field referenced above that is absent from `after_state` is omitted from the string (not replaced with a placeholder). If all optional parts are missing, fall back to `{action} on {entity_type}`.
+- If `entity_type` itself is null, use `{action}` alone.
+- `after_state` null entirely → use `{action}` alone.
+- `after_state.field_count` missing on `uploaded` → render `{filename} · {entity_type}` (drop the fields segment).
+
+**Future actions:** Any `action` not listed above uses the generic fallback `{action} on {entity_type}`. Implementers adding new action types should extend this table in both the spec and the audit detail builder.
 
 Subtitle on page: "Every action on every document is tamper-proof."
 
