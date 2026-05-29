@@ -19,7 +19,7 @@ from app.schemas.document import DocumentOut, ExtractionOut
 from app.services import audit
 from app.services.auth import get_current_user
 from app.services.document_pipeline import create_pending_document, process_upload_background
-from app.utils.sanitize import escape_csv_cell
+from app.utils.sanitize import content_disposition, escape_csv_cell
 
 router = APIRouter(prefix="/workspaces/{workspace_id}", tags=["documents"])
 
@@ -283,11 +283,10 @@ def download_extractions_csv(
             "attempt": e.attempt,
         })
 
-    safe_name = doc.filename.replace('"', '')
     return Response(
         content=output.getvalue(),
         media_type="text/csv",
-        headers={"Content-Disposition": f'attachment; filename="{safe_name}_extractions.csv"'},
+        headers={"Content-Disposition": content_disposition(f"{doc.filename}_extractions.csv", "attachment")},
     )
 
 
@@ -317,11 +316,10 @@ def download_extractions_json(
         }
         for e in extractions
     ]
-    safe_name = doc.filename.replace('"', '')
     return Response(
         content=json_module.dumps(data, indent=2),
         media_type="application/json",
-        headers={"Content-Disposition": f'attachment; filename="{safe_name}_extractions.json"'},
+        headers={"Content-Disposition": content_disposition(f"{doc.filename}_extractions.json", "attachment")},
     )
 
 

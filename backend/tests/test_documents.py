@@ -207,3 +207,33 @@ def test_export_csv_escapes_formula_injection(client, auth_headers, workspace_id
     assert res.status_code == 200
     assert "'=2+5+cmd" in res.text          # neutralized with a leading quote
     assert "payee,=2+5+cmd" not in res.text  # never written as a bare formula
+
+
+def test_export_csv_filename_header_has_no_crlf(client, auth_headers, workspace_id, db):
+    import io as io_module
+    from unittest.mock import patch
+    from app.models.document import Document
+
+    with patch("app.routers.documents.process_upload_background"):
+        doc_id = client.post(
+            f"/workspaces/{workspace_id}/documents",
+            files={"file": ("hdr.pdf", io_module.BytesIO(b"%PDF-1.4 x"), "application/pdf")},
+            headers=auth_headers,
+        ).json()["id"]
+
+    doc = db.query(Document).filter(Document.id == doc_id).first()
+    doc.filename = "evil\r\nSet-Cookie: pwned.pdf"
+    doc.extraction_status = "complete"
+    db.commit()
+
+    res = client.get(
+        f"/workspaces/{workspace_id}/documents/{doc_id}/extractions.csv",
+        headers=auth_headers,
+    )
+    assert res.status_code == 200
+    cd = res.headers["content-disposition"]
+    assert "\r" not in cd
+    assert "\n" not in cd
+    assert cd.startswith("attachment;")
+    assert "filename*=UTF-8''" in cd   # only the fixed code emits RFC 5987 form
+    assert "set-cookie" not in res.headers
