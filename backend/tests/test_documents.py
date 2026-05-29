@@ -104,3 +104,74 @@ def test_status_stream_returns_event_stream(client, auth_headers, workspace_id):
     )
     assert response.status_code == 200
     assert "text/event-stream" in response.headers["content-type"]
+
+
+def test_export_csv_returns_csv(client, auth_headers, workspace_id, db):
+    import io as io_module
+    from app.models.document import Document
+    from app.models.document_extraction import DocumentExtraction
+
+    doc_id = client.post(
+        f"/workspaces/{workspace_id}/documents",
+        files={"file": ("export_test.pdf", io_module.BytesIO(b"%PDF-1.4 x"), "application/pdf")},
+        headers=auth_headers,
+    ).json()["id"]
+
+    doc = db.query(Document).filter(Document.id == doc_id).first()
+    doc.extraction_status = "complete"
+    db.flush()
+    db.add(DocumentExtraction(
+        document_id=doc_id,
+        workspace_id=workspace_id,
+        field_name="sale_amount",
+        field_value="285000",
+        field_type="currency",
+        confidence=0.95,
+        attempt=1,
+    ))
+    db.commit()
+
+    response = client.get(
+        f"/workspaces/{workspace_id}/documents/{doc_id}/extractions.csv",
+        headers=auth_headers,
+    )
+    assert response.status_code == 200
+    assert "text/csv" in response.headers["content-type"]
+    assert "sale_amount" in response.text
+    assert "285000" in response.text
+
+
+def test_export_json_returns_json(client, auth_headers, workspace_id, db):
+    import io as io_module
+    from app.models.document import Document
+    from app.models.document_extraction import DocumentExtraction
+
+    doc_id = client.post(
+        f"/workspaces/{workspace_id}/documents",
+        files={"file": ("export_test2.pdf", io_module.BytesIO(b"%PDF-1.4 y"), "application/pdf")},
+        headers=auth_headers,
+    ).json()["id"]
+
+    doc = db.query(Document).filter(Document.id == doc_id).first()
+    doc.extraction_status = "complete"
+    db.flush()
+    db.add(DocumentExtraction(
+        document_id=doc_id,
+        workspace_id=workspace_id,
+        field_name="grantor_name",
+        field_value="John Smith",
+        field_type="name",
+        confidence=0.98,
+        attempt=1,
+    ))
+    db.commit()
+
+    response = client.get(
+        f"/workspaces/{workspace_id}/documents/{doc_id}/extractions.json",
+        headers=auth_headers,
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert isinstance(data, list)
+    assert data[0]["field_name"] == "grantor_name"
+    assert data[0]["field_value"] == "John Smith"

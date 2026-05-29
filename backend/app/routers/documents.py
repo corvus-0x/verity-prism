@@ -1,7 +1,9 @@
 import asyncio
+import csv
+import io
 import json as json_module
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, UploadFile, File
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse, Response, StreamingResponse
 from pathlib import Path
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -223,6 +225,172 @@ def list_extractions(
         )
         .filter(DocumentExtraction.document_id == document_id)
         .all()
+    )
+
+
+def _latest_extractions(document_id: str, db: Session):
+    """Return the latest attempt per field_name for a document."""
+    latest_subq = (
+        db.query(
+            DocumentExtraction.field_name,
+            func.max(DocumentExtraction.attempt).label("max_attempt"),
+        )
+        .filter(DocumentExtraction.document_id == document_id)
+        .group_by(DocumentExtraction.field_name)
+        .subquery()
+    )
+    return (
+        db.query(DocumentExtraction)
+        .join(
+            latest_subq,
+            (DocumentExtraction.field_name == latest_subq.c.field_name)
+            & (DocumentExtraction.attempt == latest_subq.c.max_attempt),
+        )
+        .filter(DocumentExtraction.document_id == document_id)
+        .all()
+    )
+
+
+@router.get("/documents/{document_id}/extractions.csv")
+def download_extractions_csv(
+    workspace_id: str,
+    document_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Download extracted fields for one document as CSV (latest attempt per field)."""
+    get_workspace_or_404(workspace_id, user, db)
+    doc = db.query(Document).filter(
+        Document.id == document_id, Document.workspace_id == workspace_id
+    ).first()
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    extractions = _latest_extractions(document_id, db)
+    output = io.StringIO()
+    writer = csv.DictWriter(output, fieldnames=["field_name", "field_value", "field_type", "confidence", "attempt"])
+    writer.writeheader()
+    for e in extractions:
+        writer.writerow({
+            "field_name": e.field_name,
+            "field_value": e.field_value or "",
+            "field_type": e.field_type,
+            "confidence": e.confidence,
+            "attempt": e.attempt,
+        })
+
+    safe_name = doc.filename.replace('"', '')
+    return Response(
+        content=output.getvalue(),
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="{safe_name}_extractions.csv"'},
+    )
+
+
+@router.get("/documents/{document_id}/extractions.json")
+def download_extractions_json(
+    workspace_id: str,
+    document_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Download extracted fields for one document as JSON (latest attempt per field)."""
+    get_workspace_or_404(workspace_id, user, db)
+    doc = db.query(Document).filter(
+        Document.id == document_id, Document.workspace_id == workspace_id
+    ).first()
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    extractions = _latest_extractions(document_id, db)
+    data = [
+        {
+            "field_name": e.field_name,
+            "field_value": e.field_value or "",
+            "field_type": e.field_type,
+            "confidence": e.confidence,
+            "attempt": e.attempt,
+        }
+        for e in extractions
+    ]
+    safe_name = doc.filename.replace('"', '')
+    return Response(
+        content=json_module.dumps(data, indent=2),
+        media_type="application/json",
+        headers={"Content-Disposition": f'attachment; filename="{safe_name}_extractions.json"'},
+    )
+
+
+@router.get("/extractions.csv")
+def download_workspace_extractions_csv(
+    workspace_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Download all extractions across the workspace as CSV."""
+    get_workspace_or_404(workspace_id, user, db)
+    docs = db.query(Document).filter(
+        Document.workspace_id == workspace_id,
+        Document.extraction_status.in_(["complete", "needs_review"]),
+        Document.is_deleted == False,
+    ).all()
+
+    output = io.StringIO()
+    writer = csv.DictWriter(output, fieldnames=[
+        "document_filename", "document_type",
+        "field_name", "field_value", "field_type", "confidence", "attempt",
+    ])
+    writer.writeheader()
+    for doc in docs:
+        for e in _latest_extractions(doc.id, db):
+            writer.writerow({
+                "document_filename": doc.filename,
+                "document_type": doc.detected_doc_type or "",
+                "field_name": e.field_name,
+                "field_value": e.field_value or "",
+                "field_type": e.field_type,
+                "confidence": e.confidence,
+                "attempt": e.attempt,
+            })
+
+    return Response(
+        content=output.getvalue(),
+        media_type="text/csv",
+        headers={"Content-Disposition": 'attachment; filename="workspace_extractions.csv"'},
+    )
+
+
+@router.get("/extractions.json")
+def download_workspace_extractions_json(
+    workspace_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Download all extractions across the workspace as JSON."""
+    get_workspace_or_404(workspace_id, user, db)
+    docs = db.query(Document).filter(
+        Document.workspace_id == workspace_id,
+        Document.extraction_status.in_(["complete", "needs_review"]),
+        Document.is_deleted == False,
+    ).all()
+
+    data = []
+    for doc in docs:
+        for e in _latest_extractions(doc.id, db):
+            data.append({
+                "document_filename": doc.filename,
+                "document_type": doc.detected_doc_type or "",
+                "field_name": e.field_name,
+                "field_value": e.field_value or "",
+                "field_type": e.field_type,
+                "confidence": e.confidence,
+                "attempt": e.attempt,
+            })
+
+    return Response(
+        content=json_module.dumps(data, indent=2),
+        media_type="application/json",
+        headers={"Content-Disposition": 'attachment; filename="workspace_extractions.json"'},
     )
 
 
