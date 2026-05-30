@@ -1,6 +1,6 @@
 import uuid
 from datetime import UTC, datetime
-from typing import Any, Optional
+from typing import Any
 
 from sqlalchemy import BigInteger, Boolean, DateTime, ForeignKey, String, Text
 from sqlalchemy import Enum as SAEnum
@@ -29,7 +29,7 @@ class Document(Base):
     detected_doc_type: Mapped[str] = mapped_column(String, nullable=True)
     schema_id: Mapped[str] = mapped_column(String, ForeignKey("document_schemas.id"), nullable=True)
     ocr_text: Mapped[str] = mapped_column(Text, nullable=True)
-    search_vector: Mapped[Optional[Any]] = mapped_column(TSVECTOR, nullable=True)
+    search_vector: Mapped[Any | None] = mapped_column(TSVECTOR, nullable=True)
     metadata_: Mapped[dict] = mapped_column("metadata", JSONB, default=dict)
     size_bytes: Mapped[int] = mapped_column(BigInteger, nullable=True)
     extraction_status: Mapped[str] = mapped_column(

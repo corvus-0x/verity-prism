@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.database import get_db
 from app.models.user import User
-from app.schemas.user import LoginOut, TokenOut, UserLogin, UserOut, UserRegister
+from app.schemas.user import LoginOut, UserLogin, UserOut, UserRegister
 from app.services import audit
 from app.services.auth import create_access_token, get_current_user, hash_password, verify_password
 

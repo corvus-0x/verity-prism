@@ -4,9 +4,9 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.deps import get_workspace_or_404
 from app.models.audit import AuditLog
 from app.models.user import User
-from app.deps import get_workspace_or_404
 from app.schemas.audit_log import AuditLogPage
 from app.services.auth import get_current_user
 

@@ -28,29 +28,41 @@ _SOFT_DELETE_TABLES = [
 
 
 def upgrade() -> None:
-    # H2 — fix search_vector column type and add GIN index
+    conn = op.get_bind()
+
+    # H2 — fix search_vector column type (idempotent: skip if already TSVECTOR)
+    col_type = conn.execute(sa.text(
+        "SELECT data_type FROM information_schema.columns "
+        "WHERE table_name = 'documents' AND column_name = 'search_vector'"
+    )).scalar()
+    if col_type and col_type.lower() != "tsvector":
+        op.execute(
+            "ALTER TABLE documents "
+            "ALTER COLUMN search_vector TYPE TSVECTOR "
+            "USING search_vector::tsvector"
+        )
+
+    # H2 — GIN index (idempotent)
     op.execute(
-        "ALTER TABLE documents "
-        "ALTER COLUMN search_vector TYPE TSVECTOR "
-        "USING search_vector::tsvector"
-    )
-    op.create_index(
-        "idx_documents_search_vector",
-        "documents",
-        ["search_vector"],
-        postgresql_using="gin",
+        "CREATE INDEX IF NOT EXISTS idx_documents_search_vector "
+        "ON documents USING gin (search_vector)"
     )
 
-    # L5 — extend soft-delete pattern to remaining entity tables
+    # L5 — extend soft-delete pattern to remaining entity tables (idempotent)
     for table in _SOFT_DELETE_TABLES:
-        op.add_column(
-            table,
-            sa.Column("is_deleted", sa.Boolean(), nullable=False, server_default="false"),
-        )
-        op.add_column(
-            table,
-            sa.Column("deleted_at", sa.DateTime(timezone=True), nullable=True),
-        )
+        existing = conn.execute(sa.text(
+            "SELECT column_name FROM information_schema.columns "
+            "WHERE table_name = :t AND column_name = 'is_deleted'"
+        ), {"t": table}).scalar()
+        if not existing:
+            op.add_column(
+                table,
+                sa.Column("is_deleted", sa.Boolean(), nullable=False, server_default="false"),
+            )
+            op.add_column(
+                table,
+                sa.Column("deleted_at", sa.DateTime(timezone=True), nullable=True),
+            )
 
 
 def downgrade() -> None:
