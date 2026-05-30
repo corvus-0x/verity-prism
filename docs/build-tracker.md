@@ -149,6 +149,70 @@ Decisions made before any vertical work could start. These were flagged in princ
 
 ---
 
+## Deferred & Relocated Work
+
+Things that were planned for one phase and moved, or explicitly punted. Captured here with the reasoning so when we reach that phase we're not starting from scratch.
+
+---
+
+### Signal Detection Framework — moved Phase 2B → Phase 3A
+
+**Originally planned as:** Phase 2B — a generic engine-level `signal_rules` table + rule evaluator that any vertical could use.
+
+**Moved to:** Phase 3A (Fraud Vertical), built as fraud cap logic, not engine infrastructure.
+
+**Why we moved it:** Signal rules are domain logic. Every vertical has its own operators, thresholds, and evidence patterns. Building a generic framework before two verticals exist means designing an abstraction for one use case. The fraud cap will define signal detection against fraud-specific field values. If insurance signals share enough structure with fraud signals, the common parts get extracted *then* — when we actually know what "common" means from two real implementations, not one hypothetical.
+
+**What it needs when we get to Phase 3A:**
+- `signal_rules` table with rule definitions (operator, threshold, field_name, comparison value)
+- Rule evaluator that runs rules against `document_extractions` and creates `findings` rows
+- SR signal definitions: SR-003 (valuation anomaly), SR-004 (UCC burst), SR-005 (zero consideration), SR-015 (deed title defect), SR-021 (revenue spike), SR-024 (charity conduit), SR-025 (false disclosure), SR-026 (construction overage)
+- Move `SIGNAL_TYPES_SEED` out of `routers/findings.py` and into `app/caps/fraud/signal_types.py` — it's currently misplaced in the engine layer
+
+---
+
+### Partial Batch Failure Behavior — open decision from audit phase 3 (2026-05-29)
+
+**Context:** The C2 fix handles total failure: all Claude batches fail → `extraction_status = "failed"`. But when *some* batches fail and some succeed, the document currently completes with partial fields and only a warning log — no visible signal to the investigator. They'd see a `complete` document that's missing some fields, with no indication why.
+
+**The open question:** Should partial batch failure set `needs_review` instead of `complete`? Arguments:
+- For `needs_review`: investigators can't trust a document where extraction silently dropped fields
+- Against: `needs_review` was designed for low-confidence fields, not missing ones — blurring the meaning could confuse the review queue
+
+**Decision needed before:** Phase 3 vertical work, since signals run against extracted fields and a partial extraction could cause false negatives on signal detection.
+
+---
+
+### Field-Level PDF Linking — deferred from Phase 2A (2026-05-28)
+
+**What it is:** Clicking an extracted field in the fields panel highlights its location in the PDF viewer.
+
+**Why deferred:** Requires text layer extraction from react-pdf to get character-level bounding boxes. The split-pane viewer delivers the core value (see source + extracted data side by side) without it. Deferred until extraction quality is stable — no point highlighting positions if the extraction is wrong.
+
+**What it needs when we pick it up:** react-pdf's `onGetTextSuccess` callback returns a text layer with position data. Match extracted field values against text layer tokens to get bounding boxes, then draw highlight overlays on the PDF canvas.
+
+---
+
+### Frontend Test Coverage (Vitest) — deferred from Engine Core Hardening review
+
+**Context:** Flagged in principal dev review during core hardening (2026-05-26) — "establish a Vitest baseline before Phase 3." Still not done. A few component tests exist (`test_documents.jsx`) but there's no systematic frontend test coverage.
+
+**Why it matters:** Backend has 118 tests. Frontend has almost none. As the frontend grows with vertical-specific pages (fraud graph, insurance review queue), bugs there will be invisible without tests.
+
+---
+
+### Code Audit Remaining Phases (4–6)
+
+Phases 1–3 of the audit remediation are merged. Remaining findings from `docs/code-audit-2026-05-29.md`:
+
+| Phase | Findings | Theme |
+|-------|----------|-------|
+| 4 | H1 (soft-delete filters in search/AI), H2 (search_vector → TSVECTOR + GIN index), L5 (soft-delete on Transaction/Finding/Lead), L1 (workspace-scope conversation history) | Search & soft-delete data integrity |
+| 5 | M5 (thin routers — move get_workspace_or_404, export/SSE to services), L6 (lazy module-level Anthropic clients) | Architecture refactor |
+| 6 | M6 (JWT → httpOnly cookie), M7 (frontend error handling), L2 (SSE reader cancel on unmount), L4 (router navigation on 401) | Frontend resilience + JWT hardening |
+
+---
+
 ## Known Issues / Decisions
 
 | Date | Issue | Resolution |
