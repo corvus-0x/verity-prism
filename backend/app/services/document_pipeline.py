@@ -53,11 +53,18 @@ EXTENSION_TO_TYPE = {
 # ── Status helpers ──────────────────────────────────────────────────────────
 
 def _fail(doc: Document, error: str, db: Session) -> None:
-    """Mark a document as failed with a reason."""
+    """Mark a document as failed and clean up its stored file (L3)."""
     doc.extraction_status = "failed"
     doc.extraction_error = error[:500]
     db.commit()
     logger.error(f"Pipeline failed for doc {doc.id}: {error}")
+
+    if doc.file_path:
+        try:
+            Path(doc.file_path).unlink(missing_ok=True)
+        except Exception as e:
+            logger.warning(f"File cleanup failed for doc {doc.id}: {e}")
+
     try:
         audit.log(
             db,
