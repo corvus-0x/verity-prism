@@ -1,6 +1,6 @@
 # Verity Prism — Build Tracker
 
-**Purpose:** History of what was built, why decisions were made, and what changed at each milestone. For what's planned next, see `docs/roadmap.md`. For current component status, see `docs/build-inventory.md`.
+**Purpose:** History of what was built, why decisions were made, and what changed at each milestone. For what's planned next, see `docs/roadmap.md`. For current component status, see `docs/build-inventory.md`. Updated via `/log-session`.
 
 ---
 
