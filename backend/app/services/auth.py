@@ -1,5 +1,4 @@
 from datetime import UTC, datetime, timedelta
-from typing import Optional
 
 from fastapi import Cookie, Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -29,8 +28,8 @@ def create_access_token(user_id: str) -> str:
     return jwt.encode(payload, settings.secret_key, algorithm="HS256")
 
 def get_current_user(
-    credentials: Optional[HTTPAuthorizationCredentials] = Depends(bearer_scheme),
-    access_token: Optional[str] = Cookie(default=None),
+    credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
+    access_token: str | None = Cookie(default=None),
     db: Session = Depends(get_db),
 ) -> User:
     """FastAPI dependency — decode Bearer token or httpOnly cookie, return active User.

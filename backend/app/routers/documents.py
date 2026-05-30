@@ -6,10 +6,10 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.database import get_db
+from app.deps import get_workspace_or_404
 from app.models.document import Document
 from app.models.document_extraction import DocumentExtraction
 from app.models.user import User
-from app.deps import get_workspace_or_404
 from app.schemas.document import DocumentOut, ExtractionOut
 from app.services import audit, export_service
 from app.services.auth import get_current_user
