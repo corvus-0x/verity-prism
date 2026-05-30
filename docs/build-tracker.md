@@ -162,6 +162,24 @@ Decisions made before any vertical work could start. These were flagged in princ
 
 ---
 
+## Blog + Skills + Config (2026-05-29)
+
+| Task | What was built or decided | Why |
+|------|--------------------------|-----|
+| Blog post 010 — The Audit | Wrote post covering the full audit: trigger that didn't exist, false-complete on API outage, 4000-char text cap, fixes in phases. Title: "The Audit." | Audit was a complete story — a new developer bringing in an external reviewer before building Phase 3 on top of the engine. Enough decisions and fixes to warrant a standalone post. |
+| Post 010 voice revisions | Rewrote opening to be observation-first (grep came back empty) instead of thesis-first. Added personal weight ("if the record doesn't hold, none of the work matters"). Deadbolt metaphor for false-complete. "Cut short" for text cap — honest over metaphor. Trimmed over-explained close. | Reading the post against all 15 voice characteristics revealed: opening was a reflection not an observation, no personal weight, over-explained close. Physical metaphors only when natural — the deadbolt came from thinking through the actual failure mode, "cut short" was more honest than reaching for an image. |
+| Post 007 voice revision | Added: "A county auditor deputy named by name. A county name across multiple fields. A nonprofit's own subdivision as the example value. Anyone reading the schema could trace back what investigation this engine was built on. That came out the same session I found it." | The "oh shit" moment — not a technical failure, a privacy alarm. Seeing a real person's name in a public repo built on an active investigation. The urgency is in the brevity: "that came out the same session I found it." |
+| Post 008 voice revisions | Added "The scoring was working. There was just nowhere to go with it." Added "That kind of gap doesn't show up in the code. It shows up when you look at what you built from the investigator's side." | The discovery was quiet — not an alarm, a connection gap. Built confidence scoring, didn't wire it to a viewer. The dual-perspective line (dev side vs investigator side) is a through-line of the whole blog and earns its place here explicitly. |
+| Post 009 — left unchanged | The trigger claim in post 9 ("the audit log has a PostgreSQL trigger that blocks UPDATE and DELETE") is the belief at the time Phase 2C shipped. Post 10 reveals it wasn't true. | Changing post 9 kills the tension in post 10. The reader needs to believe the trigger existed before the audit reveals it didn't. That's the arc. |
+| `/log-session` skill | `~/.claude/skills/verity-prism-log-session/SKILL.md` — invoked as `/log-session` at end of session or before `/clear`. Reads git log, extracts why from conversation, writes section to build tracker. | The Why column is what feeds interviews and sales conversations but hard to keep current manually. Run before clearing context — the conversation is where the why lives. |
+| `/blog-post` skill | `~/.claude/skills/verity-prism-blog-post/SKILL.md` — covers finding the discovery moment, overlap check, voice rules. Step 1 now reads the voice memory file first, then the template, then two recent posts. | Voice memory captures register (15 characteristics); template captures structure. Baseline test showed that without reading existing posts + memory file, the agent invents a voice instead of finding it and writes about things already covered. |
+| CodeRabbit config | `.coderabbit.yaml` — auto-review on PRs to main only, drafts excluded. | Was triggering on every commit. Only needs to run when a PR is ready for review. Draft PRs excluded so work-in-progress doesn't get reviewed. |
+| Blog timing decision | Blog stays organic — write when a discovery moment hits. Session log is for interviews and sales reference, not blog prep. | Forced blog scheduling produces mediocre posts. The discovery is the story. |
+
+**Skills note:** `/log-session` and `/blog-post` require a Claude Code restart to appear in the skill list. Both are installed at `~/.claude/skills/`.
+
+---
+
 ## Deferred & Relocated Work
 
 Things that were planned for one phase and moved, or explicitly punted. Captured here with the reasoning so when we reach that phase we're not starting from scratch.
