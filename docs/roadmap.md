@@ -126,7 +126,7 @@ Shared schemas (PARCEL-RECORD, for example) can belong to multiple verticals. Th
 
 ## Phase 2 — IDP Engine Capabilities
 **What it is:** The engine gets smarter and more connected. No vertical logic — these capabilities serve all verticals equally.  
-**Status:** In progress — 2A and 2C complete. 2B (signal detection) moved to Phase 3. Remaining: 2D data connectors.
+**Status:** In progress — 2A and 2C complete. 2B (signal detection) moved to Phase 3. Remaining: 2D (code audit phases 4–6), 2E (data connectors).
 
 ### 2A — Intelligence Layer: Agentic Hardening + Document Viewer
 The engine's intelligence layer is functional. These builds make it measurable and trustworthy, and give it a human interface for reviewing what it produces. **Must complete before connectors or signal detection** — connectors bring more documents; signal detection reads extracted fields. Both are only as good as extraction is reliable. Measure reliability first.
@@ -163,8 +163,29 @@ Server-sent events (SSE) on `GET /workspaces/{id}/documents/{doc_id}/status/stre
 **Audit log UI** ✅ DONE:  
 Paginated `GET /audit-log?page&limit` endpoint. Timeline UI with colored action dots, client-side search + action filter, Previous/Next pagination. "Every action on every document is tamper-proof."
 
-### 2D — Data Connectors
-Public data sources feed directly into the pipeline. Any vertical can use any connector. **Can run parallel to 2B** — connectors are input to the pipeline, not dependent on the intelligence layer. Can also run parallel to 2C.
+### 2D — Code Audit Remediation (remaining phases)
+The code audit (conducted 2026-05-29 by Opus 4.8) identified security, data-integrity, and architecture findings. Phases 1–3 are merged. The remaining phases are engine-level correctness work that belongs in Phase 2 before vertical packaging starts.
+
+Full finding details and fix instructions in `docs/code-audit-2026-05-29.md`.
+
+**Phase 4 — Search & soft-delete data integrity:**
+- H1: `run_search` and `query_extractions` don't filter `Document.is_deleted` — soft-deleted documents surface in search results and AI answers
+- H2: `search_vector` column is `TEXT` not `TSVECTOR` — FTS works by coincidence on small data, wrong type and no GIN index
+- L5: Soft-delete pattern only on `Document` + `Entity`; `Transaction`, `Finding`, `Lead`, `Note`, `Relationship` have no `is_deleted`
+- L1: `get_conversation_history` filters by `conversation_id` only, not `workspace_id` — defence-in-depth gap
+
+**Phase 5 — Architecture refactor (thin routers, lazy client):**
+- M5: Business logic in routers — export/SSE construction in `documents.py`, `get_workspace_or_404` lives in a router and is cross-imported; should move to `app/deps.py`
+- L6: Four module-level `Anthropic()` clients instantiated at import — a missing API key fails at import, and only `ai_engine.client` is patched in tests
+
+**Phase 6 — Frontend resilience + JWT hardening:**
+- M6: JWT stored in `localStorage` — readable by any XSS. Move to httpOnly, Secure, SameSite cookie set by backend
+- M7: Frontend swallows API errors — `handleSend` has no `catch`; failed requests leave optimistic UI state on screen
+- L2: SSE reader not cancelled on unmount — connection lingers until server timeout
+- L4: Hard redirect on 401 via `window.location.href` discards SPA state; use router navigation
+
+### 2E — Data Connectors
+Public data sources feed directly into the pipeline. Any vertical can use any connector.
 
 **Architecture:** `app/services/connectors/` — each connector fetches data, converts to a file, hands to the pipeline. The connector doesn't know which vertical is using it.
 
@@ -183,7 +204,7 @@ POST /workspaces/{id}/connectors/ohio-sos
 POST /workspaces/{id}/connectors/county-auditor
 ```
 
-**Existing asset:** `scripts/fetch_990_xml.py` is the core IRS TEOS logic. Phase 2C wraps it in the connector service.  
+**Existing asset:** `scripts/fetch_990_xml.py` is the core IRS TEOS logic. 2E wraps it in the connector service.  
 **Scheduled option:** Background job checks for new filings on watched EINs annually.  
 **Cross-vertical use:** Fraud uses IRS TEOS for 990s. Insurance uses county auditor for property data. Same connector serves both.
 
@@ -310,6 +331,6 @@ The fraud vertical was built first because it's the hardest case. If the engine 
 |---|---|
 | Core Hardening | ✅ CORS configurable, file size bounded, soft-delete consistent, Alembic verified on fresh DB. |
 | Phase 1 | ✅ All backend tasks pass. Frontend working. Documents flow through full pipeline end-to-end. |
-| Phase 2 | 2A ✅ (document viewer, eval loop, observability). 2C ✅ (SSE status, export, audit log UI). 2B moved to Phase 3. Remaining: 2D — three connectors integrated. |
+| Phase 2 | 2A ✅ (document viewer, eval loop, observability). 2C ✅ (SSE status, export, audit log UI). 2B moved to Phase 3. Remaining: 2D (code audit phases 4–6 — search integrity, thin routers, JWT hardening), 2E (data connectors). |
 | Phase 3 | **No vertical work starts until:** extraction reliability is measurable (2A complete) and at least one full case has run with observable confidence metrics. Fraud vertical installs as a complete package. Insurance vertical processes a real claim end-to-end. Both run on the same engine with no engine modifications. |
 | Phase 4 | Multi-user orgs with role-based access. Platform runs on AWS. Two paying clients in different verticals. New vertical takes one week to install, not one month. |

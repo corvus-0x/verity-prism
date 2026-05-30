@@ -201,15 +201,15 @@ Things that were planned for one phase and moved, or explicitly punted. Captured
 
 ---
 
-### Code Audit Remaining Phases (4–6)
+### Code Audit Remaining Phases — now Roadmap Phase 2D
 
-Phases 1–3 of the audit remediation are merged. Remaining findings from `docs/code-audit-2026-05-29.md`:
+Phases 1–3 of the audit remediation are merged (PRs #4 and #5). The remaining phases are now **roadmap Phase 2D** — engine correctness work before vertical packaging. Full finding details in `docs/code-audit-2026-05-29.md`.
 
-| Phase | Findings | Theme |
-|-------|----------|-------|
-| 4 | H1 (soft-delete filters in search/AI), H2 (search_vector → TSVECTOR + GIN index), L5 (soft-delete on Transaction/Finding/Lead), L1 (workspace-scope conversation history) | Search & soft-delete data integrity |
-| 5 | M5 (thin routers — move get_workspace_or_404, export/SSE to services), L6 (lazy module-level Anthropic clients) | Architecture refactor |
-| 6 | M6 (JWT → httpOnly cookie), M7 (frontend error handling), L2 (SSE reader cancel on unmount), L4 (router navigation on 401) | Frontend resilience + JWT hardening |
+| Audit Phase | Roadmap | Findings | Theme |
+|-------------|---------|----------|-------|
+| Audit phase 4 | 2D | H1 (soft-delete filters in search/AI), H2 (search_vector → TSVECTOR + GIN index), L5 (soft-delete on Transaction/Finding/Lead), L1 (workspace-scope conversation history) | Search & soft-delete data integrity |
+| Audit phase 5 | 2D | M5 (thin routers — move get_workspace_or_404, export/SSE to services), L6 (lazy module-level Anthropic clients) | Architecture refactor |
+| Audit phase 6 | 2D | M6 (JWT → httpOnly cookie), M7 (frontend error handling), L2 (SSE reader cancel on unmount), L4 (router navigation on 401) | Frontend resilience + JWT hardening |
 
 ---
 
