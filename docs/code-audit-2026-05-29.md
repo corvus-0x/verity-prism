@@ -169,9 +169,9 @@ Services call `db.commit()` with no `try/except … rollback()`. If a commit fai
 | `services/auth.py` | Indirect (`test_auth.py`) | Partial | Register/login/wrong-password/no-token covered. No unit tests for expired/invalid/tampered JWT or `get_current_user` user-missing path. |
 | `services/ai_engine.py` | Yes (`test_ai.py`) | Good | Tool loop, synthesis pass, text extraction, multi-turn dedup. Client correctly patched at `app.services.ai_engine.client`. |
 | `services/agent_tools.py` | Yes (`test_agent_tools.py`) | Good | All six tools, workspace isolation, soft-delete on entity, overpay math. Does **not** catch the `Document.is_deleted` gap in `query_extractions` (H1). |
-| `services/document_pipeline.py` | **No** | None | Upload endpoint tests tolerate any status and rely on OCR failing (H4). |
-| `services/extraction_engine.py` | **No** | None | No batch/normalize/merge tests; truncation (H5) untested. |
-| `services/extraction_evaluator.py` | **No** | None | `evaluate()` is pure and trivially testable; the empty-input → `needs_review=False` behavior (C2) is untested. |
+| `services/document_pipeline.py` | Yes (`test_pipeline.py`) | Good | Happy path (complete + extractions saved), C2 failure (API outage → failed), L3 cleanup (file deleted on failure), zero-field schema edge case. |
+| `services/extraction_engine.py` | Yes (`test_pipeline.py`) | Good | H5 truncation regression (sentinel text at position 5000 must reach Claude). `ExtractionBatchError` raise path exercised via C2 test. |
+| `services/extraction_evaluator.py` | Yes (`test_pipeline.py`) | Good | `evaluate()` pure function: all-confident, mixed-confidence, empty-input. `run_retry` tested indirectly via pipeline happy-path. |
 | `services/search_service.py` | **No** | None | Translate + run_search untested; H1/H2 uncaught. |
 | `services/ocr.py` | **No** | None | No PDF/image/text-path tests. |
 | `services/xml_parser.py` | **No** | None | Path extraction / namespace handling untested. |
@@ -190,7 +190,7 @@ Services call `db.commit()` with no `try/except … rollback()`. If a commit fai
 | 3 | Audit log immutable (PG trigger); `audit.log()` after every action | ✗ Violated | **No trigger exists** in any migration (C1). Failed uploads and auth events write no audit (M4). |
 | 4 | Routers thin | ✗ Violated | Export/SSE logic in `routers/documents.py` (M5); routers query models directly; `get_workspace_or_404` lives in a router and is cross-imported. |
 | 5 | `workspace_id` injected by dispatcher, never Claude-settable | ✓ Holds (robust) | `agent_tools.execute()` (`:248`) passes `workspace_id=` explicitly; if Claude's `params` also contained `workspace_id`, the call raises `TypeError` and is caught → fails safe, no cross-workspace leak. |
-| 6 | Claude mocked in tests via `app.services.ai_engine.client` | ⚠ Partial | Correct in `test_ai.py`. But `extraction_engine`/`search_service`/`naming` have separate module-level clients that no test patches; pipeline tests neither mock nor assert (H4). |
+| 6 | Claude mocked in tests via `app.services.ai_engine.client` | ⚠ Partial | Correct in `test_ai.py` and `test_pipeline.py` (`app.services.extraction_engine.client` patched — H4 resolved). `search_service` and `naming` module-level clients still unpatched in tests. |
 
 ---
 
@@ -223,9 +223,7 @@ Services call `db.commit()` with no `try/except … rollback()`. If a commit fai
 
 Remaining open findings (Phases 4–6):
 
-1. **C2** stop reporting `complete` on failed/empty extraction.
-2. **H1** soft-delete filters in search/AI; **H5** extraction text window.
-3. **H4** real pipeline tests with mocked Claude.
-4. **H2** `tsvector` + GIN index.
-5. **M5** thin routers (router refactor).
-6. **M6** JWT → httpOnly cookie + frontend resilience (M7, L2, L4).
+1. **H1** soft-delete filters in `run_search` / `query_extractions`; **H2** `search_vector` → `TSVECTOR` + GIN index.
+2. **L5** extend soft-delete to Transaction/Finding/Lead; **L1** workspace-scope `get_conversation_history`.
+3. **M5** thin routers — `get_workspace_or_404` to `app/deps.py`, export/SSE logic to services.
+4. **M6** JWT → httpOnly cookie + frontend resilience (M7, L2, L4).

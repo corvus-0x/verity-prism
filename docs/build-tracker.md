@@ -111,6 +111,19 @@
 
 ---
 
+## Code Audit — Phase 3 (2026-05-29)
+
+| Task | What It Builds | Status |
+|------|---------------|--------|
+| Pipeline test suite (H4) | `test_pipeline.py` — 9 tests: 3 evaluator unit tests, happy-path integration, C2 failure path, H5 truncation regression, L3 file cleanup, zero-field schema edge case. Written TDD-style: failing test committed before each fix. | ✅ Done |
+| C2 fix — ExtractionBatchError | `_extract_batch` raises `ExtractionBatchError` on API failure instead of swallowing and returning `[]`. `extract_fields` re-raises if all batches fail. Pipeline-level guard: claude schema + defined fields + zero results → `_fail`. `run_retry` catches the exception non-fatally. | ✅ Done |
+| H5 fix — TEXT_LIMIT | `TEXT_LIMIT = 200_000` constant in `extraction_engine.py`. OCR text cap raised from 4000 to 200k chars (≈50k tokens). Warning logged when a document exceeds the new limit. | ✅ Done |
+| L3 fix — file cleanup in `_fail` | `_fail` in `document_pipeline.py` now calls `Path(doc.file_path).unlink(missing_ok=True)` before writing the audit log. No orphaned files on disk after any pipeline failure. | ✅ Done |
+
+**Tests passing:** 118/118 (PR #5)
+
+---
+
 ## Phase 2 — Remaining Builds
 
 | Task | What It Builds | Phase | Status |
@@ -157,4 +170,5 @@
 | 2026-05-28 | Engine UI + platform layer. Frontend vertical separation: WorkspaceContext, vertical-aware sidebar and overview, workspace creation modal with vertical picker (replaces prompt()). Schema Library: GET /schemas/ endpoint, SchemaLibrary page at /schemas, AppShell nav link, schemas API client, vite proxy. Full schema cleanup: case-specific content (county names, person names, org names, signal codes) scrubbed from all 11 schemas in seed file and live DB; seed functions converted to upserts. Roadmap + build inventory + build tracker updated. Phase 2 next builds: document viewer (next), extraction eval, review UI, real-time status, export, audit log UI, signal framework, connectors. 75/75 tests. |
 | 2026-05-28 | Phase 2A complete. Extraction evaluation loop: evaluator runs after save_extractions(), retries only low-confidence fields as a mini-batch (attempt=2), flags needs_review if still below threshold. Observability: claude_call_logs table, every extraction Claude call logged with latency + tokens, isolated session. Review UI: /review queue page + DocumentViewer editable mode (?review=1) + ExtractionTable inline correction (attempt=3, confidence=1.0). list_extractions fixed to return latest-attempt-per-field by default (?include_history=true for full history). Migration e1f3a2b94c07: attempt column, needs_review enum value, claude_call_logs table. ADRs added (docs/decisions/). 80/80 tests. |
 | 2026-05-29 | Phase 2C cleanup + CI hardening (PR #3). Ruff UP017 + import sorting across 19 files. ESLint JSX parserOptions. useToast.js → useToast.jsx. DATABASE_URL in CI env. Eval tests excluded from CI. CodeRabbit caught missing nextId ref (critical — ReferenceError on every toast call). test_documents.jsx wrapped with ToastProvider. ADR-0004 written (SSE over polling). Blog post-009 written. 82/82 CI tests (evals excluded). |
+| 2026-05-29 | Code audit Phase 3 (PR #5). `ExtractionBatchError`: `_extract_batch` raises on API failure; `extract_fields` re-raises if all batches fail; pipeline guard prevents silent complete on empty claude extraction. `TEXT_LIMIT = 200_000`: OCR text cap raised from 4000 chars — full document evidence reaches Claude. `_fail` file cleanup: stored file deleted on pipeline failure. `test_pipeline.py`: 9 new tests written TDD-style (failing test before each fix). 118/118 tests. |
 | 2026-05-28 | Phase 2C complete. Toast system (useToast + ToastContainer, timer cleanup, ARIA). Document status pill badges (needs_review/no_schema/failed added to Badge.jsx). SSE real-time extraction status (StreamingResponse + useExtractionStream with exponential backoff). Data export: 4 endpoints (per-doc + workspace CSV/JSON) + ⋯ context menu frontend. Audit log: paginated backend + timeline UI with search/filter. 85/85 tests. |
