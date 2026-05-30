@@ -175,3 +175,119 @@ def test_export_json_returns_json(client, auth_headers, workspace_id, db):
     assert isinstance(data, list)
     assert data[0]["field_name"] == "grantor_name"
     assert data[0]["field_value"] == "John Smith"
+
+
+def test_export_csv_escapes_formula_injection(client, auth_headers, workspace_id, db):
+    import io as io_module
+    from unittest.mock import patch
+    from app.models.document import Document
+    from app.models.document_extraction import DocumentExtraction
+
+    with patch("app.routers.documents.process_upload_background"):
+        doc_id = client.post(
+            f"/workspaces/{workspace_id}/documents",
+            files={"file": ("inj.pdf", io_module.BytesIO(b"%PDF-1.4 x"), "application/pdf")},
+            headers=auth_headers,
+        ).json()["id"]
+
+    doc = db.query(Document).filter(Document.id == doc_id).first()
+    doc.extraction_status = "complete"
+    db.flush()
+    db.add(DocumentExtraction(
+        document_id=doc_id, workspace_id=workspace_id,
+        field_name="payee", field_value="=2+5+cmd",
+        field_type="text", confidence=0.9, attempt=1,
+    ))
+    db.commit()
+
+    res = client.get(
+        f"/workspaces/{workspace_id}/documents/{doc_id}/extractions.csv",
+        headers=auth_headers,
+    )
+    assert res.status_code == 200
+    assert "'=2+5+cmd" in res.text          # neutralized with a leading quote
+    assert "payee,=2+5+cmd" not in res.text  # never written as a bare formula
+
+
+def test_export_csv_filename_header_has_no_crlf(client, auth_headers, workspace_id, db):
+    import io as io_module
+    from unittest.mock import patch
+    from app.models.document import Document
+
+    with patch("app.routers.documents.process_upload_background"):
+        doc_id = client.post(
+            f"/workspaces/{workspace_id}/documents",
+            files={"file": ("hdr.pdf", io_module.BytesIO(b"%PDF-1.4 x"), "application/pdf")},
+            headers=auth_headers,
+        ).json()["id"]
+
+    doc = db.query(Document).filter(Document.id == doc_id).first()
+    doc.filename = "evil\r\nSet-Cookie: pwned.pdf"
+    doc.extraction_status = "complete"
+    db.commit()
+
+    res = client.get(
+        f"/workspaces/{workspace_id}/documents/{doc_id}/extractions.csv",
+        headers=auth_headers,
+    )
+    assert res.status_code == 200
+    cd = res.headers["content-disposition"]
+    assert "\r" not in cd
+    assert "\n" not in cd
+    assert cd.startswith("attachment;")
+    assert "filename*=UTF-8''" in cd   # only the fixed code emits RFC 5987 form
+    assert "set-cookie" not in res.headers
+
+
+def test_upload_rejects_disallowed_extension(client, auth_headers, workspace_id):
+    res = client.post(
+        f"/workspaces/{workspace_id}/documents",
+        files={"file": ("evil.exe", io.BytesIO(b"MZ\x90\x00"), "application/octet-stream")},
+        headers=auth_headers,
+    )
+    assert res.status_code == 415
+
+
+def test_upload_allows_allowed_extension(client, auth_headers, workspace_id):
+    from unittest.mock import patch
+    with patch("app.routers.documents.process_upload_background"):
+        res = client.post(
+            f"/workspaces/{workspace_id}/documents",
+            files={"file": ("ok.pdf", io.BytesIO(b"%PDF-1.4 x"), "application/pdf")},
+            headers=auth_headers,
+        )
+    assert res.status_code == 201
+
+
+def test_served_pdf_is_inline_with_nosniff(client, auth_headers, workspace_id):
+    from unittest.mock import patch
+    with patch("app.routers.documents.process_upload_background"):
+        doc_id = client.post(
+            f"/workspaces/{workspace_id}/documents",
+            files={"file": ("doc.pdf", io.BytesIO(b"%PDF-1.4 x"), "application/pdf")},
+            headers=auth_headers,
+        ).json()["id"]
+    res = client.get(
+        f"/workspaces/{workspace_id}/documents/{doc_id}/file",
+        headers=auth_headers,
+    )
+    assert res.status_code == 200
+    assert res.headers["x-content-type-options"] == "nosniff"
+    assert res.headers["content-disposition"].startswith("inline")
+
+
+def test_served_csv_is_attachment(client, auth_headers, workspace_id):
+    from unittest.mock import patch
+    with patch("app.routers.documents.process_upload_background"):
+        doc_id = client.post(
+            f"/workspaces/{workspace_id}/documents",
+            files={"file": ("data.csv", io.BytesIO(b"a,b\n1,2\n"), "text/csv")},
+            headers=auth_headers,
+        ).json()["id"]
+    res = client.get(
+        f"/workspaces/{workspace_id}/documents/{doc_id}/file",
+        headers=auth_headers,
+    )
+    assert res.status_code == 200
+    assert res.headers["x-content-type-options"] == "nosniff"
+    assert res.headers["content-disposition"].startswith("attachment")

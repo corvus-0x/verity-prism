@@ -1,12 +1,17 @@
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models.user import User
 from app.schemas.user import TokenOut, UserLogin, UserOut, UserRegister
+from app.services import audit
 from app.services.auth import create_access_token, hash_password, verify_password
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/auth", tags=["auth"])
+
 
 @router.post("/register", response_model=UserOut, status_code=201)
 def register(payload: UserRegister, db: Session = Depends(get_db)):
@@ -20,11 +25,25 @@ def register(payload: UserRegister, db: Session = Depends(get_db)):
     db.add(user)
     db.commit()
     db.refresh(user)
+    try:
+        audit.log(db, action="registered", user_id=user.id)
+    except Exception as e:
+        logger.warning(f"Audit log failed for register user {user.id}: {e}")
     return user
+
 
 @router.post("/login", response_model=TokenOut)
 def login(payload: UserLogin, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.email == payload.email).first()
     if not user or not verify_password(payload.password, user.password_hash):
+        try:
+            masked = payload.email[:3] + "***" if payload.email else "***"
+            audit.log(db, action="login_failed", after_state={"email": masked})
+        except Exception as e:
+            logger.warning(f"Audit log failed for login_failed: {e}")
         raise HTTPException(status_code=401, detail="Invalid credentials")
+    try:
+        audit.log(db, action="login_success", user_id=user.id)
+    except Exception as e:
+        logger.warning(f"Audit log failed for login_success user {user.id}: {e}")
     return {"access_token": create_access_token(user.id)}

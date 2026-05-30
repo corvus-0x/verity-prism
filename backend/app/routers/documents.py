@@ -18,9 +18,19 @@ from app.routers.workspaces import get_workspace_or_404
 from app.schemas.document import DocumentOut, ExtractionOut
 from app.services import audit
 from app.services.auth import get_current_user
-from app.services.document_pipeline import create_pending_document, process_upload_background
+from app.services.document_pipeline import (
+    EXTENSION_TO_TYPE,
+    create_pending_document,
+    process_upload_background,
+)
+from app.utils.sanitize import content_disposition, escape_csv_cell
 
 router = APIRouter(prefix="/workspaces/{workspace_id}", tags=["documents"])
+
+# Upload/serve security policy (M3): only accept known types, and serve
+# user-uploaded files without letting the browser MIME-sniff them into XSS.
+ALLOWED_UPLOAD_EXTENSIONS = set(EXTENSION_TO_TYPE)
+INLINE_SUFFIXES = {".pdf", ".png", ".jpg", ".jpeg", ".tiff", ".tif"}
 
 
 @router.post("/documents", response_model=DocumentOut, status_code=201)
@@ -49,6 +59,14 @@ def upload_document(
         raise HTTPException(status_code=400, detail="Uploaded file is empty")
     if len(file_bytes) > settings.max_upload_bytes:
         raise HTTPException(status_code=413, detail=f"File too large. Maximum size is {settings.max_upload_bytes // 1_048_576} MB.")
+
+    ext = Path(file.filename or "").suffix.lower()
+    if ext not in ALLOWED_UPLOAD_EXTENSIONS:
+        raise HTTPException(
+            status_code=415,
+            detail=f"Unsupported file type '{ext or '(none)'}'. Accepted: "
+                   f"{', '.join(sorted(ALLOWED_UPLOAD_EXTENSIONS))}",
+        )
 
     # Step 1–2: hash + store + create pending record (synchronous)
     doc = create_pending_document(
@@ -275,18 +293,17 @@ def download_extractions_csv(
     writer.writeheader()
     for e in extractions:
         writer.writerow({
-            "field_name": e.field_name,
-            "field_value": e.field_value or "",
-            "field_type": e.field_type,
+            "field_name": escape_csv_cell(e.field_name),
+            "field_value": escape_csv_cell(e.field_value),
+            "field_type": escape_csv_cell(e.field_type),
             "confidence": e.confidence,
             "attempt": e.attempt,
         })
 
-    safe_name = doc.filename.replace('"', '')
     return Response(
         content=output.getvalue(),
         media_type="text/csv",
-        headers={"Content-Disposition": f'attachment; filename="{safe_name}_extractions.csv"'},
+        headers={"Content-Disposition": content_disposition(f"{doc.filename}_extractions.csv", "attachment")},
     )
 
 
@@ -316,11 +333,10 @@ def download_extractions_json(
         }
         for e in extractions
     ]
-    safe_name = doc.filename.replace('"', '')
     return Response(
         content=json_module.dumps(data, indent=2),
         media_type="application/json",
-        headers={"Content-Disposition": f'attachment; filename="{safe_name}_extractions.json"'},
+        headers={"Content-Disposition": content_disposition(f"{doc.filename}_extractions.json", "attachment")},
     )
 
 
@@ -347,11 +363,11 @@ def download_workspace_extractions_csv(
     for doc in docs:
         for e in _latest_extractions(doc.id, db):
             writer.writerow({
-                "document_filename": doc.filename,
-                "document_type": doc.detected_doc_type or "",
-                "field_name": e.field_name,
-                "field_value": e.field_value or "",
-                "field_type": e.field_type,
+                "document_filename": escape_csv_cell(doc.filename),
+                "document_type": escape_csv_cell(doc.detected_doc_type or ""),
+                "field_name": escape_csv_cell(e.field_name),
+                "field_value": escape_csv_cell(e.field_value),
+                "field_type": escape_csv_cell(e.field_type),
                 "confidence": e.confidence,
                 "attempt": e.attempt,
             })
@@ -445,5 +461,14 @@ def get_document_file(
         entity_id=document_id,
     )
 
-    media_type = _MEDIA_TYPES.get(file_path.suffix.lower(), "application/octet-stream")
-    return FileResponse(str(file_path), media_type=media_type)
+    suffix = file_path.suffix.lower()
+    media_type = _MEDIA_TYPES.get(suffix, "application/octet-stream")
+    disposition = "inline" if suffix in INLINE_SUFFIXES else "attachment"
+    return FileResponse(
+        str(file_path),
+        media_type=media_type,
+        headers={
+            "X-Content-Type-Options": "nosniff",
+            "Content-Disposition": content_disposition(doc.original_filename, disposition),
+        },
+    )

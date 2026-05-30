@@ -1,3 +1,4 @@
+import os
 from logging.config import fileConfig
 from sqlalchemy import engine_from_config, pool
 from alembic import context
@@ -6,12 +7,17 @@ from app.config import settings
 from app.database import Base
 
 config = context.config
-config.set_main_option("sqlalchemy.url", settings.database_url)
+
+# When running under the test suite, TEST_DATABASE_URL is set and must take
+# precedence so migrations target catalyst_test, not the production DB.
+url = os.environ.get("TEST_DATABASE_URL") or settings.database_url
+config.set_main_option("sqlalchemy.url", url)
 
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
 target_metadata = Base.metadata
+
 
 def run_migrations_online():
     connectable = engine_from_config(
@@ -23,5 +29,6 @@ def run_migrations_online():
         context.configure(connection=connection, target_metadata=target_metadata)
         with context.begin_transaction():
             context.run_migrations()
+
 
 run_migrations_online()
