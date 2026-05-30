@@ -16,6 +16,10 @@ The extraction prompts are instructions the engine carries into every document i
 
 Embedded in those prompts, across several schemas, were specific names from the case the engine was built on. A county auditor deputy — named, in the description for that field, as an example of what to look for. A county name in multiple field descriptions as the example geographic value. A nonprofit's own subdivision name in the subdivision field description, as the example of what a subdivision looks like.
 
+A county auditor deputy named by name. A county name across multiple fields. A nonprofit's own subdivision as the example value. Anyone reading the schema could trace back what investigation this engine was built on.
+
+That came out the same session I found it.
+
 The engine wasn't wrong to include them when it was built. They were accurate. Drawn directly from real documents. But an extraction prompt isn't documentation — it's instructions Claude reads before touching every document the engine processes. Across every future workspace. Every customer. Every vertical. The engine was carrying the specifics of one investigation into everything it would touch next.
 
 ---
