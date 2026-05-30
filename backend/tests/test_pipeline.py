@@ -279,3 +279,61 @@ def test_extraction_sends_full_text_beyond_4000_chars(db, deed_schema):
     assert "GRANTOR_EVIDENCE_AT_5000" in captured_prompts[0], (
         "Text beyond 4000 chars was not sent to Claude — H5 truncation bug still present"
     )
+
+
+# ── L3: orphaned file cleanup ─────────────────────────────────────────────────
+
+def test_pipeline_deletes_file_on_ocr_failure(db, workspace, user, deed_schema, tmp_path):
+    """L3: a file written to disk before OCR must be deleted when the pipeline fails."""
+    from app.services.document_pipeline import _run_pipeline
+
+    file_path = tmp_path / "orphan.pdf"
+    file_path.write_bytes(b"%PDF-1.4 x")
+    doc = Document(
+        id=str(uuid.uuid4()),
+        workspace_id=workspace.id,
+        filename="orphan.pdf",
+        original_filename="orphan.pdf",
+        file_path=str(file_path),
+        file_type="pdf",
+        sha256_hash="orph123",
+        source_type="upload",
+        uploaded_by=user.id,
+        extraction_status="pending",
+    )
+    db.add(doc)
+    db.commit()
+
+    assert file_path.exists(), "File must exist before pipeline runs"
+
+    with patch("app.services.document_pipeline.extract_text", side_effect=Exception("OCR failed")):
+        _run_pipeline(doc.id, b"%PDF-1.4 x", "orphan.pdf", workspace.id, user.id, db)
+
+    db.refresh(doc)
+    assert doc.extraction_status == "failed"
+    assert not file_path.exists(), (
+        "L3: orphaned file still on disk after pipeline failure"
+    )
+
+
+def test_pipeline_preserves_file_on_success(db, workspace, user, deed_schema, pending_doc):
+    """Sanity: successful pipeline must NOT delete the stored file."""
+    from app.services.document_pipeline import _run_pipeline
+
+    file_path = Path(pending_doc.file_path)
+    assert file_path.exists()
+
+    with patch("app.services.document_pipeline.detect_document_type", return_value="DEED"), \
+         patch("app.services.document_pipeline.extract_text", return_value="deed content"), \
+         patch("app.services.document_pipeline.generate_standardized_name", return_value="deed.pdf"), \
+         patch("app.services.extraction_engine.client") as mock_client:
+
+        _mock_claude_extraction(mock_client, [
+            {"field_name": "grantor_name", "field_value": "Jane Smith", "field_type": "name", "confidence": 0.95},
+        ])
+
+        _run_pipeline(pending_doc.id, b"%PDF-1.4 x", "test.pdf", workspace.id, user.id, db)
+
+    db.refresh(pending_doc)
+    assert pending_doc.extraction_status == "complete"
+    assert file_path.exists(), "Successful pipeline must not delete the stored file"
