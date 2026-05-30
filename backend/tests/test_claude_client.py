@@ -16,10 +16,14 @@ def test_get_client_returns_same_instance_on_repeated_calls():
     cc._client = None
 
 
-def test_patching_get_client_intercepts_all_services():
-    """Patching app.services.claude_client.get_client reaches all Claude-using services."""
+def test_patching_get_client_intercepts_services(db):
+    """Patching claude_client.get_client intercepts calls in services that use it."""
     mock_client = MagicMock()
+    mock_client.messages.create.return_value = MagicMock(
+        content=[MagicMock(text='{"document_type": "DEED"}')]
+    )
     with patch("app.services.claude_client.get_client", return_value=mock_client):
-        from app.services import claude_client
-        result = claude_client.get_client()
-        assert result is mock_client
+        from app.services.extraction_engine import detect_document_type
+        detect_document_type("Grantor: John Smith", db)
+
+    mock_client.messages.create.assert_called_once()
