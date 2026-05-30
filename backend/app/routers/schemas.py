@@ -17,7 +17,7 @@ def list_schemas(
     """Return all active document schemas ordered by vertical then display name."""
     schemas = (
         db.query(DocumentSchema)
-        .filter(DocumentSchema.is_active == True)
+        .filter(DocumentSchema.is_active)
         .order_by(DocumentSchema.vertical, DocumentSchema.display_name)
         .all()
     )

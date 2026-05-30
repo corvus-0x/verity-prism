@@ -53,14 +53,15 @@ def upload_document(
     if not file_bytes:
         raise HTTPException(status_code=400, detail="Uploaded file is empty")
     if len(file_bytes) > settings.max_upload_bytes:
-        raise HTTPException(status_code=413, detail=f"File too large. Maximum size is {settings.max_upload_bytes // 1_048_576} MB.")
+        raise HTTPException(
+            status_code=413, detail=f"File too large. Maximum size is {settings.max_upload_bytes // 1_048_576} MB.")
 
     ext = Path(file.filename or "").suffix.lower()
     if ext not in ALLOWED_UPLOAD_EXTENSIONS:
         raise HTTPException(
             status_code=415,
             detail=f"Unsupported file type '{ext or '(none)'}'. Accepted: "
-                   f"{', '.join(sorted(ALLOWED_UPLOAD_EXTENSIONS))}",
+            f"{', '.join(sorted(ALLOWED_UPLOAD_EXTENSIONS))}",
         )
 
     # Step 1–2: hash + store + create pending record (synchronous)
@@ -94,7 +95,7 @@ def list_documents(
     get_workspace_or_404(workspace_id, user, db)
     return db.query(Document).filter(
         Document.workspace_id == workspace_id,
-        Document.is_deleted == False,
+        ~Document.is_deleted,
     ).all()
 
 
@@ -175,7 +176,8 @@ def download_extractions_csv(
     return Response(
         content=content,
         media_type="text/csv",
-        headers={"Content-Disposition": content_disposition(f"{doc.filename}_extractions.csv", "attachment")},
+        headers={"Content-Disposition": content_disposition(
+            f"{doc.filename}_extractions.csv", "attachment")},
     )
 
 
@@ -198,7 +200,8 @@ def download_extractions_json(
     return Response(
         content=content,
         media_type="application/json",
-        headers={"Content-Disposition": content_disposition(f"{doc.filename}_extractions.json", "attachment")},
+        headers={"Content-Disposition": content_disposition(
+            f"{doc.filename}_extractions.json", "attachment")},
     )
 
 
@@ -213,13 +216,14 @@ def download_workspace_extractions_csv(
     docs = db.query(Document).filter(
         Document.workspace_id == workspace_id,
         Document.extraction_status.in_(["complete", "needs_review"]),
-        Document.is_deleted == False,  # noqa: E712
+        ~Document.is_deleted,
     ).all()
     content = export_service.build_workspace_csv(docs, db)
     return Response(
         content=content,
         media_type="text/csv",
-        headers={"Content-Disposition": 'attachment; filename="workspace_extractions.csv"'},
+        headers={
+            "Content-Disposition": 'attachment; filename="workspace_extractions.csv"'},
     )
 
 
@@ -234,13 +238,14 @@ def download_workspace_extractions_json(
     docs = db.query(Document).filter(
         Document.workspace_id == workspace_id,
         Document.extraction_status.in_(["complete", "needs_review"]),
-        Document.is_deleted == False,  # noqa: E712
+        ~Document.is_deleted,
     ).all()
     content = export_service.build_workspace_json(docs, db)
     return Response(
         content=content,
         media_type="application/json",
-        headers={"Content-Disposition": 'attachment; filename="workspace_extractions.json"'},
+        headers={
+            "Content-Disposition": 'attachment; filename="workspace_extractions.json"'},
     )
 
 
@@ -267,7 +272,7 @@ def get_document_file(
     doc = db.query(Document).filter(
         Document.id == document_id,
         Document.workspace_id == workspace_id,
-        Document.is_deleted == False,
+        ~Document.is_deleted,
     ).first()
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
@@ -277,6 +282,7 @@ def get_document_file(
         audit.log(
             db,
             action="document_file_missing",
+            user_id=user.id,
             workspace_id=workspace_id,
             entity_type="document",
             entity_id=document_id,
