@@ -200,12 +200,12 @@ Services call `db.commit()` with no `try/except … rollback()`. If a commit fai
 |---|---|---|---|
 | 1 | H6, M1, M2, M3 | Server-side security hardening | ✅ Done — merged 2026-05-29 |
 | 2 | H3 → C1, M4 | Test infra + audit-log integrity | ✅ Done — merged 2026-05-29 |
-| 3 | H4 → C2, H5, L3 | Extraction pipeline correctness | Next |
+| 3 | H4 → C2, H5, L3 | Extraction pipeline correctness | ✅ Done — merged 2026-05-29 |
 | 4 | H1, H2, L5, L1 | Search & soft-delete data integrity | — |
 | 5 | M5, L6 | Architecture refactor (thin routers, lazy client) | — |
 | 6 | M6, M7, L2, L4 | Frontend resilience + JWT hardening | — |
 
-**Phase 3 detail:** Write mocked-Claude pipeline tests (H4) first — they're the safety net for C2 (false-`complete` on empty extraction) and H5 (4000-char truncation). L3 = orphaned file cleanup on pipeline failure.
+**Phase 3 detail:** ✅ Write mocked-Claude pipeline tests (H4) first — they're the safety net for C2 (false-`complete` on empty extraction) and H5 (4000-char truncation). L3 = orphaned file cleanup on pipeline failure.
 
 **Phase 4 detail:** H1 (soft-delete filters in `run_search` / `query_extractions`) and H2 (`search_vector` column type → `TSVECTOR` + GIN index) are the two most user-visible correctness gaps. L5 = extend soft-delete pattern to Transaction/Finding/Lead. L1 = workspace-scope `get_conversation_history`.
 
@@ -219,8 +219,9 @@ Services call `db.commit()` with no `try/except … rollback()`. If a commit fai
 
 ✅ Phase 1 complete: H6, M1, M2, M3
 ✅ Phase 2 complete: H3, C1, M4
+✅ Phase 3 complete: H4, C2, H5, L3
 
-Remaining open findings (Phases 3–6):
+Remaining open findings (Phases 4–6):
 
 1. **C2** stop reporting `complete` on failed/empty extraction.
 2. **H1** soft-delete filters in search/AI; **H5** extraction text window.
