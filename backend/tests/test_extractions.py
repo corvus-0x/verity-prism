@@ -17,13 +17,11 @@ def test_extractions_created_after_upload(client, auth_headers, workspace_id):
     """
     content = b"%PDF-1.4 Grantor: Jane Smith. Grantee: Acme Real Estate LLC."
 
-    with patch("app.services.extraction_engine.Anthropic") as mock_anthropic:
-        mock_client = MagicMock()
-        mock_anthropic.return_value = mock_client
-        mock_client.messages.create.return_value = MagicMock(
-            content=[MagicMock(text='{"document_type": "DEED"}')]
-        )
-
+    mock_client = MagicMock()
+    mock_client.messages.create.return_value = MagicMock(
+        content=[MagicMock(text='{"document_type": "DEED"}')]
+    )
+    with patch("app.services.claude_client.get_client", return_value=mock_client):
         response = client.post(
             f"/workspaces/{workspace_id}/documents",
             files={"file": ("deed.pdf", io.BytesIO(content), "application/pdf")},
@@ -49,13 +47,11 @@ def test_no_schema_document_returns_pending(client, auth_headers, workspace_id):
     """
     content = b"Some unknown document type content here."
 
-    with patch("app.services.extraction_engine.Anthropic") as mock_anthropic:
-        mock_client = MagicMock()
-        mock_anthropic.return_value = mock_client
-        mock_client.messages.create.return_value = MagicMock(
-            content=[MagicMock(text='{"document_type": "COURT-FILING"}')]
-        )
-
+    mock_client = MagicMock()
+    mock_client.messages.create.return_value = MagicMock(
+        content=[MagicMock(text='{"document_type": "COURT-FILING"}')]
+    )
+    with patch("app.services.claude_client.get_client", return_value=mock_client):
         response = client.post(
             f"/workspaces/{workspace_id}/documents",
             files={"file": ("court.pdf", io.BytesIO(content), "application/pdf")},
@@ -225,10 +221,11 @@ def test_detect_document_type_uses_db_schemas(db):
     db.add(schema)
     db.commit()
 
-    with patch("app.services.extraction_engine.client") as mock_client:
-        mock_resp = MagicMock()
-        mock_resp.content = [MagicMock(text='{"document_type": "CUSTOM-DOC"}')]
-        mock_client.messages.create.return_value = mock_resp
+    mock_client = MagicMock()
+    mock_resp = MagicMock()
+    mock_resp.content = [MagicMock(text='{"document_type": "CUSTOM-DOC"}')]
+    mock_client.messages.create.return_value = mock_resp
+    with patch("app.services.claude_client.get_client", return_value=mock_client):
         result = detect_document_type("some ocr text", db)
 
     assert result == "CUSTOM-DOC"
@@ -236,10 +233,11 @@ def test_detect_document_type_uses_db_schemas(db):
 
 def test_detect_document_type_falls_back_to_other_for_unknown_type(db):
     """If Claude returns a type not in the DB, fall back to OTHER."""
-    with patch("app.services.extraction_engine.client") as mock_client:
-        mock_resp = MagicMock()
-        mock_resp.content = [MagicMock(text='{"document_type": "TOTALLY-UNKNOWN"}')]
-        mock_client.messages.create.return_value = mock_resp
+    mock_client = MagicMock()
+    mock_resp = MagicMock()
+    mock_resp.content = [MagicMock(text='{"document_type": "TOTALLY-UNKNOWN"}')]
+    mock_client.messages.create.return_value = mock_resp
+    with patch("app.services.claude_client.get_client", return_value=mock_client):
         result = detect_document_type("some ocr text", db)
 
     assert result == "OTHER"

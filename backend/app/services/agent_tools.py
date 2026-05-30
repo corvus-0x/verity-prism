@@ -103,6 +103,7 @@ def query_extractions(
             DocumentExtraction.workspace_id == workspace_id,
             DocumentExtraction.field_name == field_name,
             DocumentExtraction.field_value.isnot(None),
+            Document.is_deleted == False,  # noqa: E712
         )
     )
     if operator == "eq":

@@ -1,7 +1,7 @@
 """
 Pipeline and extraction engine tests.
 
-All Claude calls are mocked via `patch("app.services.extraction_engine.client")`.
+All Claude calls are mocked via `patch("app.services.claude_client.get_client")`.
 _run_pipeline is called directly (not through the HTTP router) so we can
 inspect DB state after each step without fighting background-task timing.
 """
@@ -144,15 +144,15 @@ def test_pipeline_happy_path_marks_complete_with_extractions(
     """End-to-end: mocked Claude returns real fields → doc is complete, rows saved."""
     from app.services.document_pipeline import _run_pipeline
 
+    mock_client = MagicMock()
+    _mock_claude_extraction(mock_client, [
+        {"field_name": "grantor_name", "field_value": "Jane Smith", "field_type": "name", "confidence": 0.95},
+        {"field_name": "sale_price", "field_value": "285000", "field_type": "currency", "confidence": 0.88},
+    ])
     with patch("app.services.document_pipeline.detect_document_type", return_value="DEED"), \
          patch("app.services.document_pipeline.extract_text", return_value="Grantor: Jane Smith"), \
          patch("app.services.document_pipeline.generate_standardized_name", return_value="deed.pdf"), \
-         patch("app.services.extraction_engine.client") as mock_client:
-
-        _mock_claude_extraction(mock_client, [
-            {"field_name": "grantor_name", "field_value": "Jane Smith", "field_type": "name", "confidence": 0.95},
-            {"field_name": "sale_price", "field_value": "285000", "field_type": "currency", "confidence": 0.88},
-        ])
+         patch("app.services.claude_client.get_client", return_value=mock_client):
 
         _run_pipeline(
             pending_doc.id, b"%PDF-1.4 content", "test.pdf",
@@ -179,12 +179,12 @@ def test_pipeline_marks_failed_when_all_claude_batches_raise(
     """C2: API outage → all batches fail → doc must be 'failed', not 'complete'."""
     from app.services.document_pipeline import _run_pipeline
 
+    mock_client = MagicMock()
+    mock_client.messages.create.side_effect = Exception("Claude API is unavailable")
     with patch("app.services.document_pipeline.detect_document_type", return_value="DEED"), \
          patch("app.services.document_pipeline.extract_text", return_value="some deed text"), \
          patch("app.services.document_pipeline.generate_standardized_name", return_value="deed.pdf"), \
-         patch("app.services.extraction_engine.client") as mock_client:
-
-        mock_client.messages.create.side_effect = Exception("Claude API is unavailable")
+         patch("app.services.claude_client.get_client", return_value=mock_client):
 
         _run_pipeline(
             pending_doc.id, b"%PDF-1.4 content", "test.pdf",
@@ -242,7 +242,7 @@ def test_pipeline_marks_complete_when_schema_has_no_fields(
     with patch("app.services.document_pipeline.detect_document_type", return_value="ZERO-FIELD"), \
          patch("app.services.document_pipeline.extract_text", return_value="content"), \
          patch("app.services.document_pipeline.generate_standardized_name", return_value="zf.pdf"), \
-         patch("app.services.extraction_engine.client"):  # no calls expected
+         patch("app.services.claude_client.get_client", return_value=MagicMock()):  # no calls expected
 
         _run_pipeline(doc.id, b"%PDF-1.4 x", "zf.pdf", workspace.id, user.id, db)
 
@@ -271,8 +271,9 @@ def test_extraction_sends_full_text_beyond_4000_chars(db, deed_schema):
             usage=MagicMock(input_tokens=10, output_tokens=5),
         )
 
-    with patch("app.services.extraction_engine.client") as mock_client:
-        mock_client.messages.create.side_effect = capture_call
+    mock_client = MagicMock()
+    mock_client.messages.create.side_effect = capture_call
+    with patch("app.services.claude_client.get_client", return_value=mock_client):
         extract_fields(long_ocr, deed_schema)
 
     assert captured_prompts, "Expected at least one Claude call"
@@ -323,14 +324,14 @@ def test_pipeline_preserves_file_on_success(db, workspace, user, deed_schema, pe
     file_path = Path(pending_doc.file_path)
     assert file_path.exists()
 
+    mock_client = MagicMock()
+    _mock_claude_extraction(mock_client, [
+        {"field_name": "grantor_name", "field_value": "Jane Smith", "field_type": "name", "confidence": 0.95},
+    ])
     with patch("app.services.document_pipeline.detect_document_type", return_value="DEED"), \
          patch("app.services.document_pipeline.extract_text", return_value="deed content"), \
          patch("app.services.document_pipeline.generate_standardized_name", return_value="deed.pdf"), \
-         patch("app.services.extraction_engine.client") as mock_client:
-
-        _mock_claude_extraction(mock_client, [
-            {"field_name": "grantor_name", "field_value": "Jane Smith", "field_type": "name", "confidence": 0.95},
-        ])
+         patch("app.services.claude_client.get_client", return_value=mock_client):
 
         _run_pipeline(pending_doc.id, b"%PDF-1.4 x", "test.pdf", workspace.id, user.id, db)
 

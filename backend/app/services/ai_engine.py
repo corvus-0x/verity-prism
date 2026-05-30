@@ -10,29 +10,31 @@ import json
 import logging
 import time
 
-from anthropic import Anthropic
 from sqlalchemy.orm import Session
 
-from app.config import settings
-from app.models.ai import AIMessage
+from app.models.ai import AIConversation, AIMessage
 from app.models.workspace import Workspace
-from app.services import agent_registry, agent_tools
+from app.services import agent_registry, agent_tools, claude_client
 
 logger = logging.getLogger(__name__)
-client = Anthropic(api_key=settings.anthropic_api_key)
 
 MAX_TOOL_ROUNDS = 10
 
 
 def get_conversation_history(
-    conversation_id: str, db: Session, limit: int = 20
+    conversation_id: str, workspace_id: str, db: Session, limit: int = 20
 ) -> list[dict]:
-    """Return the last N user/assistant messages in chronological order.
-    Fetched newest-first then reversed so Claude sees the natural flow.
+    """Return the last N messages for a conversation, scoped to workspace_id.
+    The workspace join is defence-in-depth — the router already validates ownership,
+    but this ensures cross-workspace leakage is impossible at the service layer too.
     """
     messages = (
         db.query(AIMessage)
-        .filter(AIMessage.conversation_id == conversation_id)
+        .join(AIConversation, AIConversation.id == AIMessage.conversation_id)
+        .filter(
+            AIMessage.conversation_id == conversation_id,
+            AIConversation.workspace_id == workspace_id,
+        )
         .order_by(AIMessage.created_at.desc())
         .limit(limit)
         .all()
@@ -54,7 +56,7 @@ def chat(
     """
     workspace = db.query(Workspace).filter(Workspace.id == workspace_id).first()
     tools = agent_registry.get_tools_for_vertical(workspace.vertical)
-    history = get_conversation_history(conversation_id, db)
+    history = get_conversation_history(conversation_id, workspace_id, db)
 
     system_prompt = (
         f"You are an investigation assistant for workspace '{workspace.name}'. "
@@ -72,7 +74,7 @@ def chat(
     rounds = 0
 
     while rounds < MAX_TOOL_ROUNDS:
-        response = client.messages.create(
+        response = claude_client.get_client().messages.create(
             model="claude-sonnet-4-6",
             max_tokens=4096,
             system=system_prompt,
@@ -120,7 +122,7 @@ def _synthesis_pass(messages: list[dict]) -> str:
     """Force a final answer when the tool-use loop hits MAX_TOOL_ROUNDS.
     Sends accumulated messages to Claude with tools disabled and a directive to synthesize.
     """
-    response = client.messages.create(
+    response = claude_client.get_client().messages.create(
         model="claude-sonnet-4-6",
         max_tokens=4096,
         system=(
