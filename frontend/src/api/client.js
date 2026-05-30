@@ -15,6 +15,7 @@ export function setNavigate(navigate) {
 const client = axios.create({
   baseURL: '/',
   headers: { 'Content-Type': 'application/json' },
+  withCredentials: true,
 })
 
 client.interceptors.request.use((config) => {

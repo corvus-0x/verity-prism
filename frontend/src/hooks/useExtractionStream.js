@@ -1,6 +1,5 @@
 import { useEffect, useRef } from 'react'
 import client from '../api/client'
-import useAuthStore from '../store/auth'
 
 const TERMINAL = new Set(['complete', 'failed', 'no_schema', 'needs_review'])
 const API_BASE = client.defaults.baseURL || ''
@@ -23,9 +22,8 @@ export default function useExtractionStream(workspaceId, documentId, status, onU
 
     async function stream() {
       try {
-        const token = useAuthStore.getState().token
         const res = await fetch(url, {
-          headers: { Authorization: `Bearer ${token}` },
+          credentials: 'include',
         })
         if (!res.ok) { scheduleRetry(); return }
 

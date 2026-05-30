@@ -1,6 +1,7 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { BrowserRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom'
 import { setNavigate } from './api/client'
+import { me } from './api/auth'
 import Login from './pages/Login'
 import WorkspacesHome from './pages/WorkspacesHome'
 import SchemaLibrary from './pages/SchemaLibrary'
@@ -24,9 +25,24 @@ function NavigatorSetter() {
   return null
 }
 
+function AuthInit({ children }) {
+  const [ready, setReady] = useState(false)
+  const setUser = useAuthStore((s) => s.setUser)
+
+  useEffect(() => {
+    me()
+      .then((res) => setUser(res.data))
+      .catch(() => {})
+      .finally(() => setReady(true))
+  }, [])
+
+  if (!ready) return <div className="min-h-screen bg-slate-900" />
+  return children
+}
+
 function ProtectedRoute({ children }) {
-  const token = useAuthStore((s) => s.token)
-  if (!token) return <Navigate to="/login" replace />
+  const user = useAuthStore((s) => s.user)
+  if (!user) return <Navigate to="/login" replace />
   return children
 }
 
@@ -34,6 +50,7 @@ export default function App() {
   return (
     <BrowserRouter>
       <NavigatorSetter />
+      <AuthInit>
       <Routes>
         <Route path="/login" element={<Login />} />
         <Route path="/workspaces" element={
@@ -59,6 +76,7 @@ export default function App() {
         </Route>
         <Route path="*" element={<Navigate to="/workspaces" replace />} />
       </Routes>
+      </AuthInit>
     </BrowserRouter>
   )
 }

@@ -1,6 +1,7 @@
 from datetime import UTC, datetime, timedelta
+from typing import Optional
 
-from fastapi import Depends, HTTPException, status
+from fastapi import Cookie, Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError, jwt
 from passlib.context import CryptContext
@@ -11,7 +12,7 @@ from app.database import get_db
 from app.models.user import User
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-bearer_scheme = HTTPBearer()
+bearer_scheme = HTTPBearer(auto_error=False)
 
 def hash_password(password: str) -> str:
     """Return a bcrypt hash of the given password."""
@@ -28,16 +29,24 @@ def create_access_token(user_id: str) -> str:
     return jwt.encode(payload, settings.secret_key, algorithm="HS256")
 
 def get_current_user(
-    credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme),
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(bearer_scheme),
+    access_token: Optional[str] = Cookie(default=None),
     db: Session = Depends(get_db),
 ) -> User:
-    """FastAPI dependency — decode the Bearer token and return the active User.
+    """FastAPI dependency — decode Bearer token or httpOnly cookie, return active User.
 
-    Raises 401 if the token is missing, expired, or the user no longer exists.
-    Inject this via Depends() in any router that requires authentication.
+    Tries Authorization header first (backward compat for tests and API clients),
+    then falls back to the httpOnly cookie set by POST /auth/login.
     """
+    token = None
+    if credentials:
+        token = credentials.credentials
+    elif access_token:
+        token = access_token
+    if not token:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
     try:
-        payload = jwt.decode(credentials.credentials, settings.secret_key, algorithms=["HS256"])
+        payload = jwt.decode(token, settings.secret_key, algorithms=["HS256"])
         user_id: str = payload.get("sub")
     except JWTError:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")

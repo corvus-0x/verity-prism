@@ -8,7 +8,7 @@ export default function Login() {
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
-  const setAuth = useAuthStore((s) => s.login)
+  const setUser = useAuthStore((s) => s.setUser)
   const navigate = useNavigate()
 
   const handleSubmit = async (e) => {
@@ -17,7 +17,7 @@ export default function Login() {
     setError('')
     try {
       const res = await login(email, password)
-      setAuth(res.data.access_token, null)
+      setUser(res.data.user)
       navigate('/workspaces')
     } catch (err) {
       setError(err.response?.data?.detail || 'Invalid credentials')
