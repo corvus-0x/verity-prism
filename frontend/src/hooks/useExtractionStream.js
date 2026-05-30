@@ -19,6 +19,7 @@ export default function useExtractionStream(workspaceId, documentId, status, onU
     let cancelled = false
     let retries = 0
     let backoffTimer = null
+    let reader = null
 
     async function stream() {
       try {
@@ -29,7 +30,7 @@ export default function useExtractionStream(workspaceId, documentId, status, onU
         if (!res.ok) { scheduleRetry(); return }
 
         retries = 0
-        const reader = res.body.getReader()
+        reader = res.body.getReader()
         const decoder = new TextDecoder()
         let buffer = ''
 
@@ -68,6 +69,7 @@ export default function useExtractionStream(workspaceId, documentId, status, onU
     return () => {
       cancelled = true
       if (backoffTimer) clearTimeout(backoffTimer)
+      reader?.cancel()
     }
   }, [workspaceId, documentId, status])
 }
