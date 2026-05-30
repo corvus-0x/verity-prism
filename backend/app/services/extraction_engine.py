@@ -18,6 +18,15 @@ from app.models.document_schema import DocumentSchema
 from app.utils.json_helpers import strip_json_fences
 
 logger = logging.getLogger(__name__)
+
+
+class ExtractionBatchError(Exception):
+    """Raised by _extract_batch when a Claude API call fails.
+    Distinct from an empty result so callers can tell API failure from genuine
+    zero-extraction (e.g., schema has no fields, or document has no matching data).
+    """
+
+
 client = Anthropic(api_key=settings.anthropic_api_key)
 
 # Fields per Claude extraction call. 40 fields × ~100 tokens each = ~4000 tokens
@@ -264,8 +273,9 @@ Document text:
             attempt=attempt,
             error_message=str(e),
         )
-        logger.warning(f"Batch extraction failed ({len(fields_batch)} fields): {e}")
-        return []
+        raise ExtractionBatchError(
+            f"Batch extraction failed ({len(fields_batch)} fields): {e}"
+        ) from e
 
 
 def extract_fields(
@@ -278,6 +288,8 @@ def extract_fields(
     Extract all fields defined in the schema by running batched Claude calls.
     BATCH_SIZE fields per call prevents token-limit truncation on large schemas.
     Results from all batches are merged and returned as a single list.
+    Raises ExtractionBatchError if every batch fails (distinguishes total API
+    failure from a schema that legitimately has zero fields).
     """
     fields = schema.schema_fields
     if not fields:
@@ -285,22 +297,41 @@ def extract_fields(
 
     all_extractions: list[dict] = []
     batches = [fields[i: i + BATCH_SIZE] for i in range(0, len(fields), BATCH_SIZE)]
+    batch_errors = 0
 
     for idx, batch in enumerate(batches):
         logger.debug(
             f"Extracting batch {idx + 1}/{len(batches)} "
             f"({len(batch)} fields) for schema {schema.document_type}"
         )
-        batch_results = _extract_batch(
-            ocr_text,
-            batch,
-            schema,
-            document_id=document_id,
-            workspace_id=workspace_id,
-            call_type="extraction_batch",
-            attempt=1,
+        try:
+            batch_results = _extract_batch(
+                ocr_text,
+                batch,
+                schema,
+                document_id=document_id,
+                workspace_id=workspace_id,
+                call_type="extraction_batch",
+                attempt=1,
+            )
+            all_extractions.extend(batch_results)
+        except ExtractionBatchError:
+            batch_errors += 1
+            logger.warning(
+                f"Batch {idx + 1}/{len(batches)} failed for schema {schema.document_type}"
+            )
+
+    if batch_errors == len(batches):
+        raise ExtractionBatchError(
+            f"All {len(batches)} extraction batch(es) failed for schema "
+            f"{schema.document_type} — Claude API may be unavailable"
         )
-        all_extractions.extend(batch_results)
+
+    if batch_errors > 0:
+        logger.warning(
+            f"Extraction partial: {batch_errors}/{len(batches)} batches failed, "
+            f"{len(all_extractions)} fields extracted for schema {schema.document_type}"
+        )
 
     logger.info(
         f"Extraction complete: {len(all_extractions)} fields from "

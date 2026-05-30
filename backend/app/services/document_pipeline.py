@@ -245,6 +245,17 @@ def _run_pipeline(
         _fail(doc, f"Extraction failed: {e}", db)
         return
 
+    # C2 guard: a claude schema with defined fields that yielded zero rows is a failure,
+    # not a silent complete. (extract_fields raises if all batches failed; this catches
+    # the rare case where batches succeed but Claude returns no extractions.)
+    if (
+        schema.parse_strategy == "claude"
+        and schema.schema_fields
+        and not raw_extractions
+    ):
+        _fail(doc, "Extraction returned zero fields — possible API outage or empty response", db)
+        return
+
     # ── Step 6b: Evaluate confidence + retry low-confidence fields (claude only) ──
     # XML direct always produces confidence=1.0 — skip evaluator entirely.
     if schema.parse_strategy == "claude":
