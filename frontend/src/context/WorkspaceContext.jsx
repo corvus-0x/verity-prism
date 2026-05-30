@@ -10,7 +10,9 @@ export function WorkspaceProvider({ children }) {
 
   useEffect(() => {
     if (!workspaceId) return
-    getWorkspace(workspaceId).then((res) => setWorkspace(res.data))
+    getWorkspace(workspaceId)
+      .then((res) => setWorkspace(res.data))
+      .catch(() => {})
   }, [workspaceId])
 
   return (
