@@ -1,12 +1,7 @@
-import asyncio
-import csv
-import io
-import json as json_module
 from pathlib import Path
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse, Response, StreamingResponse
-from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.config import settings
@@ -16,14 +11,14 @@ from app.models.document_extraction import DocumentExtraction
 from app.models.user import User
 from app.deps import get_workspace_or_404
 from app.schemas.document import DocumentOut, ExtractionOut
-from app.services import audit
+from app.services import audit, export_service
 from app.services.auth import get_current_user
 from app.services.document_pipeline import (
     EXTENSION_TO_TYPE,
     create_pending_document,
     process_upload_background,
 )
-from app.utils.sanitize import content_disposition, escape_csv_cell
+from app.utils.sanitize import content_disposition
 
 router = APIRouter(prefix="/workspaces/{workspace_id}", tags=["documents"])
 
@@ -110,78 +105,10 @@ async def stream_document_status(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    """Stream extraction status updates via Server-Sent Events.
-    Polls every 2 seconds. Closes on terminal status or 5-minute timeout.
-    """
+    """Stream extraction status updates via Server-Sent Events."""
     get_workspace_or_404(workspace_id, user, db)
-
-    TERMINAL = {"complete", "failed", "no_schema", "needs_review"}
-
-    async def event_generator():
-        from sqlalchemy import func as sqlfunc
-
-        from app.database import SessionLocal
-        from app.models.document_extraction import DocumentExtraction
-
-        stream_db = SessionLocal()
-        try:
-            elapsed = 0
-            max_seconds = 300
-            interval = 2
-
-            while elapsed < max_seconds:
-                stream_db.expire_all()
-                doc = stream_db.query(Document).filter(
-                    Document.id == document_id,
-                    Document.workspace_id == workspace_id,
-                ).first()
-
-                if not doc:
-                    yield f"data: {json_module.dumps({'error': 'not found'})}\n\n"
-                    return
-
-                status = doc.extraction_status
-                payload = {"extraction_status": status}
-
-                if status == "complete":
-                    latest_subq = (
-                        stream_db.query(
-                            DocumentExtraction.field_name,
-                            sqlfunc.max(DocumentExtraction.attempt).label("max_attempt"),
-                        )
-                        .filter(DocumentExtraction.document_id == document_id)
-                        .group_by(DocumentExtraction.field_name)
-                        .subquery()
-                    )
-                    field_count = (
-                        stream_db.query(sqlfunc.count(DocumentExtraction.id))
-                        .join(
-                            latest_subq,
-                            (DocumentExtraction.field_name == latest_subq.c.field_name)
-                            & (DocumentExtraction.attempt == latest_subq.c.max_attempt),
-                        )
-                        .filter(DocumentExtraction.document_id == document_id)
-                        .scalar()
-                    )
-                    payload["field_count"] = field_count
-                    payload["detected_doc_type"] = doc.detected_doc_type
-                elif status == "failed":
-                    payload["extraction_error"] = doc.extraction_error
-
-                yield f"data: {json_module.dumps(payload)}\n\n"
-
-                if status in TERMINAL:
-                    return
-
-                await asyncio.sleep(interval)
-                elapsed += interval
-
-            yield f"data: {json_module.dumps({'extraction_status': 'timeout'})}\n\n"
-        finally:
-            stream_db.close()
-
     return StreamingResponse(
-        event_generator(),
+        export_service.document_status_stream(workspace_id, document_id),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
@@ -226,50 +153,7 @@ def list_extractions(
             .all()
         )
 
-    # Latest attempt per field_name via subquery — prevents duplicate field
-    # names appearing once attempt > 1 rows exist in the table.
-    latest_attempt_subq = (
-        db.query(
-            DocumentExtraction.field_name,
-            func.max(DocumentExtraction.attempt).label("max_attempt"),
-        )
-        .filter(DocumentExtraction.document_id == document_id)
-        .group_by(DocumentExtraction.field_name)
-        .subquery()
-    )
-    return (
-        db.query(DocumentExtraction)
-        .join(
-            latest_attempt_subq,
-            (DocumentExtraction.field_name == latest_attempt_subq.c.field_name)
-            & (DocumentExtraction.attempt == latest_attempt_subq.c.max_attempt),
-        )
-        .filter(DocumentExtraction.document_id == document_id)
-        .all()
-    )
-
-
-def _latest_extractions(document_id: str, db: Session):
-    """Return the latest attempt per field_name for a document."""
-    latest_subq = (
-        db.query(
-            DocumentExtraction.field_name,
-            func.max(DocumentExtraction.attempt).label("max_attempt"),
-        )
-        .filter(DocumentExtraction.document_id == document_id)
-        .group_by(DocumentExtraction.field_name)
-        .subquery()
-    )
-    return (
-        db.query(DocumentExtraction)
-        .join(
-            latest_subq,
-            (DocumentExtraction.field_name == latest_subq.c.field_name)
-            & (DocumentExtraction.attempt == latest_subq.c.max_attempt),
-        )
-        .filter(DocumentExtraction.document_id == document_id)
-        .all()
-    )
+    return export_service.latest_extractions(document_id, db)
 
 
 @router.get("/documents/{document_id}/extractions.csv")
@@ -286,22 +170,10 @@ def download_extractions_csv(
     ).first()
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
-
-    extractions = _latest_extractions(document_id, db)
-    output = io.StringIO()
-    writer = csv.DictWriter(output, fieldnames=["field_name", "field_value", "field_type", "confidence", "attempt"])
-    writer.writeheader()
-    for e in extractions:
-        writer.writerow({
-            "field_name": escape_csv_cell(e.field_name),
-            "field_value": escape_csv_cell(e.field_value),
-            "field_type": escape_csv_cell(e.field_type),
-            "confidence": e.confidence,
-            "attempt": e.attempt,
-        })
-
+    extractions = export_service.latest_extractions(document_id, db)
+    content = export_service.build_document_csv(doc, extractions)
     return Response(
-        content=output.getvalue(),
+        content=content,
         media_type="text/csv",
         headers={"Content-Disposition": content_disposition(f"{doc.filename}_extractions.csv", "attachment")},
     )
@@ -321,20 +193,10 @@ def download_extractions_json(
     ).first()
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
-
-    extractions = _latest_extractions(document_id, db)
-    data = [
-        {
-            "field_name": e.field_name,
-            "field_value": e.field_value or "",
-            "field_type": e.field_type,
-            "confidence": e.confidence,
-            "attempt": e.attempt,
-        }
-        for e in extractions
-    ]
+    extractions = export_service.latest_extractions(document_id, db)
+    content = export_service.build_document_json(doc, extractions)
     return Response(
-        content=json_module.dumps(data, indent=2),
+        content=content,
         media_type="application/json",
         headers={"Content-Disposition": content_disposition(f"{doc.filename}_extractions.json", "attachment")},
     )
@@ -351,29 +213,11 @@ def download_workspace_extractions_csv(
     docs = db.query(Document).filter(
         Document.workspace_id == workspace_id,
         Document.extraction_status.in_(["complete", "needs_review"]),
-        Document.is_deleted == False,
+        Document.is_deleted == False,  # noqa: E712
     ).all()
-
-    output = io.StringIO()
-    writer = csv.DictWriter(output, fieldnames=[
-        "document_filename", "document_type",
-        "field_name", "field_value", "field_type", "confidence", "attempt",
-    ])
-    writer.writeheader()
-    for doc in docs:
-        for e in _latest_extractions(doc.id, db):
-            writer.writerow({
-                "document_filename": escape_csv_cell(doc.filename),
-                "document_type": escape_csv_cell(doc.detected_doc_type or ""),
-                "field_name": escape_csv_cell(e.field_name),
-                "field_value": escape_csv_cell(e.field_value),
-                "field_type": escape_csv_cell(e.field_type),
-                "confidence": e.confidence,
-                "attempt": e.attempt,
-            })
-
+    content = export_service.build_workspace_csv(docs, db)
     return Response(
-        content=output.getvalue(),
+        content=content,
         media_type="text/csv",
         headers={"Content-Disposition": 'attachment; filename="workspace_extractions.csv"'},
     )
@@ -390,24 +234,11 @@ def download_workspace_extractions_json(
     docs = db.query(Document).filter(
         Document.workspace_id == workspace_id,
         Document.extraction_status.in_(["complete", "needs_review"]),
-        Document.is_deleted == False,
+        Document.is_deleted == False,  # noqa: E712
     ).all()
-
-    data = []
-    for doc in docs:
-        for e in _latest_extractions(doc.id, db):
-            data.append({
-                "document_filename": doc.filename,
-                "document_type": doc.detected_doc_type or "",
-                "field_name": e.field_name,
-                "field_value": e.field_value or "",
-                "field_type": e.field_type,
-                "confidence": e.confidence,
-                "attempt": e.attempt,
-            })
-
+    content = export_service.build_workspace_json(docs, db)
     return Response(
-        content=json_module.dumps(data, indent=2),
+        content=content,
         media_type="application/json",
         headers={"Content-Disposition": 'attachment; filename="workspace_extractions.json"'},
     )
