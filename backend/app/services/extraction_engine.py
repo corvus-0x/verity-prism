@@ -9,12 +9,11 @@ import json
 import logging
 import time
 
-from anthropic import Anthropic
 from sqlalchemy.orm import Session
 
-from app.config import settings
 from app.models.document_extraction import DocumentExtraction
 from app.models.document_schema import DocumentSchema
+from app.services import claude_client
 from app.utils.json_helpers import strip_json_fences
 
 logger = logging.getLogger(__name__)
@@ -25,9 +24,6 @@ class ExtractionBatchError(Exception):
     Distinct from an empty result so callers can tell API failure from genuine
     zero-extraction (e.g., schema has no fields, or document has no matching data).
     """
-
-
-client = Anthropic(api_key=settings.anthropic_api_key)
 
 # Fields per Claude extraction call. 40 fields × ~100 tokens each = ~4000 tokens
 # output, well within the 8192 limit and leaving headroom for formatting.
@@ -146,7 +142,7 @@ Document text (first 1500 characters):
     start = time.time()
     response = None
     try:
-        response = client.messages.create(
+        response = claude_client.get_client().messages.create(
             model="claude-sonnet-4-6",
             max_tokens=50,
             messages=[{"role": "user", "content": prompt}],
@@ -241,7 +237,7 @@ Document text:
     start = time.time()
     response = None
     try:
-        response = client.messages.create(
+        response = claude_client.get_client().messages.create(
             model="claude-sonnet-4-6",
             max_tokens=max_tokens,
             messages=[{"role": "user", "content": prompt}],

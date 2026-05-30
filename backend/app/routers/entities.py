@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models.entity import Entity, Relationship
 from app.models.user import User
-from app.routers.workspaces import get_workspace_or_404
+from app.deps import get_workspace_or_404
 from app.schemas.entity import (
     EntityCreate,
     EntityOut,

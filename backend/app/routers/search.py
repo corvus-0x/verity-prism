@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models.user import User
-from app.routers.workspaces import get_workspace_or_404
+from app.deps import get_workspace_or_404
 from app.services import audit
 from app.services.auth import get_current_user
 from app.services.search_service import get_known_field_names, run_search, translate_query

@@ -1,14 +1,12 @@
 import logging
 import re
 
-from anthropic import Anthropic
 from sqlalchemy.orm import Session
 
-from app.config import settings
 from app.models.document_schema import DocumentSchema
+from app.services import claude_client
 
 logger = logging.getLogger(__name__)
-client = Anthropic(api_key=settings.anthropic_api_key)
 
 
 def generate_standardized_name(ocr_text: str, original_filename: str, file_ext: str, db: Session) -> str:
@@ -46,7 +44,7 @@ Document text (first 1500 chars):
 Respond with ONLY the filename. No explanation."""
 
     try:
-        response = client.messages.create(
+        response = claude_client.get_client().messages.create(
             model="claude-sonnet-4-6",
             max_tokens=100,
             messages=[{"role": "user", "content": prompt}]

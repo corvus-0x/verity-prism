@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models.finding import Finding, SignalType
 from app.models.user import User
-from app.routers.workspaces import get_workspace_or_404
+from app.deps import get_workspace_or_404
 from app.schemas.finding import FindingCreate, FindingOut, FindingUpdate, SignalTypeOut
 from app.services import audit
 from app.services.auth import get_current_user
