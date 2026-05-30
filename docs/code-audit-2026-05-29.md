@@ -202,7 +202,7 @@ Services call `db.commit()` with no `try/except … rollback()`. If a commit fai
 | 2 | H3 → C1, M4 | Test infra + audit-log integrity | ✅ Done — merged 2026-05-29 |
 | 3 | H4 → C2, H5, L3 | Extraction pipeline correctness | ✅ Done — merged 2026-05-29 |
 | 4 | H1, H2, L5, L1 | Search & soft-delete data integrity | ✅ Done — merged 2026-05-30 |
-| 5 | M5, L6 | Architecture refactor (thin routers, lazy client) | — |
+| 5 | M5, L6 | Architecture refactor (thin routers, lazy client) | ✅ Done — merged 2026-05-30 |
 | 6 | M6, M7, L2, L4 | Frontend resilience + JWT hardening | — |
 
 **Phase 3 detail:** ✅ Write mocked-Claude pipeline tests (H4) first — they're the safety net for C2 (false-`complete` on empty extraction) and H5 (4000-char truncation). L3 = orphaned file cleanup on pipeline failure.
