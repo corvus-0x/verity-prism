@@ -91,7 +91,7 @@ Engine. Immutable audit log. PostgreSQL trigger blocks UPDATE/DELETE at database
 Engine. `log()` writes permanent audit rows. Called from every router and the pipeline.
 
 #### `auth.py` ✅
-Engine. JWT creation/verification, bcrypt hashing, `get_current_user` dependency.
+Engine. JWT creation/verification, bcrypt hashing. `get_current_user` dependency accepts both `Authorization: Bearer` header and `access_token` httpOnly cookie (Bearer first, cookie fallback — backward compat for tests, browser uses cookie).
 
 #### `ocr.py` ✅
 Engine. Text extraction from PDFs and images. PyMuPDF for embedded text, pytesseract for scanned pages. Entry point: `extract_text(file_bytes, file_type)`.
@@ -124,7 +124,13 @@ Engine. Orchestrates the full upload pipeline:
 Phase 3 C2 defence-in-depth guard: if `schema.parse_strategy == "claude"` and schema has defined fields but `raw_extractions` is empty, pipeline calls `_fail` instead of silently marking `complete`.
 
 #### `search_service.py` ✅
-Engine. NLP query → PostgreSQL FTS + field-level filters on `document_extractions`. `get_known_field_names()` tells Claude what's available. `translate_query()` returns structured filters. `run_search()` executes with numeric guard before CAST to prevent crashes on non-numeric values.
+Engine. NLP query → PostgreSQL FTS + field-level filters on `document_extractions`. `get_known_field_names()` tells Claude what's available. `translate_query()` returns structured filters. `run_search()` executes with numeric guard before CAST to prevent crashes on non-numeric values. Both FTS and field-filter branches filter `Document.is_deleted == False` (Phase 4 H1 fix).
+
+#### `export_service.py` ✅
+Engine. All export and SSE logic extracted from the documents router (Phase 5 M5). Five functions: `latest_extractions(document_id, db)` — latest attempt per field via subquery; `build_document_csv/json(doc, extractions)` — per-document serializers with OWASP formula-injection protection; `build_workspace_csv/json(docs, db)` — workspace-level serializers. `document_status_stream(workspace_id, document_id)` — async generator that opens its own `SessionLocal`, yields SSE `data: {...}\n\n` lines, closes on terminal status or 5-min timeout.
+
+#### `claude_client.py` ✅
+Engine. Lazy singleton Anthropic client (Phase 5 L6). `get_client()` constructs `Anthropic(api_key=...)` on first call. All four Claude-using services call `claude_client.get_client()` instead of instantiating at import time. Single patch target in tests: `patch("app.services.claude_client.get_client", return_value=mock_client)`.
 
 #### `agent_tools.py` ✅
 Engine. Six read-only tool functions callable by the Claude agent: `search_documents`, `get_entity`, `query_extractions`, `get_transactions`, `get_findings`, `get_leads`. All workspace-scoped — `workspace_id` is injected by `execute()`, never passed by Claude. `execute()` dispatches by tool name and returns `{"error": "..."}` on failure. Results are size-capped (≤10 docs, ≤50 rows) to prevent context overflow. Extended per vertical via `agent_tools_<vertical>.py` pattern.
@@ -162,7 +168,7 @@ The engine's intelligence layer. Understands documents, answers questions, surfa
 
 | Router | Endpoints | Layer | Status |
 |---|---|---|---|
-| `auth.py` | POST /auth/register, /auth/login | Engine | ✅ |
+| `auth.py` | POST /auth/register, /auth/login (sets httpOnly cookie + returns user), POST /auth/logout, GET /auth/me | Engine | ✅ |
 | `workspaces.py` | CRUD /workspaces | Engine | ✅ |
 | `entities.py` | CRUD /entities, /relationships | Engine | ✅ |
 | `findings.py` | GET /signal-types, CRUD /findings | Engine (model) + Fraud cap (signal seed data) | ✅ |
@@ -260,10 +266,10 @@ All 11 schemas are `vertical = "general"` — available in every workspace regar
 #### Hooks + Global UI (`frontend/src/hooks/`, `frontend/src/components/shared/`)
 
 #### `hooks/useToast.js` + `components/shared/ToastContainer.jsx` ✅
-Engine. Global toast notification system. `ToastProvider` mounts once in WorkspaceLayout. Four variants: success (green), error (red), info (blue), warning (orange). Bottom-right position, title+message, 4s auto-dismiss, max 3 visible, timer cleanup on unmount, ARIA live region.
+Engine. Global toast notification system. `ToastProvider` mounts at app root in `main.jsx`. Four variants: success (green), error (red), info (blue), warning (orange). Bottom-right position, title+message, 4s auto-dismiss, max 3 visible, timer cleanup on unmount, ARIA live region.
 
 #### `hooks/useExtractionStream.js` ✅
-Engine. SSE stream consumer for extraction status. fetch+ReadableStream (not EventSource) for Bearer token support. Closes on terminal status (complete/failed/no_schema/needs_review). Exponential backoff reconnect: base 1s, doubles each retry, cap 32s, max 5 retries.
+Engine. SSE stream consumer for extraction status. fetch+ReadableStream with `credentials: 'include'` (httpOnly cookie auth). `reader` variable lifted to outer useEffect scope — `reader?.cancel()` called on unmount so connections don't linger (Phase 6 L2 fix). Closes on terminal status (complete/failed/no_schema/needs_review). Exponential backoff reconnect: base 1s, doubles each retry, cap 32s, max 5 retries.
 
 ---
 
@@ -271,7 +277,7 @@ Engine. SSE stream consumer for extraction status. fetch+ReadableStream (not Eve
 
 | File | Calls | Status |
 |---|---|---|
-| `auth.js` | POST /auth/login, /auth/register | ✅ |
+| `auth.js` | POST /auth/login, /auth/register, /auth/logout; GET /auth/me | ✅ |
 | `workspaces.js` | CRUD /workspaces | ✅ |
 | `documents.js` | POST + GET /documents, getDocumentFile | ✅ |
 | `entities.js` | CRUD /entities | ✅ |
@@ -336,6 +342,8 @@ Layer: Engine. `docker-compose up -d` starts full stack.
 4. `d4e9f2a83b17_add_parse_strategy_to_document_schemas` — adds `parse_strategy` enum (`claude`|`xml_direct`) and `default_confidence_threshold` float to `document_schemas`; sets 990 to `xml_direct`/`1.0`
 5. `c8dd75f9d15c_schema_cleanup_obituary_and_sr_` — moves OBITUARY to `vertical='fraud'`; strips SR signal codes from extraction_prompts; cleans fraud investigation commentary from 5 field descriptions
 6. `e1f3a2b94c07_add_attempt_needs_review_and_call_log` — adds `attempt` column (INTEGER NOT NULL DEFAULT 1) to `document_extractions`; adds `needs_review` to `extraction_status` enum; creates `claude_call_logs` table with indexes on `document_id` and `called_at`
+7. `3f29a7ad2392_add_audit_log_immutable_trigger` — PostgreSQL trigger `BEFORE UPDATE OR DELETE ON audit_log` that raises EXCEPTION; enforces the immutability guarantee documented in CLAUDE.md (Phase 2 C1 fix)
+8. `a1b2c3d4e5f6_phase4_search_integrity_soft_delete` — changes `documents.search_vector` from TEXT to TSVECTOR with GIN index; adds `is_deleted`/`deleted_at` to `transactions`, `findings`, `investigation_leads`, `notes`, `relationships` (Phase 4 H2 + L5 fix)
 
 A clean `alembic upgrade head` produces the correct full schema.  
 **Status:** ✅ Connected
@@ -349,7 +357,7 @@ Applied via SQL in Task 2. GIN index on `documents.search_vector`. PostgreSQL tr
 
 | Test file | Layer | Passing |
 |---|---|---|
-| `test_auth.py` | Engine | ✅ 5/5 |
+| `test_auth.py` | Engine | ✅ 10/10 (5 new: cookie/session/logout/me tests) |
 | `test_workspaces.py` | Engine | ✅ 5/5 |
 | `test_entities.py` | Engine | ✅ 3/3 |
 | `test_findings.py` | Engine + Fraud cap | ✅ 3/3 |
@@ -357,14 +365,29 @@ Applied via SQL in Task 2. GIN index on `documents.search_vector`. PostgreSQL tr
 | `test_leads.py` | Engine | ✅ 2/2 |
 | `test_notes.py` | Engine | ✅ 2/2 |
 | `test_documents.py` | Engine | ✅ 5/5 |
-| `test_extractions.py` | Engine | ✅ 2/2 |
+| `test_extractions.py` | Engine | ✅ 11/11 |
+| `test_sanitize.py` | Engine | ✅ 2/2 |
+| `test_config.py` | Engine | ✅ 1/1 |
 | `test_agent_tools.py` | Engine | ✅ 27/27 |
-| `test_ai.py` (updated) | Engine | ✅ 8/8 |
-| `test_extractions.py` (expanded) | Engine | ✅ 11/11 |
+| `test_ai.py` | Engine | ✅ 9/9 (workspace-scoped history test) |
+| `test_export_service.py` | Engine | ✅ 7/7 |
 | `test_export.py` | Engine | ✅ 3/3 |
 | `test_audit_log.py` | Engine | ✅ 2/2 |
+| `test_audit_immutability.py` | Engine | ✅ 2/2 |
+| `test_deps.py` | Engine | ✅ 3/3 |
+| `test_claude_client.py` | Engine | ✅ 2/2 |
+| `test_search.py` | Engine | ✅ 7/7 (soft-delete + TSVECTOR tests) |
 | `test_pipeline.py` | Engine | ✅ 9/9 |
-| **Total** | | **118/118** |
+| **Backend total** | | **123/123** |
+| `test_login.jsx` | Engine | ✅ 3/3 |
+| `test_workspaces_home.jsx` | Engine | ✅ 2/2 |
+| `test_documents.jsx` | Engine | ✅ 2/2 |
+| `test_search.jsx` | Engine | ✅ 1/1 |
+| `test_ai_chat.jsx` | Engine | ✅ 1/1 |
+| `test_ai_chat_errors.jsx` | Engine | ✅ 2/2 |
+| `test_extraction_stream.jsx` | Engine | ✅ 1/1 |
+| **Frontend total** | | **13/13** |
+| **Grand total** | | **136/136** |
 
 ---
 
@@ -415,3 +438,4 @@ Investigation workflow + referral export
 | 2026-05-28 | Phase 2C complete. Toast system (useToast + ToastContainer, timer cleanup, ARIA). Document status pill badges (needs_review/no_schema/failed added to Badge.jsx). SSE real-time extraction status (StreamingResponse + useExtractionStream with exponential backoff). Data export: 4 endpoints (per-doc + workspace CSV/JSON) + ⋯ context menu frontend. Audit log: paginated backend + timeline UI with search/filter. 85/85 tests. |
 | 2026-05-29 | Phase 2C cleanup + CI hardening. Ruff UP017 + import sorting (54 fixes, 19 files). ESLint JSX parserOptions. useToast.js → useToast.jsx. CI: DATABASE_URL added, evals/ excluded (require live API key). CodeRabbit caught missing nextId ref (critical — ReferenceError on every toast). test_documents.jsx wrapped with ToastProvider. pyproject.toml: requires-python >=3.11. ADR-0004 written (SSE over polling, fetch+ReadableStream for Bearer auth). Blog post-009 written. 82/82 CI tests. |
 | 2026-05-29 | Phase 3 code audit remediation (PR #5). C2: `ExtractionBatchError` — `_extract_batch` raises on API failure instead of returning `[]`; `extract_fields` re-raises if all batches fail; pipeline-level guard prevents silent `complete` on empty claude extraction. H5: `TEXT_LIMIT = 200_000` — OCR text cap raised from 4000 to 200k chars, full document evidence now reaches Claude. L3: `_fail` deletes stored file on pipeline failure, no orphans on disk. H4: `test_pipeline.py` — 9 tests (evaluator unit, happy-path, C2 failure, H5 truncation, L3 cleanup) written TDD-style. 118/118 tests. |
+| 2026-05-30 | Phase 4 code audit remediation (audit phases 4–6, PR #6 + #7). Phase 4: H1 — soft-delete filters in `run_search` and `query_extractions`; H2 — `search_vector` migrated TEXT→TSVECTOR + GIN index (migration `a1b2c3d4e5f6`); L1 — `get_conversation_history` workspace-scoped; L5 — `is_deleted`/`deleted_at` on Transaction, Finding, Lead, Note, Relationship. Phase 5: M5 — `get_workspace_or_404` moved to `app/deps.py`; export+SSE logic extracted to `export_service.py`; four `Anthropic()` module-level clients consolidated into `claude_client.py` lazy singleton. Phase 6: M6 — httpOnly cookie auth (`/login` sets cookie, `/logout`, `/me`; hybrid Bearer+cookie in `get_current_user`; frontend removes localStorage, adds `AuthInit`, `withCredentials: true`); M7 — `AIChat.handleSend` catch+rollback+toast, `WorkspaceContext` silent catch; L2 — SSE reader cancelled on unmount; L4 — 401 interceptor uses `NavigatorSetter` router navigation. 136/136 tests (123 backend + 13 frontend). All 2026-05-29 audit findings resolved. |
