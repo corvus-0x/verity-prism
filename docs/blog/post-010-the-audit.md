@@ -4,9 +4,9 @@
 
 ---
 
-There's a point in a build where you've made enough decisions that you can't fully trust your own review of them anymore. You know what you meant to build better than you know what you built. The distinction matters when what you're building is supposed to handle evidence.
+CLAUDE.md said the audit trigger existed. It had been in the project notes as a confirmed design invariant. The auditor searched the entire backend for `CREATE TRIGGER`. Nothing. Searched for `audit_log_immutable`. Nothing.
 
-The platform was approaching Phase 3 — fraud signals, signal detection rules, the full fraud vertical cap. Before that layer went on, I needed to know if the layer under it held. Not a gut check. An actual audit. I'm a new developer, and I know what that means: there are things I've missed that I don't know I've missed. So I wrote a detailed prompt that walked through every service file, every router, every migration, every test — and ran Opus 4.8 against it at max effort.
+Before the fraud vertical went on, I needed to know if what was under it would hold up. So I ran an audit. I'm a new developer — I know what that means. There are things I've missed that I don't know I've missed. I wrote a detailed prompt that walked through every service file, every router, every migration, every test and ran Opus 4.8 against it at max effort.
 
 The output came back as a 20-finding document. Two were marked Critical.
 
@@ -25,6 +25,8 @@ What that meant: every audit row ever written was deleteable. An UPDATE would su
 The trigger had been documented as done. The documentation was wrong.
 
 Tamper-proof is a weight-bearing claim. The trigger was what it rested on. It wasn't there.
+
+The whole reason to build the audit log is so the investigation stands up. A record that can be altered doesn't stand up. If that's the state of it, none of the work before it matters.
 
 ---
 
@@ -58,7 +60,7 @@ Then the trigger itself — a new migration, a test that connects to the migrate
 
 Before the fraud vertical goes on, the search layer needs the same scrutiny the pipeline just got. Soft-deleted documents are still surfacing in search results and in the AI assistant's answers — a document an investigator marked deleted can still be quoted back to them. That's the next pass.
 
-The audit didn't find that the platform was broken. It found that some of the guarantees the platform was making weren't guaranteed by anything. Those are different problems with different weights, but on a platform built to handle evidence in fraud investigations, a guarantee backed by nothing is worth less than no guarantee at all.
+The audit didn't find that the platform was broken. It found that some of the guarantees the platform was making weren't guaranteed by anything. Those are different problems with different weights. A guarantee backed by nothing is worth less than no guarantee at all.
 
 ---
 
