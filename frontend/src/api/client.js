@@ -1,6 +1,17 @@
 import axios from 'axios'
 import useAuthStore from '../store/auth'
 
+let _navigate = null
+
+/**
+ * Called once from NavigatorSetter inside BrowserRouter.
+ * Gives the 401 interceptor access to React Router navigation without
+ * importing useNavigate outside component scope.
+ */
+export function setNavigate(navigate) {
+  _navigate = navigate
+}
+
 const client = axios.create({
   baseURL: '/',
   headers: { 'Content-Type': 'application/json' },
@@ -19,7 +30,11 @@ client.interceptors.response.use(
   (error) => {
     if (error.response?.status === 401) {
       useAuthStore.getState().logout()
-      window.location.href = '/login'
+      if (_navigate) {
+        _navigate('/login', { replace: true })
+      } else {
+        window.location.href = '/login'
+      }
     }
     return Promise.reject(error)
   }

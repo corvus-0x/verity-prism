@@ -1,4 +1,6 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { useEffect } from 'react'
+import { BrowserRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom'
+import { setNavigate } from './api/client'
 import Login from './pages/Login'
 import WorkspacesHome from './pages/WorkspacesHome'
 import SchemaLibrary from './pages/SchemaLibrary'
@@ -16,6 +18,12 @@ import ExtractionReview from './pages/workspace/ExtractionReview'
 import AuditLog from './pages/workspace/AuditLog'
 import useAuthStore from './store/auth'
 
+function NavigatorSetter() {
+  const navigate = useNavigate()
+  useEffect(() => { setNavigate(navigate) }, [navigate])
+  return null
+}
+
 function ProtectedRoute({ children }) {
   const token = useAuthStore((s) => s.token)
   if (!token) return <Navigate to="/login" replace />
@@ -25,6 +33,7 @@ function ProtectedRoute({ children }) {
 export default function App() {
   return (
     <BrowserRouter>
+      <NavigatorSetter />
       <Routes>
         <Route path="/login" element={<Login />} />
         <Route path="/workspaces" element={
