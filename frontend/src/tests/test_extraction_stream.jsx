@@ -1,4 +1,4 @@
-import { renderHook } from '@testing-library/react'
+import { renderHook, waitFor } from '@testing-library/react'
 import { vi, it, expect, afterEach } from 'vitest'
 import useExtractionStream from '../hooks/useExtractionStream'
 
@@ -16,12 +16,11 @@ it('cancels the stream reader when the hook unmounts during streaming', async ()
     useExtractionStream('ws-1', 'doc-1', 'pending', onUpdate)
   )
 
-  // Wait one tick for the fetch to start
-  await new Promise((r) => setTimeout(r, 0))
+  // Wait until reader.read() has been called — proves reader was assigned
+  await waitFor(() => expect(readerMock.read).toHaveBeenCalled())
 
   unmount()
 
-  // After unmount the reader must be cancelled
   expect(cancelMock).toHaveBeenCalled()
 })
 
