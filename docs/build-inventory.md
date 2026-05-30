@@ -102,6 +102,10 @@ Engine. Three functions:
 - `get_schema_for_type(doc_type, db, workspace_vertical)` — vertical-aware schema lookup. Prefers vertical-specific schema; falls back to `general`. A fraud workspace gets fraud schemas first, then general.
 - `extract_fields()` + `save_extractions()` — Claude extracts fields per schema definition, returns `list[dict]`
 
+`ExtractionBatchError` (Phase 3 C2 fix): raised by `_extract_batch` on API failure — distinct from a legitimate empty result. `extract_fields` re-raises if all batches fail. Callers get an explicit signal instead of silent `[]`.
+
+`TEXT_LIMIT = 200_000` (Phase 3 H5 fix): extraction batches send up to 200k chars of OCR text (≈50k tokens). Old cap was 4000 chars, which silently dropped evidence from multi-page documents. Warning logged when a document exceeds the limit.
+
 #### `naming.py` ✅
 Engine. Generates standardized filenames: `YYYY-MM-DD_DOC-TYPE_ENTITY_DESCRIPTION.ext`. Loads known doc types from `document_schemas` table at call time — no hardcoded type list.
 
@@ -114,8 +118,10 @@ Engine. Orchestrates the full upload pipeline:
 - `process_upload_background()` — OCR → type → **vertical-aware** schema lookup → extract → FTS → audit (after response via BackgroundTasks)
 - Pipeline reads `schema.parse_strategy` to route XML vs Claude — no hardcoded type strings
 - `_no_schema()` — creates investigation lead for unknown document types
-- `_fail()` — sets failed status with error message
+- `_fail()` — sets failed status, deletes stored file (Phase 3 L3 fix: no orphans on disk after failure), writes audit log
 - Both XML and Claude extraction paths return `list[dict]` — no type branching in FTS or downstream steps
+
+Phase 3 C2 defence-in-depth guard: if `schema.parse_strategy == "claude"` and schema has defined fields but `raw_extractions` is empty, pipeline calls `_fail` instead of silently marking `complete`.
 
 #### `search_service.py` ✅
 Engine. NLP query → PostgreSQL FTS + field-level filters on `document_extractions`. `get_known_field_names()` tells Claude what's available. `translate_query()` returns structured filters. `run_search()` executes with numeric guard before CAST to prevent crashes on non-numeric values.
@@ -132,7 +138,7 @@ Engine. Native Anthropic tool-use agentic loop. `chat()` runs up to 10 rounds: c
 #### `extraction_evaluator.py` ✅
 Engine. Two functions:
 - `evaluate(extractions, threshold)` — pure function, no DB. Compares each field's confidence against the schema threshold, returns `EvaluationResult(low_confidence_fields, threshold_used, total_fields)`.
-- `run_retry(document_id, workspace_id, ocr_text, schema, low_confidence_field_names, db)` — builds a mini-batch of only the failing fields, calls `_extract_batch()`, saves results as `attempt=2` rows. Called by the pipeline between save_extractions() and filename generation.
+- `run_retry(document_id, workspace_id, ocr_text, schema, low_confidence_field_names, db)` — builds a mini-batch of only the failing fields, calls `_extract_batch()`, saves results as `attempt=2` rows. Called by the pipeline between save_extractions() and filename generation. Catches `ExtractionBatchError` from `_extract_batch` — retry failure is non-fatal and returns `[]` without failing the document.
 
 #### `connectors/` 🔲
 Engine. Phase 2 — public data sources feed into the pipeline.
@@ -357,7 +363,8 @@ Applied via SQL in Task 2. GIN index on `documents.search_vector`. PostgreSQL tr
 | `test_extractions.py` (expanded) | Engine | ✅ 11/11 |
 | `test_export.py` | Engine | ✅ 3/3 |
 | `test_audit_log.py` | Engine | ✅ 2/2 |
-| **Total** | | **85/85** |
+| `test_pipeline.py` | Engine | ✅ 9/9 |
+| **Total** | | **118/118** |
 
 ---
 
@@ -407,3 +414,4 @@ Investigation workflow + referral export
 | 2026-05-28 | Phase 2A complete. extraction_evaluator.py (evaluate + run_retry), claude_call_log.py model, review.py router (GET review-queue + PATCH correct), ExtractionReview.jsx, ExtractionTable editable mode, DocumentViewer review mode (?review=1). list_extractions returns latest-attempt-per-field by default. Migration e1f3a2b94c07: attempt column, needs_review enum, claude_call_logs table. ADRs added to docs/decisions/. 80/80 tests. |
 | 2026-05-28 | Phase 2C complete. Toast system (useToast + ToastContainer, timer cleanup, ARIA). Document status pill badges (needs_review/no_schema/failed added to Badge.jsx). SSE real-time extraction status (StreamingResponse + useExtractionStream with exponential backoff). Data export: 4 endpoints (per-doc + workspace CSV/JSON) + ⋯ context menu frontend. Audit log: paginated backend + timeline UI with search/filter. 85/85 tests. |
 | 2026-05-29 | Phase 2C cleanup + CI hardening. Ruff UP017 + import sorting (54 fixes, 19 files). ESLint JSX parserOptions. useToast.js → useToast.jsx. CI: DATABASE_URL added, evals/ excluded (require live API key). CodeRabbit caught missing nextId ref (critical — ReferenceError on every toast). test_documents.jsx wrapped with ToastProvider. pyproject.toml: requires-python >=3.11. ADR-0004 written (SSE over polling, fetch+ReadableStream for Bearer auth). Blog post-009 written. 82/82 CI tests. |
+| 2026-05-29 | Phase 3 code audit remediation (PR #5). C2: `ExtractionBatchError` — `_extract_batch` raises on API failure instead of returning `[]`; `extract_fields` re-raises if all batches fail; pipeline-level guard prevents silent `complete` on empty claude extraction. H5: `TEXT_LIMIT = 200_000` — OCR text cap raised from 4000 to 200k chars, full document evidence now reaches Claude. L3: `_fail` deletes stored file on pipeline failure, no orphans on disk. H4: `test_pipeline.py` — 9 tests (evaluator unit, happy-path, C2 failure, H5 truncation, L3 cleanup) written TDD-style. 118/118 tests. |

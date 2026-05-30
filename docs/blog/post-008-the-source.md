@@ -8,7 +8,9 @@
 
 That's a real field from a real deed. 61% means Claude found a value but wasn't certain. The schema has a threshold; fields below it are flagged. That's the right design. But flagged for what.
 
-The deed was on disk. The extraction was in the database. There was no way to look at both at once. You'd see the field value and either accept it or note the doubt and move on. No way to pull the source document and check the line it came from. The confidence score was a signal pointing at nothing you could reach.
+The deed was on disk. The extraction was in the database. There was no way to look at both at once. You'd see the field value and either accept it or note the doubt and move on. No way to pull the source document and check the line it came from. The confidence score was a signal pointing at nothing you could reach. The scoring was working. There was just nowhere to go with it.
+
+That kind of gap doesn't show up in the code. It shows up when you look at what you built from the investigator's side.
 
 ---
 

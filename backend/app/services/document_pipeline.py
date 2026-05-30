@@ -53,11 +53,18 @@ EXTENSION_TO_TYPE = {
 # ── Status helpers ──────────────────────────────────────────────────────────
 
 def _fail(doc: Document, error: str, db: Session) -> None:
-    """Mark a document as failed with a reason."""
+    """Mark a document as failed and clean up its stored file (L3)."""
     doc.extraction_status = "failed"
     doc.extraction_error = error[:500]
     db.commit()
     logger.error(f"Pipeline failed for doc {doc.id}: {error}")
+
+    if doc.file_path:
+        try:
+            Path(doc.file_path).unlink(missing_ok=True)
+        except Exception as e:
+            logger.warning(f"File cleanup failed for doc {doc.id}: {e}")
+
     try:
         audit.log(
             db,
@@ -243,6 +250,17 @@ def _run_pipeline(
         save_extractions(raw_extractions, doc.id, workspace_id, schema.id, db)
     except Exception as e:
         _fail(doc, f"Extraction failed: {e}", db)
+        return
+
+    # C2 guard: a claude schema with defined fields that yielded zero rows is a failure,
+    # not a silent complete. (extract_fields raises if all batches failed; this catches
+    # the rare case where batches succeed but Claude returns no extractions.)
+    if (
+        schema.parse_strategy == "claude"
+        and schema.schema_fields
+        and not raw_extractions
+    ):
+        _fail(doc, "Extraction returned zero fields — possible API outage or empty response", db)
         return
 
     # ── Step 6b: Evaluate confidence + retry low-confidence fields (claude only) ──

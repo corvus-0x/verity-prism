@@ -1,6 +1,6 @@
 # Verity Prism — Product Roadmap
 
-**Last updated:** 2026-05-28  
+**Last updated:** 2026-05-29  
 **Core principle:** Verity Prism is an Intelligent Document Processing platform first. Verticals are plug-and-play caps that tell the platform what to care about. The engine ships to every customer. The cap ships only to the relevant vertical.
 
 ---
@@ -126,7 +126,7 @@ Shared schemas (PARCEL-RECORD, for example) can belong to multiple verticals. Th
 
 ## Phase 2 — IDP Engine Capabilities
 **What it is:** The engine gets smarter and more connected. No vertical logic — these capabilities serve all verticals equally.  
-**Status:** In progress — 2A complete. Next: 2C UI completeness (real-time status, export, audit log UI). 2D connectors follow. Signal detection moved to Phase 3 — rules are domain logic, belongs in the fraud cap not the engine.
+**Status:** In progress — 2A and 2C complete. 2B (signal detection) moved to Phase 3. Remaining: 2D (code audit phases 4–6), 2E (data connectors).
 
 ### 2A — Intelligence Layer: Agentic Hardening + Document Viewer
 The engine's intelligence layer is functional. These builds make it measurable and trustworthy, and give it a human interface for reviewing what it produces. **Must complete before connectors or signal detection** — connectors bring more documents; signal detection reads extracted fields. Both are only as good as extraction is reliable. Measure reliability first.
@@ -151,20 +151,41 @@ Split-pane view: PDF rendered in-browser (react-pdf, pdf.js bundled — no plugi
 ### 2B — Signal Detection Framework
 **Moved to Phase 3.** Signal rules are domain logic — every vertical has its own rule set with different operators, thresholds, and evidence patterns. Building a generic framework before two verticals exist means designing an abstraction for one use case. The fraud cap (Phase 3A) will define and build signal detection against fraud-specific field values. If insurance signals share enough structure, the common parts get extracted then — when we know what "common" actually means.
 
-### 2C — Engine UI Completeness
+### 2C — Engine UI Completeness ✅ DONE (2026-05-28)
 These are engine-level UI capabilities that any vertical needs. Not vertical-specific — they ship with the engine and are available in every workspace.
 
-**Real-time extraction status** 🔲:  
-Currently the pipeline runs in the background with no feedback until the user polls. Server-sent events (SSE) on `GET /workspaces/{id}/documents/{doc_id}/status/stream` push `pending → processing → complete/failed` to the frontend in real time. The document list updates live without refresh. Pairs with the document viewer — the viewer opens when extraction completes.
+**Real-time extraction status** ✅ DONE:  
+Server-sent events (SSE) on `GET /workspaces/{id}/documents/{doc_id}/status/stream` push `pending → processing → complete/failed` to the frontend in real time. `useExtractionStream` hook uses fetch+ReadableStream (not EventSource) for Bearer auth, exponential backoff reconnect (base 1s, cap 32s, max 5 retries).
 
-**Data export** 🔲:  
-`GET /workspaces/{id}/documents/{doc_id}/extractions.csv` and `/extractions.json` — download all extracted fields for a document as structured data. Also workspace-level export: all extractions across all documents in a workspace as a flat CSV. This is asked for in every evaluation. Generic export is engine-level; vertical-specific export formats (AG referral package, claims API push) remain in the vertical cap.
+**Data export** ✅ DONE:  
+`GET /workspaces/{id}/documents/{doc_id}/extractions.csv` and `/extractions.json` — per-document field export. Workspace-level export: all extractions across all documents as a flat CSV. Formula injection protection (OWASP CSV-injection). ⋯ context menu on document cards; "Export all" workspace button.
 
-**Audit log UI** 🔲:  
-The audit log is immutable at the DB level (PostgreSQL trigger). Surfacing it in the UI makes it a selling point. A simple chronological list per workspace: who did what, when, on which document. Read-only. Compliance language: "every action on every document is logged and tamper-proof."
+**Audit log UI** ✅ DONE:  
+Paginated `GET /audit-log?page&limit` endpoint. Timeline UI with colored action dots, client-side search + action filter, Previous/Next pagination. "Every action on every document is tamper-proof."
 
-### 2D — Data Connectors
-Public data sources feed directly into the pipeline. Any vertical can use any connector. **Can run parallel to 2B** — connectors are input to the pipeline, not dependent on the intelligence layer. Can also run parallel to 2C.
+### 2D — Code Audit Remediation (remaining phases)
+The code audit (conducted 2026-05-29 by Opus 4.8) identified security, data-integrity, and architecture findings. Phases 1–3 are merged. The remaining phases are engine-level correctness work that belongs in Phase 2 before vertical packaging starts.
+
+Full finding details and fix instructions in `docs/code-audit-2026-05-29.md`.
+
+**Phase 4 — Search & soft-delete data integrity:**
+- H1: `run_search` and `query_extractions` don't filter `Document.is_deleted` — soft-deleted documents surface in search results and AI answers
+- H2: `search_vector` column is `TEXT` not `TSVECTOR` — FTS works by coincidence on small data, wrong type and no GIN index
+- L5: Soft-delete pattern only on `Document` + `Entity`; `Transaction`, `Finding`, `Lead`, `Note`, `Relationship` have no `is_deleted`
+- L1: `get_conversation_history` filters by `conversation_id` only, not `workspace_id` — defence-in-depth gap
+
+**Phase 5 — Architecture refactor (thin routers, lazy client):**
+- M5: Business logic in routers — export/SSE construction in `documents.py`, `get_workspace_or_404` lives in a router and is cross-imported; should move to `app/deps.py`
+- L6: Four module-level `Anthropic()` clients instantiated at import — a missing API key fails at import, and only `ai_engine.client` is patched in tests
+
+**Phase 6 — Frontend resilience + JWT hardening:**
+- M6: JWT stored in `localStorage` — readable by any XSS. Move to httpOnly, Secure, SameSite cookie set by backend
+- M7: Frontend swallows API errors — `handleSend` has no `catch`; failed requests leave optimistic UI state on screen
+- L2: SSE reader not cancelled on unmount — connection lingers until server timeout
+- L4: Hard redirect on 401 via `window.location.href` discards SPA state; use router navigation
+
+### 2E — Data Connectors
+Public data sources feed directly into the pipeline. Any vertical can use any connector.
 
 **Architecture:** `app/services/connectors/` — each connector fetches data, converts to a file, hands to the pipeline. The connector doesn't know which vertical is using it.
 
@@ -183,7 +204,7 @@ POST /workspaces/{id}/connectors/ohio-sos
 POST /workspaces/{id}/connectors/county-auditor
 ```
 
-**Existing asset:** `scripts/fetch_990_xml.py` is the core IRS TEOS logic. Phase 2C wraps it in the connector service.  
+**Existing asset:** `scripts/fetch_990_xml.py` is the core IRS TEOS logic. 2E wraps it in the connector service.  
 **Scheduled option:** Background job checks for new filings on watched EINs annually.  
 **Cross-vertical use:** Fraud uses IRS TEOS for 990s. Insurance uses county auditor for property data. Same connector serves both.
 
@@ -191,7 +212,7 @@ POST /workspaces/{id}/connectors/county-auditor
 
 ## Phase 3 — Vertical Packaging
 **What it is:** The engine gets its first two caps. Each vertical is a complete, installable package.  
-**Trigger:** Phase 2A (extraction eval + observability) complete. Engine extraction is measured and reliable. At least one full end-to-end case has run against real documents with observable confidence metrics.
+**Trigger:** Phase 2A, 2C, and 2D complete. Engine extraction is measured, reliable, and security-hardened. At least one full end-to-end case has run against real documents with observable confidence metrics.
 
 ### 3A — Fraud Vertical v1.0
 **Installs:** Fraud schema set + SR signal definitions + signal detection engine + investigation workflow + referral export
@@ -200,7 +221,7 @@ POST /workspaces/{id}/connectors/county-auditor
 **Schema set (already built, just needs vertical packaging):**
 PARCEL-RECORD, DEED, 990, SOS-FILING, UCC, BUILDING-PERMIT, AUDIT-REPORT, SCREENSHOT, OBITUARY, PLAT, CORRESPONDENCE
 
-**Signal definitions (SR-001 through SR-026 — using Phase 2B framework):**
+**Signal definitions (SR-001 through SR-026):**
 - SR-003 VALUATION_ANOMALY: sale_amount > 2x appraised_value_current
 - SR-004 UCC_BURST: 3+ amendments to same financing statement within 15 minutes
 - SR-005 ZERO_CONSIDERATION: conveyance_fee_exempt = true + seller_is_individual = true
@@ -294,7 +315,7 @@ If you're changing the pipeline, the schema registry, the connector framework, o
 The `document_schemas` table already has a `vertical` field. A schema tagged `general` works in any workspace. A schema tagged `fraud` only activates in fraud workspaces. Insurance schemas tagged `insurance` never appear in a fraud case. No code change needed — just the row in the table.
 
 **Every phase delivers working software.**  
-Don't start Phase 3 until Phase 2 connectors and signal framework are stable. Don't let verticals leak into engine phases.
+Don't start Phase 3 until Phase 2D (audit hardening) and 2E (connectors) are complete. Signal detection is Phase 3A fraud cap work, not a Phase 2 prerequisite. Don't let verticals leak into engine phases.
 
 **The build inventory stays current.**  
 See `docs/build-inventory.md`. Everything built gets an entry. Every loose end gets a phase destination.
@@ -310,6 +331,6 @@ The fraud vertical was built first because it's the hardest case. If the engine 
 |---|---|
 | Core Hardening | ✅ CORS configurable, file size bounded, soft-delete consistent, Alembic verified on fresh DB. |
 | Phase 1 | ✅ All backend tasks pass. Frontend working. Documents flow through full pipeline end-to-end. |
-| Phase 2 | ✅ Document viewer live (field-level linking deferred to follow-on). Extraction eval loop running with retry/escalate. Observability logging all Claude calls with confidence distribution. Real-time extraction status via SSE. Export working for documents and workspaces. Audit log UI live. Signal framework evaluates rules without code changes. Three connectors integrated. |
+| Phase 2 | 2A ✅ (document viewer, eval loop, observability). 2C ✅ (SSE status, export, audit log UI). 2B moved to Phase 3. Remaining: 2D (code audit phases 4–6 — search integrity, thin routers, JWT hardening), 2E (data connectors). |
 | Phase 3 | **No vertical work starts until:** extraction reliability is measurable (2A complete) and at least one full case has run with observable confidence metrics. Fraud vertical installs as a complete package. Insurance vertical processes a real claim end-to-end. Both run on the same engine with no engine modifications. |
 | Phase 4 | Multi-user orgs with role-based access. Platform runs on AWS. Two paying clients in different verticals. New vertical takes one week to install, not one month. |

@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from sqlalchemy.orm import Session
 
 from app.models.document_schema import DocumentSchema
-from app.services.extraction_engine import _extract_batch, save_extractions
+from app.services.extraction_engine import _extract_batch, save_extractions, ExtractionBatchError
 
 logger = logging.getLogger(__name__)
 
@@ -78,14 +78,18 @@ def run_retry(
         f"(schema: {schema.document_type})"
     )
 
-    retry_extractions = _extract_batch(
-        ocr_text=ocr_text,
-        fields_batch=fields_batch,
-        schema=schema,
-        document_id=document_id,
-        workspace_id=workspace_id,
-        call_type="extraction_retry",
-    )
+    try:
+        retry_extractions = _extract_batch(
+            ocr_text=ocr_text,
+            fields_batch=fields_batch,
+            schema=schema,
+            document_id=document_id,
+            workspace_id=workspace_id,
+            call_type="extraction_retry",
+        )
+    except ExtractionBatchError as e:
+        logger.warning(f"Retry batch failed for doc {document_id}: {e}")
+        return []
 
     if retry_extractions:
         save_extractions(retry_extractions, document_id, workspace_id, schema.id, db, attempt=2)

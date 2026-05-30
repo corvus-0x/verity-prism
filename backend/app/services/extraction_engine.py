@@ -18,11 +18,25 @@ from app.models.document_schema import DocumentSchema
 from app.utils.json_helpers import strip_json_fences
 
 logger = logging.getLogger(__name__)
+
+
+class ExtractionBatchError(Exception):
+    """Raised by _extract_batch when a Claude API call fails.
+    Distinct from an empty result so callers can tell API failure from genuine
+    zero-extraction (e.g., schema has no fields, or document has no matching data).
+    """
+
+
 client = Anthropic(api_key=settings.anthropic_api_key)
 
 # Fields per Claude extraction call. 40 fields × ~100 tokens each = ~4000 tokens
 # output, well within the 8192 limit and leaving headroom for formatting.
 BATCH_SIZE = 40
+
+# Maximum OCR text characters sent per extraction batch.
+# 200_000 chars ≈ 50k tokens — well within Claude Sonnet 4.6's context window.
+# The old 4000-char cap silently dropped evidence from multi-page documents.
+TEXT_LIMIT = 200_000
 
 
 def _log_claude_call(
@@ -195,6 +209,12 @@ def _extract_batch(
         for f in fields_batch
     ])
 
+    if len(ocr_text) > TEXT_LIMIT:
+        logger.warning(
+            f"OCR text ({len(ocr_text)} chars) exceeds TEXT_LIMIT ({TEXT_LIMIT}); "
+            "truncating for extraction"
+        )
+
     prompt = f"""{schema.extraction_prompt or 'Extract the following fields from this document.'}
 
 Extract ONLY these {len(fields_batch)} fields:
@@ -213,7 +233,7 @@ Required format:
 ]}}
 
 Document text:
-{ocr_text[:4000]}"""
+{ocr_text[:TEXT_LIMIT]}"""
 
     # Scale max_tokens to batch size: ~100 tokens per field + 200 overhead
     max_tokens = min(len(fields_batch) * 100 + 200, 4096)
@@ -264,8 +284,9 @@ Document text:
             attempt=attempt,
             error_message=str(e),
         )
-        logger.warning(f"Batch extraction failed ({len(fields_batch)} fields): {e}")
-        return []
+        raise ExtractionBatchError(
+            f"Batch extraction failed ({len(fields_batch)} fields): {e}"
+        ) from e
 
 
 def extract_fields(
@@ -278,6 +299,8 @@ def extract_fields(
     Extract all fields defined in the schema by running batched Claude calls.
     BATCH_SIZE fields per call prevents token-limit truncation on large schemas.
     Results from all batches are merged and returned as a single list.
+    Raises ExtractionBatchError if every batch fails (distinguishes total API
+    failure from a schema that legitimately has zero fields).
     """
     fields = schema.schema_fields
     if not fields:
@@ -285,22 +308,41 @@ def extract_fields(
 
     all_extractions: list[dict] = []
     batches = [fields[i: i + BATCH_SIZE] for i in range(0, len(fields), BATCH_SIZE)]
+    batch_errors = 0
 
     for idx, batch in enumerate(batches):
         logger.debug(
             f"Extracting batch {idx + 1}/{len(batches)} "
             f"({len(batch)} fields) for schema {schema.document_type}"
         )
-        batch_results = _extract_batch(
-            ocr_text,
-            batch,
-            schema,
-            document_id=document_id,
-            workspace_id=workspace_id,
-            call_type="extraction_batch",
-            attempt=1,
+        try:
+            batch_results = _extract_batch(
+                ocr_text,
+                batch,
+                schema,
+                document_id=document_id,
+                workspace_id=workspace_id,
+                call_type="extraction_batch",
+                attempt=1,
+            )
+            all_extractions.extend(batch_results)
+        except ExtractionBatchError:
+            batch_errors += 1
+            logger.warning(
+                f"Batch {idx + 1}/{len(batches)} failed for schema {schema.document_type}"
+            )
+
+    if batch_errors == len(batches):
+        raise ExtractionBatchError(
+            f"All {len(batches)} extraction batch(es) failed for schema "
+            f"{schema.document_type} — Claude API may be unavailable"
         )
-        all_extractions.extend(batch_results)
+
+    if batch_errors > 0:
+        logger.warning(
+            f"Extraction partial: {batch_errors}/{len(batches)} batches failed, "
+            f"{len(all_extractions)} fields extracted for schema {schema.document_type}"
+        )
 
     logger.info(
         f"Extraction complete: {len(all_extractions)} fields from "
