@@ -24,6 +24,8 @@ What that meant: every audit row ever written was deleteable. An UPDATE would su
 
 The trigger had been documented as done. The documentation was wrong.
 
+Tamper-proof is a weight-bearing claim. The trigger was what it rested on. It wasn't there.
+
 ---
 
 The second Critical finding was quieter, which made it worse.
@@ -34,13 +36,15 @@ The path: `_extract_batch` catches all exceptions and returns an empty list. `ex
 
 A deed with 64 fields to extract — grantor name, grantee name, sale amount, parcel ID, legal description, conveyance fee — processed during an API outage, would look identical to a deed that had been fully extracted. The investigator would see a green badge. The AI assistant would find nothing when asked about the document. No one would know.
 
+A deadbolt that turns without the bolt reaching the plate. The lock says engaged. The door opens.
+
 A visible failure is honest. You can act on it — retry the pipeline, fix the error, flag the document for review. A false complete tells you everything is fine when nothing was done. On an evidence platform, that's the worse outcome.
 
 ---
 
 Eighteen more findings below the two Critical ones. A weak JWT default that would let anyone forge a valid token if the `SECRET_KEY` environment variable was left unset — the docker-compose file supplied a fallback of `dev-secret-key-change-in-production`, a publicly known string, so any deployed instance missing an explicit key was fully open. CSV exports had no injection protection, so a field value like `=CMD()` extracted from an uploaded document would execute as a formula when opened in Excel. The upload endpoint had no file type allowlist.
 
-And one finding that wasn't a security issue but contradicted the platform's core premise: the extraction engine was sending only the first 4,000 characters of OCR text to Claude on every batch, regardless of the document's length. The batching splits the field list across multiple Claude calls so large schemas don't hit the output token limit. But every batch was looking at the same truncated first page. A 370-field parcel record, a 235-field 990, a multi-page deed — any value that appeared after character 4,000 had never been extracted. The platform was built on the premise that it could pull every data point from any document. That premise had never been true.
+And one finding that wasn't a security issue but contradicted the platform's core premise: the extraction engine was sending only the first 4,000 characters of OCR text to Claude on every batch, regardless of the document's length. The batching splits the field list across multiple Claude calls so large schemas don't hit the output token limit. But every batch was looking at the same truncated first page. A 370-field parcel record, a 235-field 990, a multi-page deed — any value that appeared after character 4,000 had never been extracted — every document was being cut short. The platform was built on the premise that it could pull every data point from any document. That premise had never been true.
 
 ---
 
