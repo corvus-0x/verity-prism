@@ -201,15 +201,9 @@ Things that were planned for one phase and moved, or explicitly punted. Captured
 
 ---
 
-### Code Audit Remaining Phases — now Roadmap Phase 2D
+### Code Audit Remaining Phases — Roadmap Phase 2D
 
-Phases 1–3 of the audit remediation are merged (PRs #4 and #5). The remaining phases are now **roadmap Phase 2D** — engine correctness work before vertical packaging. Full finding details in `docs/code-audit-2026-05-29.md`.
-
-| Audit Phase | Roadmap | Findings | Theme |
-|-------------|---------|----------|-------|
-| Audit phase 4 | 2D | H1 (soft-delete filters in search/AI), H2 (search_vector → TSVECTOR + GIN index), L5 (soft-delete on Transaction/Finding/Lead), L1 (workspace-scope conversation history) | Search & soft-delete data integrity |
-| Audit phase 5 | 2D | M5 (thin routers — move get_workspace_or_404, export/SSE to services), L6 (lazy module-level Anthropic clients) | Architecture refactor |
-| Audit phase 6 | 2D | M6 (JWT → httpOnly cookie), M7 (frontend error handling), L2 (SSE reader cancel on unmount), L4 (router navigation on 401) | Frontend resilience + JWT hardening |
+Phases 1–3 merged (PRs #4 and #5). Phases 4–6 are now tracked in the roadmap as Phase 2D. Full finding details and fix instructions in `docs/code-audit-2026-05-29.md`.
 
 ---
 
@@ -221,7 +215,6 @@ Phases 1–3 of the audit remediation are merged (PRs #4 and #5). The remaining 
 | 2026-05-18 | `HTTPBearer` returns 403 (not 401) when no token present | Updated tests to assert 403 — this is FastAPI's behavior, not a bug |
 | 2026-05-18 | Pydantic v2 deprecation: `class Config` | Replaced with `model_config = ConfigDict(...)` |
 | 2026-05-18 | `email-validator` not in requirements | Added `email-validator==2.2.0` |
-| 2026-05-29 | Partial batch failure (some Claude batches succeed, some fail) produces no visible signal to investigators — doc completes with partial fields and a warning log only | Deliberate deferral. Full failure → `failed` status (fixed in C2). Partial failure behavior needs a decision: should it set `needs_review`? Deferred to a follow-up. |
 
 ---
 

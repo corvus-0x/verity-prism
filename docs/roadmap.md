@@ -212,7 +212,7 @@ POST /workspaces/{id}/connectors/county-auditor
 
 ## Phase 3 — Vertical Packaging
 **What it is:** The engine gets its first two caps. Each vertical is a complete, installable package.  
-**Trigger:** Phase 2A (extraction eval + observability) complete. Engine extraction is measured and reliable. At least one full end-to-end case has run against real documents with observable confidence metrics.
+**Trigger:** Phase 2A, 2C, and 2D complete. Engine extraction is measured, reliable, and security-hardened. At least one full end-to-end case has run against real documents with observable confidence metrics.
 
 ### 3A — Fraud Vertical v1.0
 **Installs:** Fraud schema set + SR signal definitions + signal detection engine + investigation workflow + referral export
@@ -221,7 +221,7 @@ POST /workspaces/{id}/connectors/county-auditor
 **Schema set (already built, just needs vertical packaging):**
 PARCEL-RECORD, DEED, 990, SOS-FILING, UCC, BUILDING-PERMIT, AUDIT-REPORT, SCREENSHOT, OBITUARY, PLAT, CORRESPONDENCE
 
-**Signal definitions (SR-001 through SR-026 — using Phase 2B framework):**
+**Signal definitions (SR-001 through SR-026):**
 - SR-003 VALUATION_ANOMALY: sale_amount > 2x appraised_value_current
 - SR-004 UCC_BURST: 3+ amendments to same financing statement within 15 minutes
 - SR-005 ZERO_CONSIDERATION: conveyance_fee_exempt = true + seller_is_individual = true
@@ -315,7 +315,7 @@ If you're changing the pipeline, the schema registry, the connector framework, o
 The `document_schemas` table already has a `vertical` field. A schema tagged `general` works in any workspace. A schema tagged `fraud` only activates in fraud workspaces. Insurance schemas tagged `insurance` never appear in a fraud case. No code change needed — just the row in the table.
 
 **Every phase delivers working software.**  
-Don't start Phase 3 until Phase 2 connectors and signal framework are stable. Don't let verticals leak into engine phases.
+Don't start Phase 3 until Phase 2D (audit hardening) and 2E (connectors) are complete. Signal detection is Phase 3A fraud cap work, not a Phase 2 prerequisite. Don't let verticals leak into engine phases.
 
 **The build inventory stays current.**  
 See `docs/build-inventory.md`. Everything built gets an entry. Every loose end gets a phase destination.
