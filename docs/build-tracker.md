@@ -149,6 +149,19 @@ Decisions made before any vertical work could start. These were flagged in princ
 
 ---
 
+## Docs & Planning — Build Tracker Restructure + Roadmap Alignment (2026-05-29)
+
+| Decision | What changed | Why |
+|----------|-------------|-----|
+| Build tracker restructured to pure history | Removed Phase 2 Remaining and Phase 3 Vertical Packaging forward-looking tables. Added Why column to all task rows. Added Deferred & Relocated Work section to capture decisions with full reasoning. | The tracker was half forward-looking, half history — each doc should do one job. Forward-looking items belong in roadmap.md. The Deferred section preserves reasoning for moved items so future work doesn't start from scratch. |
+| Signal detection confirmed Phase 3A | Was listed as Phase 2B remaining. Moved to Phase 3A as fraud cap logic, not engine infrastructure. | Building a generic framework before two verticals exist means designing an abstraction for one use case. Every vertical has different operators, thresholds, and evidence patterns. Wait to see two real implementations before extracting what's common. |
+| Code audit phases 4–6 added as roadmap Phase 2D | Not previously on the roadmap. Placed in Phase 2 because these are engine correctness fixes that belong before vertical packaging starts. Former Phase 2D (data connectors) renamed Phase 2E. | Phases 4–6 are search integrity, thin routers, and JWT hardening — engine correctness, not vertical work. Must land before Phase 3 so verticals are built on a stable foundation. |
+| Fixed five stale roadmap references | Phase 3 trigger now requires 2D complete (not just 2A). Phase 3A signal definitions removed "Phase 2B framework" label. Cross-phase principles updated — signal detection is Phase 3 work, not a Phase 2 prerequisite. | Stale references compound confusion when onboarding or planning. The roadmap must reflect the actual phase sequence. |
+| Blog stays organic, session log serves interviews/sales | No system for blog timing — write when a discovery moment hits. Build tracker's Why column is the structured reference for demos and interviews. | Forced blog scheduling produces mediocre posts. The discovery is the story. The session log keeps the sales pitch accurate without requiring blog discipline. |
+| Built /log-session skill | `verity-prism-log-session` skill at `~/.claude/skills/verity-prism-log-session/`. Invoked as `/log-session` at end of session. | The Why column is what feeds interviews and sales conversations but is hard to keep current manually. One command at session end keeps it accurate. |
+
+---
+
 ## Deferred & Relocated Work
 
 Things that were planned for one phase and moved, or explicitly punted. Captured here with the reasoning so when we reach that phase we're not starting from scratch.
