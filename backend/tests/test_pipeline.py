@@ -248,3 +248,34 @@ def test_pipeline_marks_complete_when_schema_has_no_fields(
 
     db.refresh(doc)
     assert doc.extraction_status == "complete"
+
+
+# ── H5: 4000-char text cap ────────────────────────────────────────────────────
+
+def test_extraction_sends_full_text_beyond_4000_chars(db, deed_schema):
+    """H5: Claude must receive OCR text that extends past the old 4000-char cap."""
+    from app.services.extraction_engine import extract_fields
+
+    # Build text where a critical value appears at position 5000
+    padding = "A" * 4500
+    long_ocr = f"{padding} GRANTOR_EVIDENCE_AT_5000"
+    assert len(long_ocr) > 4000
+
+    captured_prompts = []
+
+    def capture_call(**kwargs):
+        msg = kwargs.get("messages", [{}])[0].get("content", "")
+        captured_prompts.append(msg)
+        return MagicMock(
+            content=[MagicMock(text='{"extractions": []}')],
+            usage=MagicMock(input_tokens=10, output_tokens=5),
+        )
+
+    with patch("app.services.extraction_engine.client") as mock_client:
+        mock_client.messages.create.side_effect = capture_call
+        extract_fields(long_ocr, deed_schema)
+
+    assert captured_prompts, "Expected at least one Claude call"
+    assert "GRANTOR_EVIDENCE_AT_5000" in captured_prompts[0], (
+        "Text beyond 4000 chars was not sent to Claude — H5 truncation bug still present"
+    )
