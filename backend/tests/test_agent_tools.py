@@ -262,6 +262,42 @@ def test_query_extractions_no_match(db, workspace, extraction):
     assert result["count"] == 0
 
 
+def test_query_extractions_excludes_soft_deleted_document(db, workspace, user):
+    """H1: query_extractions must not return fields from soft-deleted documents."""
+    from datetime import UTC, datetime
+    deleted_doc = Document(
+        id=str(uuid.uuid4()),
+        workspace_id=workspace.id,
+        filename="deleted_deed.pdf",
+        original_filename="deleted_deed.pdf",
+        file_path="/uploads/deleted_deed.pdf",
+        file_type="pdf",
+        sha256_hash="d" * 64,
+        uploaded_by=user.id,
+        detected_doc_type="DEED",
+        is_deleted=True,
+        deleted_at=datetime.now(UTC),
+    )
+    db.add(deleted_doc)
+    db.commit()
+    db.add(DocumentExtraction(
+        id=str(uuid.uuid4()),
+        document_id=deleted_doc.id,
+        workspace_id=workspace.id,
+        field_name="grantor",
+        field_value="Ghost Grantor",
+        field_type="text",
+        confidence=0.95,
+    ))
+    db.commit()
+
+    result = query_extractions(
+        workspace_id=workspace.id, db=db,
+        field_name="grantor", operator="eq", value="Ghost Grantor"
+    )
+    assert result["count"] == 0
+
+
 from app.models.transaction import Transaction
 from decimal import Decimal
 

@@ -92,8 +92,11 @@ def run_search(workspace_id: str, query_plan: dict, db: Session) -> list[dict]:
     field_filters = query_plan.get("field_filters", [])
     doc_type_filter = query_plan.get("doc_type_filter")
 
-    # Base query — all documents in this workspace
-    doc_query = db.query(Document).filter(Document.workspace_id == workspace_id)
+    # Base query — active documents in this workspace
+    doc_query = db.query(Document).filter(
+        Document.workspace_id == workspace_id,
+        Document.is_deleted == False,  # noqa: E712
+    )
 
     # Full-text search across OCR text and extracted field values
     if fts_query:
@@ -157,7 +160,10 @@ def run_search(workspace_id: str, query_plan: dict, db: Session) -> list[dict]:
             # FTS returned nothing but field filters matched — fetch those docs directly
             matching_docs = (
                 db.query(Document)
-                .filter(Document.id.in_(filtered_doc_ids))
+                .filter(
+                    Document.id.in_(filtered_doc_ids),
+                    Document.is_deleted == False,  # noqa: E712
+                )
                 .limit(50)
                 .all()
             )

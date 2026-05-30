@@ -229,3 +229,39 @@ def test_extract_text_fallback_when_no_text_block():
     response = MagicMock()
     response.content = [block]
     assert _extract_text(response) == "I was unable to produce a response."
+
+
+def test_get_conversation_history_workspace_scoped(db):
+    """L1: history lookup must filter by workspace_id, not conversation_id alone."""
+    import uuid, hashlib
+    from app.models.user import User
+    from app.models.workspace import Workspace
+    from app.models.ai import AIConversation, AIMessage
+    from app.services.ai_engine import get_conversation_history
+
+    user = User(id=str(uuid.uuid4()), email=f"l1_{uuid.uuid4().hex[:6]}@test.com",
+                password_hash=hashlib.sha256(b"x").hexdigest(), full_name="L1 User")
+    db.add(user)
+    db.commit()
+
+    ws1 = Workspace(id=str(uuid.uuid4()), name="WS1", vertical="fraud", created_by=user.id)
+    ws2 = Workspace(id=str(uuid.uuid4()), name="WS2", vertical="fraud", created_by=user.id)
+    db.add_all([ws1, ws2])
+    db.commit()
+
+    conv = AIConversation(id=str(uuid.uuid4()), workspace_id=ws1.id, user_id=user.id)
+    db.add(conv)
+    db.commit()
+
+    msg = AIMessage(id=str(uuid.uuid4()), conversation_id=conv.id, role="user", content="secret message")
+    db.add(msg)
+    db.commit()
+
+    # Correct workspace — should return the message
+    history = get_conversation_history(conv.id, ws1.id, db)
+    assert len(history) == 1
+    assert history[0]["content"] == "secret message"
+
+    # Wrong workspace — must return nothing even though conversation_id matches
+    history_wrong_ws = get_conversation_history(conv.id, ws2.id, db)
+    assert history_wrong_ws == []
