@@ -1,7 +1,8 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.deps import get_workspace_or_404
 from app.models.user import User
 from app.models.workspace import Workspace, WorkspaceMember
 from app.schemas.workspace import WorkspaceCreate, WorkspaceOut, WorkspaceUpdate
@@ -9,18 +10,6 @@ from app.services import audit
 from app.services.auth import get_current_user
 
 router = APIRouter(prefix="/workspaces", tags=["workspaces"])
-
-def get_workspace_or_404(workspace_id: str, user: User, db: Session) -> Workspace:
-    membership = db.query(WorkspaceMember).filter(
-        WorkspaceMember.workspace_id == workspace_id,
-        WorkspaceMember.user_id == user.id
-    ).first()
-    if not membership:
-        raise HTTPException(status_code=404, detail="Workspace not found")
-    workspace = db.query(Workspace).filter(Workspace.id == workspace_id).first()
-    if not workspace:
-        raise HTTPException(status_code=404, detail="Workspace not found")
-    return workspace
 
 @router.post("/", response_model=WorkspaceOut, status_code=201)
 def create_workspace(
