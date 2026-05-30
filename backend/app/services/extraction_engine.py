@@ -33,6 +33,11 @@ client = Anthropic(api_key=settings.anthropic_api_key)
 # output, well within the 8192 limit and leaving headroom for formatting.
 BATCH_SIZE = 40
 
+# Maximum OCR text characters sent per extraction batch.
+# 200_000 chars ≈ 50k tokens — well within Claude Sonnet 4.6's context window.
+# The old 4000-char cap silently dropped evidence from multi-page documents.
+TEXT_LIMIT = 200_000
+
 
 def _log_claude_call(
     call_type: str,
@@ -204,6 +209,12 @@ def _extract_batch(
         for f in fields_batch
     ])
 
+    if len(ocr_text) > TEXT_LIMIT:
+        logger.warning(
+            f"OCR text ({len(ocr_text)} chars) exceeds TEXT_LIMIT ({TEXT_LIMIT}); "
+            "truncating for extraction"
+        )
+
     prompt = f"""{schema.extraction_prompt or 'Extract the following fields from this document.'}
 
 Extract ONLY these {len(fields_batch)} fields:
@@ -222,7 +233,7 @@ Required format:
 ]}}
 
 Document text:
-{ocr_text[:4000]}"""
+{ocr_text[:TEXT_LIMIT]}"""
 
     # Scale max_tokens to batch size: ~100 tokens per field + 200 overhead
     max_tokens = min(len(fields_batch) * 100 + 200, 4096)
