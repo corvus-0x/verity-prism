@@ -10,6 +10,8 @@ That's a real field from a real deed. 61% means Claude found a value but wasn't 
 
 The deed was on disk. The extraction was in the database. There was no way to look at both at once. You'd see the field value and either accept it or note the doubt and move on. No way to pull the source document and check the line it came from. The confidence score was a signal pointing at nothing you could reach. The scoring was working. There was just nowhere to go with it.
 
+That kind of gap doesn't show up in the code. It shows up when you look at what you built from the investigator's side.
+
 ---
 
 A fraud investigation is built on documents. The investigator reads them, takes notes, builds a timeline. The platform is supposed to do the reading faster and keep better records. But if the extracted fields are the only thing visible and the source documents are invisible, the platform hasn't made the investigator's job easier — it's made it different in a way that's worse. Now the decision is about whether to trust a number, not whether to trust a document.
