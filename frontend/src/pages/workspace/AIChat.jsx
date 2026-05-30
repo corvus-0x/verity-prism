@@ -7,9 +7,11 @@ import {
 import ChatMessage from '../../components/ai/ChatMessage'
 import ChatInput from '../../components/ai/ChatInput'
 import LoadingSpinner from '../../components/shared/LoadingSpinner'
+import { useToast } from '../../hooks/useToast'
 
 export default function AIChat() {
   const { workspaceId } = useParams()
+  const { toast } = useToast()
   const [conversations, setConversations] = useState([])
   const [activeConv, setActiveConv] = useState(null)
   const [messages, setMessages] = useState([])
@@ -43,7 +45,8 @@ export default function AIChat() {
 
   const handleSend = async (content) => {
     if (!activeConv) return
-    setMessages((prev) => [...prev, { id: 'temp', role: 'user', content }])
+    const tempMsg = { id: 'temp', role: 'user', content }
+    setMessages((prev) => [...prev, tempMsg])
     setSending(true)
     try {
       await sendMessage(workspaceId, activeConv.id, content)
@@ -55,6 +58,9 @@ export default function AIChat() {
         const updated = convs.data.find((c) => c.id === activeConv.id)
         if (updated) setActiveConv(updated)
       }
+    } catch {
+      setMessages((prev) => prev.filter((m) => m.id !== 'temp'))
+      toast.error('Send failed', 'Your message could not be delivered. Try again.')
     } finally {
       setSending(false)
     }

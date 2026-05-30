@@ -2,7 +2,24 @@ import { http, HttpResponse } from 'msw'
 
 export const handlers = [
   http.post('/auth/login', () => {
-    return HttpResponse.json({ access_token: 'test-token', token_type: 'bearer' })
+    return HttpResponse.json({
+      access_token: 'test-token',
+      token_type: 'bearer',
+      user: {
+        id: 'user-1',
+        email: 'tyler@example.com',
+        full_name: 'Tyler Collins',
+        role: 'investigator',
+        created_at: '2026-01-01T00:00:00Z',
+      },
+    })
+  }),
+  http.get('/auth/me', () => {
+    // Default: 401 — tests that need authenticated session override this
+    return HttpResponse.json({ detail: 'Not authenticated' }, { status: 401 })
+  }),
+  http.post('/auth/logout', () => {
+    return HttpResponse.json({ message: 'Logged out' })
   }),
   http.get('/workspaces/', () => {
     return HttpResponse.json([

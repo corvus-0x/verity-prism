@@ -31,4 +31,4 @@ def test_update_workspace_name(client, auth_headers):
 
 def test_cannot_access_workspace_without_token(client):
     response = client.get("/workspaces/")
-    assert response.status_code == 403
+    assert response.status_code == 401

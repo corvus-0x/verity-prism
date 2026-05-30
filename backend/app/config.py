@@ -20,6 +20,7 @@ class Settings(BaseSettings):
     access_token_expire_minutes: int = 60 * 24
     cors_origins: list[str] = ["http://localhost:5173"]
     max_upload_bytes: int = 52_428_800  # 50 MB
+    cookie_secure: bool = False  # set True in production (HTTPS only)
 
     @field_validator("secret_key")
     @classmethod
