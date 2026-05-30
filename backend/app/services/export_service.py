@@ -13,6 +13,7 @@ import logging
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
+from app.database import SessionLocal
 from app.models.document import Document
 from app.models.document_extraction import DocumentExtraction
 from app.utils.sanitize import escape_csv_cell
@@ -127,10 +128,6 @@ async def document_status_stream(workspace_id: str, document_id: str):
     Opens its own DB session so the long-lived poll doesn't block the request session.
     Closes on terminal status (complete/failed/no_schema/needs_review) or 5-min timeout.
     """
-    from sqlalchemy import func as sqlfunc
-
-    from app.database import SessionLocal
-
     TERMINAL = {"complete", "failed", "no_schema", "needs_review"}
     stream_db = SessionLocal()
     try:
@@ -153,26 +150,7 @@ async def document_status_stream(workspace_id: str, document_id: str):
             payload = {"extraction_status": status}
 
             if status == "complete":
-                latest_subq = (
-                    stream_db.query(
-                        DocumentExtraction.field_name,
-                        sqlfunc.max(DocumentExtraction.attempt).label("max_attempt"),
-                    )
-                    .filter(DocumentExtraction.document_id == document_id)
-                    .group_by(DocumentExtraction.field_name)
-                    .subquery()
-                )
-                field_count = (
-                    stream_db.query(sqlfunc.count(DocumentExtraction.id))
-                    .join(
-                        latest_subq,
-                        (DocumentExtraction.field_name == latest_subq.c.field_name)
-                        & (DocumentExtraction.attempt == latest_subq.c.max_attempt),
-                    )
-                    .filter(DocumentExtraction.document_id == document_id)
-                    .scalar()
-                )
-                payload["field_count"] = field_count
+                payload["field_count"] = len(latest_extractions(document_id, stream_db))
                 payload["detected_doc_type"] = doc.detected_doc_type
             elif status == "failed":
                 payload["extraction_error"] = doc.extraction_error
