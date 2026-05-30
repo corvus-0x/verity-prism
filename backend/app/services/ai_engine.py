@@ -10,16 +10,13 @@ import json
 import logging
 import time
 
-from anthropic import Anthropic
 from sqlalchemy.orm import Session
 
-from app.config import settings
 from app.models.ai import AIConversation, AIMessage
 from app.models.workspace import Workspace
-from app.services import agent_registry, agent_tools
+from app.services import agent_registry, agent_tools, claude_client
 
 logger = logging.getLogger(__name__)
-client = Anthropic(api_key=settings.anthropic_api_key)
 
 MAX_TOOL_ROUNDS = 10
 
@@ -77,7 +74,7 @@ def chat(
     rounds = 0
 
     while rounds < MAX_TOOL_ROUNDS:
-        response = client.messages.create(
+        response = claude_client.get_client().messages.create(
             model="claude-sonnet-4-6",
             max_tokens=4096,
             system=system_prompt,
@@ -125,7 +122,7 @@ def _synthesis_pass(messages: list[dict]) -> str:
     """Force a final answer when the tool-use loop hits MAX_TOOL_ROUNDS.
     Sends accumulated messages to Claude with tools disabled and a directive to synthesize.
     """
-    response = client.messages.create(
+    response = claude_client.get_client().messages.create(
         model="claude-sonnet-4-6",
         max_tokens=4096,
         system=(

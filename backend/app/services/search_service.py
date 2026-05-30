@@ -10,17 +10,15 @@ How it works:
 import json
 import logging
 
-from anthropic import Anthropic
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from app.config import settings
 from app.models.document import Document
 from app.models.document_extraction import DocumentExtraction
+from app.services import claude_client
 from app.utils.json_helpers import strip_json_fences
 
 logger = logging.getLogger(__name__)
-client = Anthropic(api_key=settings.anthropic_api_key)
 
 
 def get_known_field_names(workspace_id: str, db: Session) -> list[str]:
@@ -70,7 +68,7 @@ Respond with JSON only. Example:
 }}"""
 
     try:
-        response = client.messages.create(
+        response = claude_client.get_client().messages.create(
             model="claude-sonnet-4-6",
             max_tokens=300,
             messages=[{"role": "user", "content": prompt}]

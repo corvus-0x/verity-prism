@@ -35,10 +35,11 @@ def test_send_message_returns_assistant_response(client, auth_headers, workspace
         f"/workspaces/{workspace_id}/conversations", headers=auth_headers
     ).json()
 
-    with patch("app.services.ai_engine.client") as mock_client:
-        mock_client.messages.create.return_value = _mock_end_turn(
-            "Based on the workspace data, I found relevant records."
-        )
+    mock_client = MagicMock()
+    mock_client.messages.create.return_value = _mock_end_turn(
+        "Based on the workspace data, I found relevant records."
+    )
+    with patch("app.services.claude_client.get_client", return_value=mock_client):
         response = client.post(
             f"/workspaces/{workspace_id}/conversations/{conv['id']}/messages",
             json={"content": "What documents are in this workspace?"},
@@ -57,8 +58,9 @@ def test_conversation_title_set_from_first_message(client, auth_headers, workspa
     ).json()
     assert conv["title"] is None
 
-    with patch("app.services.ai_engine.client") as mock_client:
-        mock_client.messages.create.return_value = _mock_end_turn("Here is what I found.")
+    mock_client = MagicMock()
+    mock_client.messages.create.return_value = _mock_end_turn("Here is what I found.")
+    with patch("app.services.claude_client.get_client", return_value=mock_client):
         client.post(
             f"/workspaces/{workspace_id}/conversations/{conv['id']}/messages",
             json={"content": "What entities are in this workspace?"},
@@ -77,16 +79,18 @@ def test_multi_turn_conversation_no_duplicate_user_message(client, auth_headers,
         f"/workspaces/{workspace_id}/conversations", headers=auth_headers
     ).json()
 
-    with patch("app.services.ai_engine.client") as mock_client:
-        mock_client.messages.create.return_value = _mock_end_turn("First answer.")
+    mock_client = MagicMock()
+    mock_client.messages.create.return_value = _mock_end_turn("First answer.")
+    with patch("app.services.claude_client.get_client", return_value=mock_client):
         client.post(
             f"/workspaces/{workspace_id}/conversations/{conv['id']}/messages",
             json={"content": "First question"},
             headers=auth_headers,
         )
 
-    with patch("app.services.ai_engine.client") as mock_client:
-        mock_client.messages.create.return_value = _mock_end_turn("Second answer.")
+    mock_client = MagicMock()
+    mock_client.messages.create.return_value = _mock_end_turn("Second answer.")
+    with patch("app.services.claude_client.get_client", return_value=mock_client):
         response = client.post(
             f"/workspaces/{workspace_id}/conversations/{conv['id']}/messages",
             json={"content": "Second question"},
@@ -97,8 +101,9 @@ def test_multi_turn_conversation_no_duplicate_user_message(client, auth_headers,
     assert response.json()["content"] == "Second answer."
 
     # Verify the messages list sent to Claude on the second call has no duplicate user turns
-    with patch("app.services.ai_engine.client") as mock_client:
-        mock_client.messages.create.return_value = _mock_end_turn("Third answer.")
+    mock_client = MagicMock()
+    mock_client.messages.create.return_value = _mock_end_turn("Third answer.")
+    with patch("app.services.claude_client.get_client", return_value=mock_client):
         client.post(
             f"/workspaces/{workspace_id}/conversations/{conv['id']}/messages",
             json={"content": "Third question"},
@@ -175,8 +180,9 @@ def test_chat_executes_tool_and_returns_final_answer(db, ws_and_conv):
         tool_input={},
         final_text="No findings recorded yet in this workspace.",
     )
-    with patch("app.services.ai_engine.client") as mock_client:
-        mock_client.messages.create.side_effect = side_effects
+    mock_client = MagicMock()
+    mock_client.messages.create.side_effect = side_effects
+    with patch("app.services.claude_client.get_client", return_value=mock_client):
         result = chat(ws.id, conv.id, "What findings exist?", db)
 
     assert result == "No findings recorded yet in this workspace."
@@ -207,8 +213,9 @@ def test_chat_synthesis_pass_triggered_at_max_rounds(db, ws_and_conv):
 
     side_effects = [tool_round] * 10 + [synthesis_round]
 
-    with patch("app.services.ai_engine.client") as mock_client:
-        mock_client.messages.create.side_effect = side_effects
+    mock_client = MagicMock()
+    mock_client.messages.create.side_effect = side_effects
+    with patch("app.services.claude_client.get_client", return_value=mock_client):
         result = chat(ws.id, conv.id, "Run a deep analysis.", db)
 
     assert result == "Synthesized answer after max rounds."

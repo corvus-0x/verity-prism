@@ -65,12 +65,11 @@ def _make_doc(db, workspace, user, content: str, is_deleted: bool = False) -> Do
 
 
 def test_search_endpoint_exists(client, auth_headers, workspace_id):
-    with patch("app.services.search_service.Anthropic") as mock_anthropic:
-        mock_client = MagicMock()
-        mock_anthropic.return_value = mock_client
-        mock_client.messages.create.return_value = MagicMock(
-            content=[MagicMock(text='{"fts_query": "deed", "field_filters": [], "doc_type_filter": null}')]
-        )
+    mock_client = MagicMock()
+    mock_client.messages.create.return_value = MagicMock(
+        content=[MagicMock(text='{"fts_query": "deed", "field_filters": [], "doc_type_filter": null}')]
+    )
+    with patch("app.services.claude_client.get_client", return_value=mock_client):
         response = client.post(
             f"/workspaces/{workspace_id}/search",
             json={"query": "find all deeds"},
@@ -82,12 +81,11 @@ def test_search_endpoint_exists(client, auth_headers, workspace_id):
 
 
 def test_empty_workspace_returns_empty_results(client, auth_headers, workspace_id):
-    with patch("app.services.search_service.Anthropic") as mock_anthropic:
-        mock_client = MagicMock()
-        mock_anthropic.return_value = mock_client
-        mock_client.messages.create.return_value = MagicMock(
-            content=[MagicMock(text='{"fts_query": "anything", "field_filters": [], "doc_type_filter": null}')]
-        )
+    mock_client = MagicMock()
+    mock_client.messages.create.return_value = MagicMock(
+        content=[MagicMock(text='{"fts_query": "anything", "field_filters": [], "doc_type_filter": null}')]
+    )
+    with patch("app.services.claude_client.get_client", return_value=mock_client):
         response = client.post(
             f"/workspaces/{workspace_id}/search",
             json={"query": "anything"},
@@ -99,12 +97,11 @@ def test_empty_workspace_returns_empty_results(client, auth_headers, workspace_i
 
 def test_search_is_audit_logged(client, auth_headers, workspace_id, db):
     from app.models.audit import AuditLog
-    with patch("app.services.search_service.Anthropic") as mock_anthropic:
-        mock_client = MagicMock()
-        mock_anthropic.return_value = mock_client
-        mock_client.messages.create.return_value = MagicMock(
-            content=[MagicMock(text='{"fts_query": "test", "field_filters": [], "doc_type_filter": null}')]
-        )
+    mock_client = MagicMock()
+    mock_client.messages.create.return_value = MagicMock(
+        content=[MagicMock(text='{"fts_query": "test", "field_filters": [], "doc_type_filter": null}')]
+    )
+    with patch("app.services.claude_client.get_client", return_value=mock_client):
         client.post(
             f"/workspaces/{workspace_id}/search",
             json={"query": "test search"},
