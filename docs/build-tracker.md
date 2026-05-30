@@ -111,7 +111,9 @@
 
 ---
 
-## Code Audit — Phase 3 (2026-05-29)
+## Code Audit Remediation — Phase 3 (2026-05-29)
+
+> These are audit remediation phases (numbered 1–6 in `docs/code-audit-2026-05-29.md`) — separate from product phases (1–4 in `docs/roadmap.md`). Phases 1 and 2 of the audit remediation are already merged; this is remediation phase 3.
 
 | Task | What It Builds | Status |
 |------|---------------|--------|
@@ -124,12 +126,39 @@
 
 ---
 
-## Phase 2 — Remaining Builds
+## Phase 2 — Remaining Builds (2D — Data Connectors)
+
+> Signal detection (formerly 2B) has been moved to Phase 3 — rules are domain logic, not engine infrastructure. See roadmap Phase 3A.
 
 | Task | What It Builds | Phase | Status |
 |------|---------------|-------|--------|
-| Signal detection framework | signal_rules table + rule evaluator against document_extractions. Framework only — no specific rules (those are vertical cap content). | 2B | 🔲 |
-| Data connectors | irs_teos.py, ohio_sos.py, county_auditor.py, building_permits.py — each fetches public data, hands to pipeline. | 2D | 🔲 |
+| Data connectors | `app/services/connectors/` — irs_teos.py (wraps existing fetch_990_xml.py), ohio_sos.py, county_auditor.py, building_permits.py. Each connector fetches public data and hands files to the pipeline. New endpoints: `POST /workspaces/{id}/connectors/{source}`. | 2D | 🔲 |
+
+---
+
+## Phase 3 — Vertical Packaging (Roadmap)
+
+> **Trigger:** Phase 2D connectors complete. Extraction reliability measurable (2A done ✅). At least one full end-to-end case run with observable confidence metrics.
+
+### 3A — Fraud Vertical v1.0
+
+| Task | What It Builds | Status |
+|------|---------------|--------|
+| Signal detection framework | `signal_rules` table + rule evaluator against `document_extractions`. Built here as fraud cap logic, not generic engine infrastructure — rules are domain-specific. The framework is what gets extracted into the engine if a second vertical needs it. | 🔲 |
+| SR signal definitions | SR-003 (valuation anomaly), SR-004 (UCC burst), SR-005 (zero consideration), SR-015 (deed title defect), SR-021 (revenue spike), SR-024 (charity conduit), SR-025 (false disclosure), SR-026 (construction overage). Full catalog in roadmap. | 🔲 |
+| Network graph | Visual map of entities, properties, transactions, document links. Fraud cap defines edge types (officer_of, controls, owns, financed_by) and what to render. Engine provides entities/relationships tables. | 🔲 |
+| Investigation timeline | Chronological view of fraud-relevant events across extracted date fields. Fraud cap selects which fields matter and what sequence means. | 🔲 |
+| Referral export | AG/IRS/FBI/Farm Credit referral package generators. Fraud cap only — format is domain-specific. | 🔲 |
+| Signal type seed data migration | Move `SIGNAL_TYPES_SEED` out of `findings.py` router and into `app/caps/fraud/signal_types.py` cap installer. Currently misplaced in the engine layer. | 🔲 |
+
+### 3B — Insurance Vertical v1.0
+
+| Task | What It Builds | Status |
+|------|---------------|--------|
+| Insurance schema set | INSURANCE-FORM, ACORD-FORM, PROPERTY-APPRAISAL, CONTRACTOR-INVOICE, MEDICAL-RECORD. Shared with fraud: PARCEL-RECORD. | 🔲 |
+| Claims signal definitions | Contractor invoice date after claim close, estimated repair > appraised value, duplicate claims across policies. Defined when vertical is built. | 🔲 |
+| Claim intake workflow | Upload → extract → flag discrepancies → adjuster review queue → decision. | 🔲 |
+| Claims export | Claims system API push + structured PDF report. Integration TBD based on client system. | 🔲 |
 
 ---
 
