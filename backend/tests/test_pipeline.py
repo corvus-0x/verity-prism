@@ -169,3 +169,82 @@ def test_pipeline_happy_path_marks_complete_with_extractions(
     names = {r.field_name for r in rows}
     assert "grantor_name" in names
     assert "sale_price" in names
+
+
+# ── C2: false-complete on extraction failure ─────────────────────────────────
+
+def test_pipeline_marks_failed_when_all_claude_batches_raise(
+    db, workspace, user, deed_schema, pending_doc
+):
+    """C2: API outage → all batches fail → doc must be 'failed', not 'complete'."""
+    from app.services.document_pipeline import _run_pipeline
+
+    with patch("app.services.document_pipeline.detect_document_type", return_value="DEED"), \
+         patch("app.services.document_pipeline.extract_text", return_value="some deed text"), \
+         patch("app.services.document_pipeline.generate_standardized_name", return_value="deed.pdf"), \
+         patch("app.services.extraction_engine.client") as mock_client:
+
+        mock_client.messages.create.side_effect = Exception("Claude API is unavailable")
+
+        _run_pipeline(
+            pending_doc.id, b"%PDF-1.4 content", "test.pdf",
+            workspace.id, user.id, db,
+        )
+
+    db.refresh(pending_doc)
+    assert pending_doc.extraction_status == "failed", (
+        f"Expected 'failed' but got '{pending_doc.extraction_status}' — "
+        "C2 bug: API failure silently reports complete"
+    )
+    assert pending_doc.extraction_error is not None
+
+    rows = db.query(DocumentExtraction).filter(
+        DocumentExtraction.document_id == pending_doc.id
+    ).all()
+    assert len(rows) == 0, "No extraction rows should exist when API failed"
+
+
+def test_pipeline_marks_complete_when_schema_has_no_fields(
+    db, workspace, user, tmp_path
+):
+    """Edge case: zero-field claude schema → complete is correct (no batches run)."""
+    from app.services.document_pipeline import _run_pipeline
+
+    schema = DocumentSchema(
+        id=str(uuid.uuid4()),
+        document_type="ZERO-FIELD",
+        display_name="Zero Field",
+        vertical="general",
+        schema_fields=[],
+        version=1,
+        is_active=True,
+        parse_strategy="claude",
+        default_confidence_threshold=0.75,
+    )
+    db.add(schema)
+    file_path = tmp_path / "zf.pdf"
+    file_path.write_bytes(b"%PDF-1.4 x")
+    doc = Document(
+        id=str(uuid.uuid4()),
+        workspace_id=workspace.id,
+        filename="zf.pdf",
+        original_filename="zf.pdf",
+        file_path=str(file_path),
+        file_type="pdf",
+        sha256_hash="zf123",
+        source_type="upload",
+        uploaded_by=user.id,
+        extraction_status="pending",
+    )
+    db.add(doc)
+    db.commit()
+
+    with patch("app.services.document_pipeline.detect_document_type", return_value="ZERO-FIELD"), \
+         patch("app.services.document_pipeline.extract_text", return_value="content"), \
+         patch("app.services.document_pipeline.generate_standardized_name", return_value="zf.pdf"), \
+         patch("app.services.extraction_engine.client"):  # no calls expected
+
+        _run_pipeline(doc.id, b"%PDF-1.4 x", "zf.pdf", workspace.id, user.id, db)
+
+    db.refresh(doc)
+    assert doc.extraction_status == "complete"
