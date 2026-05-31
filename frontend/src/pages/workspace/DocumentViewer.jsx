@@ -10,7 +10,8 @@ import 'react-pdf/dist/Page/TextLayer.css'
 import SchemaReviewPane from '../../components/documents/SchemaReviewPane'
 import PDFHighlightOverlay from '../../components/documents/PDFHighlightOverlay'
 import useFieldHighlight from '../../hooks/useFieldHighlight'
-import { useRegionCapture } from '../../hooks/useRegionCapture'
+// useRegionCapture deferred: manual draw mode (drag-to-capture) needs a callback
+// threaded from DocumentViewer → SchemaReviewPane → ExtractionField. Follow-on task.
 import { getSchema } from '../../api/schemas'
 
 pdfjs.GlobalWorkerOptions.workerSrc = new URL(
