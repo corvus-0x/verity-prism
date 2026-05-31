@@ -237,6 +237,48 @@ Decisions made before any vertical work could start. These were flagged in princ
 
 ---
 
+## Docs & Planning — Review Pane Design + Commercial Model (2026-05-31)
+
+> Design session using the visual companion (browser-based mockups). Researched Hyland IDP documentation and Alfresco ng2-components to ground the design in industry patterns before writing a line of code.
+
+| Decision | What changed | Why |
+|----------|-------------|-----|
+| Four field states | Defined auto-extracted / low-confidence / not-extracted / source-obscured as distinct UI states with distinct evidence chains | The Mescher Trinity deed (recorder's stamp overlay, nominal $10 consideration) and Vet Center deed (smudge through first paragraph) showed that "source obscured" is legally distinct from "not extracted" — the AG needs to know whether a missing value is a system limitation or physical document damage |
+| PDF text layer highlighting | Active form field creates a blue highlight box on the PDF at that field's text location | Recorder's office deeds have no labeled fields — values are buried in narrative prose. The operator can't verify an extraction without seeing WHERE on the document the value came from |
+| Evidence capture on corrections | Every operator correction stores a PDF region capture (base64 PNG + page + bounding box + note) alongside the corrected value | Confidence scores prove the machine's certainty. Evidence captures the human's verification. A corrected value with a region capture is as legally defensible as the original extraction |
+| OCR 300 DPI | Bumped from 200 to 300 DPI | 300 DPI is the OCR industry standard. Marginal scans from the recorder's office (stamps, smudges, older typewritten text) extract noticeably better at 300 |
+| Partial batch retry | Failed extraction batches retried once before routing to human review | Transient API errors caused silent partial extractions — the operator saw "complete" documents with unexplained gaps. The review pane handles genuinely broken documents; the retry handles transient failures automatically |
+| Commercial model structure | Pricing tiers defined: extraction in base subscription (predictable cost ~$0.04/deed), chat as add-on (unpredictable, $1.50/session), usage metering from existing `claude_call_logs` | Chat is where costs scale. A large office with 10 investigators doing daily AI chat = $450/month in chat alone vs $40 in extraction. Separating them lets tiers be priced accurately |
+| Prompt caching + model routing | Added to Phase 2F as pre-first-customer work | At public API rates, Haiku + prompt caching cuts per-document extraction cost from ~$0.04 to ~$0.01. At 500 docs/month that's $5 vs $20 in AI cost per customer — meaningful margin at subscription pricing |
+| Blog post 011 — The Queue | Written about the discovery that the confidence threshold routes documents to review but the review pane only shows extracted fields — missing fields are invisible | The discovery moment: the review queue puts the operator in a room with no equipment. Surfacing a problem without a fix is as bad as not detecting it |
+
+---
+
+## Phase 2E Deferred — Full Document Review Pane (2026-05-31, PR #11)
+
+> 12 tasks executed via subagent-driven development. Final code review by Opus caught two real issues (unbounded evidence JSONB, no field name validation on create_extraction). The visual companion confirmed the design against real recorder's office deeds before implementation started.
+
+| Task | What It Builds | Why |
+|------|---------------|-----|
+| Migration `d5e6f7a8b9c0` | `evidence JSONB` nullable column on `document_extractions` | Every operator correction needs an evidence trail: type (auto_highlight / manual_draw / manual_entry / obscured), page number, bounding box, and operator note. Capped at 200KB after CodeRabbit flagged the unbounded write |
+| Schema field groups | `group` key on all 11 schema seeds via `_group()` helper | The review form renders sections (Parties, Financial, Property, Recording etc.) not a flat alphabetical list. Same key used by the Schema Library page |
+| OCR DPI + partial batch retry | `dpi=200 → 300`, retry logic in `extract_fields()` | DPI is a one-line fix with real-world impact on recorder's office deeds. Retry handles transient API failures silently; documents that fail retry route to the review pane |
+| `POST .../extractions` | New endpoint creates attempt=3 row for fields the pipeline never extracted | `PATCH /correct` only patches existing rows. Missing fields need an insert path. Validates field_name against schema_fields (CodeRabbit caught the missing validation in review) |
+| `GET /schemas/{id}` | Single schema fetch by ID | `DocumentViewer` needs the full schema when in review mode to map over all defined fields — the list endpoint existed but not the single-item fetch |
+| `useFieldHighlight` | Text layer search hook — finds field value in pdfjs text items, returns coordinates with match navigation | The highlight can't use fixed positions because recorder's deeds vary in layout by county, era, and type. Text search against the live text layer handles the variance |
+| `useRegionCapture` | Canvas capture hook — crops a region from the react-pdf canvas as base64 PNG; also supports drag-to-draw selection | Verified extractions need visual evidence attached. `capture()` automates the screenshot; `startDraw()` is the manual fallback for fields that text search couldn't locate (deferred wiring) |
+| `ExtractionField` | Four-state field row component | State 1 (high confidence) = display only. State 2 (low confidence) = editable + verify. State 3 (missing) = empty input + verify. State 4 (obscured) = physical document damage, capture the damaged region. Each state has a distinct evidence type for the audit trail |
+| `SchemaReviewPane` | Schema-driven form — maps over `schema.fields`, groups by `group` key, save-all | Maps over the schema definition, not the extractions table. Every defined field is visible whether extracted or not. `pendingChanges` tracks `{value, note}` so Save All preserves operator notes (CodeRabbit caught notes being discarded in first implementation) |
+| `PDFHighlightOverlay` | Absolutely-positioned overlay on PDF canvas — blue box at field location, label, match navigation | The overlay uses `pointerEvents: none` so it doesn't block PDF interaction, with `pointerEvents: auto` restored on the label so navigation buttons work |
+| `DocumentViewer` wiring | Text layer capture from pdfjs, schema fetch, `SchemaReviewPane` in review mode, PDF highlight | `renderTextLayer={true}` enabled; pdfjs document loaded separately to access `getTextContent()` per page; `SchemaReviewPane` replaces `FieldsPane` when `?review=1` and schema is loaded |
+| Evidence size cap | 200KB limit on `evidence` payload in both write endpoints | Inline base64 images in JSONB can be large; no cap would balloon the `document_extractions` table over time |
+
+**Tests passing:** 160 → 171 (+11 new)
+
+**Migration:** `d5e6f7a8b9c0` — adds `evidence JSONB` (nullable) to `document_extractions`. Requires `alembic upgrade head` on deploy.
+
+---
+
 ## Deferred & Relocated Work
 
 Things that were planned for one phase and moved, or explicitly punted. Captured here with the reasoning so when we reach that phase we're not starting from scratch.
