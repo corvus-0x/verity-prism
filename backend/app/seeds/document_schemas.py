@@ -29,6 +29,11 @@ def _repeating(prefix, count, fields):
     return result
 
 
+def _group(fields: list, group_name: str) -> list:
+    """Tag all fields in a list with a group name for the review pane form."""
+    return [dict(f, group=group_name) for f in fields]
+
+
 # ── Field sections ────────────────────────────────────────────────────────────
 
 IDENTITY = [
@@ -292,22 +297,22 @@ If a section is absent or says No Records Found — leave all fields in that sec
 def seed_parcel_record_schema(db):
     """Insert or update the PARCEL-RECORD schema."""
     schema_fields = _fields(
-        IDENTITY,
-        LEGAL,
-        UTILITIES,
-        VALUATION_CURRENT,
-        VALUATION_HISTORY,
-        EXEMPTION,
-        TAX_CURRENT,
-        TAX_DISTRIBUTIONS,
-        TAX_PAYMENTS,
-        SPECIAL_ASSESSMENTS,
-        SALES,
-        DWELLING,
-        COMMERCIAL,
-        IMPROVEMENTS,
-        ADDITIONS,
-        LAND_SEGMENTS,
+        _group(IDENTITY, "Identity"),
+        _group(LEGAL, "Legal"),
+        _group(UTILITIES, "Utilities"),
+        _group(VALUATION_CURRENT, "Valuation"),
+        _group(VALUATION_HISTORY, "Valuation History"),
+        _group(EXEMPTION, "Exemption"),
+        _group(TAX_CURRENT, "Tax"),
+        _group(TAX_DISTRIBUTIONS, "Tax"),
+        _group(TAX_PAYMENTS, "Tax"),
+        _group(SPECIAL_ASSESSMENTS, "Tax"),
+        _group(SALES, "Sales History"),
+        _group(DWELLING, "Structure"),
+        _group(COMMERCIAL, "Structure"),
+        _group(IMPROVEMENTS, "Structure"),
+        _group(ADDITIONS, "Structure"),
+        _group(LAND_SEGMENTS, "Structure"),
     )
 
     existing = db.query(DocumentSchema).filter(
@@ -506,19 +511,19 @@ If a field is not present in this document, leave it null."""
 def seed_deed_schema(db):
     """Insert or update the DEED schema."""
     schema_fields = _fields(
-        DEED_RECORDING,
-        DEED_AUDITOR,
-        DEED_TYPE,
-        DEED_DATES,
-        DEED_GRANTOR,
-        DEED_GRANTEE,
-        DEED_CONSIDERATION,
-        DEED_PROPERTY,
-        DEED_SURVEY,
-        DEED_AUTHORIZATION,
-        DEED_ACKNOWLEDGMENT,
-        DEED_NOTARY,
-        DEED_PREPARER,
+        _group(DEED_RECORDING, "Recording"),
+        _group(DEED_AUDITOR, "Financial"),
+        _group(DEED_TYPE, "Recording"),
+        _group(DEED_DATES, "Recording"),
+        _group(DEED_GRANTOR, "Parties"),
+        _group(DEED_GRANTEE, "Parties"),
+        _group(DEED_CONSIDERATION, "Financial"),
+        _group(DEED_PROPERTY, "Property"),
+        _group(DEED_SURVEY, "Property"),
+        _group(DEED_AUTHORIZATION, "Recording"),
+        _group(DEED_ACKNOWLEDGMENT, "Recording"),
+        _group(DEED_NOTARY, "Recording"),
+        _group(DEED_PREPARER, "Recording"),
     )
 
     existing = db.query(DocumentSchema).filter(
@@ -770,19 +775,19 @@ Missing schedules:
 def seed_990_schema(db):
     """Insert or update the IRS Form 990 schema."""
     schema_fields = _fields(
-        F990_HEADER,
-        F990_REVENUE,
-        F990_EXPENSES,
-        F990_BALANCE_SHEET,
-        F990_ORG,
-        F990_GOVERNANCE,
-        F990_OFFICERS,
-        F990_PROGRAM_REVENUE,
-        F990_SCHEDULE_A,
-        F990_SCHEDULE_D,
-        F990_SCHEDULE_L,
-        F990_SCHEDULE_R,
-        F990_SCHEDULE_O,
+        _group(F990_HEADER, "Organization"),
+        _group(F990_REVENUE, "Financials"),
+        _group(F990_EXPENSES, "Financials"),
+        _group(F990_BALANCE_SHEET, "Financials"),
+        _group(F990_ORG, "Programs"),
+        _group(F990_GOVERNANCE, "Governance"),
+        _group(F990_OFFICERS, "Governance"),
+        _group(F990_PROGRAM_REVENUE, "Programs"),
+        _group(F990_SCHEDULE_A, "Financials"),
+        _group(F990_SCHEDULE_D, "Financials"),
+        _group(F990_SCHEDULE_L, "Governance"),
+        _group(F990_SCHEDULE_R, "Governance"),
+        _group(F990_SCHEDULE_O, "Governance"),
     )
 
     existing = db.query(DocumentSchema).filter(
@@ -923,11 +928,11 @@ If a field is not present in this filing type, leave it null."""
 def seed_sos_filing_schema(db):
     """Insert or update the SOS-FILING schema."""
     schema_fields = _fields(
-        SOS_CORE,
-        SOS_ADDRESSES,
-        SOS_PEOPLE,
-        SOS_FORMATION,
-        SOS_STATUS,
+        _group(SOS_CORE, "Entity"),
+        _group(SOS_ADDRESSES, "Registered Agent"),
+        _group(SOS_PEOPLE, "Officers"),
+        _group(SOS_FORMATION, "Entity"),
+        _group(SOS_STATUS, "Status"),
     )
 
     existing = db.query(DocumentSchema).filter(
@@ -1055,11 +1060,11 @@ If a field is not present in this document type (e.g. collateral on a continuati
 def seed_ucc_schema(db):
     """Insert or update the UCC schema."""
     schema_fields = _fields(
-        UCC_CORE,
-        UCC_DEBTORS,
-        UCC_SECURED,
-        UCC_COLLATERAL,
-        UCC_FILER,
+        _group(UCC_CORE, "Filing"),
+        _group(UCC_DEBTORS, "Debtor"),
+        _group(UCC_SECURED, "Secured Party"),
+        _group(UCC_COLLATERAL, "Collateral"),
+        _group(UCC_FILER, "Filing"),
     )
 
     existing = db.query(DocumentSchema).filter(
@@ -1093,19 +1098,19 @@ def seed_ucc_schema(db):
 # ── BUILDING-PERMIT schema ────────────────────────────────────────────────────
 
 PERMIT_FIELDS = [
-    {"name": "permit_number",    "type": "id_number", "description": "Official permit number (e.g. DA-2018-02488-C or 20201809)", "required": True},
-    {"name": "permit_date",      "type": "date",      "description": "Date the permit was issued", "required": True},
-    {"name": "permit_type",      "type": "text",      "description": "Commercial or Residential", "required": True},
-    {"name": "county",           "type": "text",      "description": "County where the permit was issued", "required": False},
-    {"name": "year_month",       "type": "text",      "description": "Source period label (e.g. AUGUST 2018) — derived from the spreadsheet sheet name", "required": False},
-    {"name": "owner_name",       "type": "name",      "description": "Property owner name — first part of the OWNER OR BUILDER field before the slash separator", "required": False},
-    {"name": "contractor_name",  "type": "name",      "description": "Contractor or builder name — second part of the OWNER OR BUILDER field after the slash.", "required": False},
-    {"name": "property_address", "type": "address",   "description": "Street address of the permitted construction", "required": False},
-    {"name": "city_township",    "type": "text",      "description": "City or township abbreviation as shown in the permit record", "required": False},
-    {"name": "work_description", "type": "text",      "description": "Full description of the permitted work — verbatim from the TYPE column", "required": False},
-    {"name": "estimated_value",  "type": "currency",  "description": "Estimated construction value in dollars.", "required": False},
-    {"name": "square_footage",   "type": "text",      "description": "Square footage of the permitted work", "required": False},
-    {"name": "use_group",        "type": "text",      "description": "IBC use group code: A=Assembly, B=Business, E=Educational, F=Factory, I=Institutional, M=Mercantile, R=Residential, S=Storage, U=Utility. For residential sheets this field contains a sequence count.", "required": False},
+    {"name": "permit_number",    "type": "id_number", "description": "Official permit number (e.g. DA-2018-02488-C or 20201809)", "required": True, "group": "Work"},
+    {"name": "permit_date",      "type": "date",      "description": "Date the permit was issued", "required": True, "group": "Work"},
+    {"name": "permit_type",      "type": "text",      "description": "Commercial or Residential", "required": True, "group": "Work"},
+    {"name": "county",           "type": "text",      "description": "County where the permit was issued", "required": False, "group": "Property"},
+    {"name": "year_month",       "type": "text",      "description": "Source period label (e.g. AUGUST 2018) — derived from the spreadsheet sheet name", "required": False, "group": "Work"},
+    {"name": "owner_name",       "type": "name",      "description": "Property owner name — first part of the OWNER OR BUILDER field before the slash separator", "required": False, "group": "Applicant"},
+    {"name": "contractor_name",  "type": "name",      "description": "Contractor or builder name — second part of the OWNER OR BUILDER field after the slash.", "required": False, "group": "Applicant"},
+    {"name": "property_address", "type": "address",   "description": "Street address of the permitted construction", "required": False, "group": "Property"},
+    {"name": "city_township",    "type": "text",      "description": "City or township abbreviation as shown in the permit record", "required": False, "group": "Property"},
+    {"name": "work_description", "type": "text",      "description": "Full description of the permitted work — verbatim from the TYPE column", "required": False, "group": "Work"},
+    {"name": "estimated_value",  "type": "currency",  "description": "Estimated construction value in dollars.", "required": False, "group": "Work"},
+    {"name": "square_footage",   "type": "text",      "description": "Square footage of the permitted work", "required": False, "group": "Work"},
+    {"name": "use_group",        "type": "text",      "description": "IBC use group code: A=Assembly, B=Business, E=Educational, F=Factory, I=Institutional, M=Mercantile, R=Residential, S=Storage, U=Utility. For residential sheets this field contains a sequence count.", "required": False, "group": "Work"},
 ]
 
 PERMIT_EXTRACTION_PROMPT = """Extract structured data from this building permit record.
@@ -1296,11 +1301,11 @@ If financial statements are absent (AUP or Basic Audit format), leave all financ
 def seed_audit_report_schema(db):
     """Insert or update the AUDIT-REPORT schema."""
     schema_fields = _fields(
-        AUDIT_HEADER,
-        AUDIT_FINANCIALS,
-        AUDIT_DEBT,
-        AUDIT_FINDINGS,
-        AUDIT_FLAGS,
+        _group(AUDIT_HEADER, "Organization"),
+        _group(AUDIT_FINANCIALS, "Financials"),
+        _group(AUDIT_DEBT, "Financials"),
+        _group(AUDIT_FINDINGS, "Findings"),
+        _group(AUDIT_FLAGS, "Findings"),
     )
 
     existing = db.query(DocumentSchema).filter(
@@ -1334,22 +1339,22 @@ def seed_audit_report_schema(db):
 # ── SCREENSHOT schema ─────────────────────────────────────────────────────────
 
 SCREENSHOT_FIELDS = [
-    {"name": "platform",          "type": "text",    "description": "Source platform: Facebook, Twitter/X, Instagram, LinkedIn, NextDoor, YouTube, website, government portal, other", "required": True},
-    {"name": "account_name",      "type": "name",    "description": "Name of the account or page that posted — the display name as shown", "required": False},
-    {"name": "account_handle",    "type": "text",    "description": "Username, handle, or URL identifier of the account", "required": False},
-    {"name": "account_type",      "type": "text",    "description": "Type of account: individual, organization, government, business, nonprofit, media", "required": False},
-    {"name": "post_date",         "type": "date",    "description": "Date the content was originally posted, as shown in the screenshot", "required": False},
-    {"name": "post_time",         "type": "text",    "description": "Time the content was posted, as shown", "required": False},
-    {"name": "post_text",         "type": "text",    "description": "Complete verbatim text of the post — every word, including hashtags and emojis if present", "required": True},
-    {"name": "author_name",       "type": "name",    "description": "Name of the individual who authored the post (may differ from the account name for page posts)", "required": False},
-    {"name": "likes_count",       "type": "text",    "description": "Number of likes or reactions as shown", "required": False},
-    {"name": "comments_count",    "type": "text",    "description": "Number of comments as shown", "required": False},
-    {"name": "shares_count",      "type": "text",    "description": "Number of shares as shown", "required": False},
-    {"name": "screenshot_date",   "type": "date",    "description": "Date the screenshot was captured (if known) — may differ from post date", "required": False},
-    {"name": "entities_mentioned","type": "text",    "description": "Comma-separated list of all named people, organizations, or properties explicitly mentioned in the post text", "required": False},
-    {"name": "property_address",  "type": "address", "description": "Property address if a specific property is the subject of the post", "required": False},
-    {"name": "transaction_described","type": "text", "description": "Summary of any property transaction, agreement, or financial arrangement described in the post", "required": False},
-    {"name": "url",               "type": "text",    "description": "URL of the original post if visible in the screenshot", "required": False},
+    {"name": "platform",          "type": "text",    "description": "Source platform: Facebook, Twitter/X, Instagram, LinkedIn, NextDoor, YouTube, website, government portal, other", "required": True,  "group": "Content"},
+    {"name": "account_name",      "type": "name",    "description": "Name of the account or page that posted — the display name as shown", "required": False, "group": "Content"},
+    {"name": "account_handle",    "type": "text",    "description": "Username, handle, or URL identifier of the account", "required": False, "group": "Content"},
+    {"name": "account_type",      "type": "text",    "description": "Type of account: individual, organization, government, business, nonprofit, media", "required": False, "group": "Content"},
+    {"name": "post_date",         "type": "date",    "description": "Date the content was originally posted, as shown in the screenshot", "required": False, "group": "Content"},
+    {"name": "post_time",         "type": "text",    "description": "Time the content was posted, as shown", "required": False, "group": "Content"},
+    {"name": "post_text",         "type": "text",    "description": "Complete verbatim text of the post — every word, including hashtags and emojis if present", "required": True,  "group": "Content"},
+    {"name": "author_name",       "type": "name",    "description": "Name of the individual who authored the post (may differ from the account name for page posts)", "required": False, "group": "Content"},
+    {"name": "likes_count",       "type": "text",    "description": "Number of likes or reactions as shown", "required": False, "group": "Content"},
+    {"name": "comments_count",    "type": "text",    "description": "Number of comments as shown", "required": False, "group": "Content"},
+    {"name": "shares_count",      "type": "text",    "description": "Number of shares as shown", "required": False, "group": "Content"},
+    {"name": "screenshot_date",   "type": "date",    "description": "Date the screenshot was captured (if known) — may differ from post date", "required": False, "group": "Content"},
+    {"name": "entities_mentioned","type": "text",    "description": "Comma-separated list of all named people, organizations, or properties explicitly mentioned in the post text", "required": False, "group": "Content"},
+    {"name": "property_address",  "type": "address", "description": "Property address if a specific property is the subject of the post", "required": False, "group": "Content"},
+    {"name": "transaction_described","type": "text", "description": "Summary of any property transaction, agreement, or financial arrangement described in the post", "required": False, "group": "Content"},
+    {"name": "url",               "type": "text",    "description": "URL of the original post if visible in the screenshot", "required": False, "group": "Content"},
 ]
 
 # Visible comments — up to 5
@@ -1396,7 +1401,7 @@ If a field is not visible in the screenshot, leave it null."""
 
 def seed_screenshot_schema(db):
     """Insert or update the SCREENSHOT schema."""
-    schema_fields = _fields(SCREENSHOT_FIELDS, SCREENSHOT_COMMENTS)
+    schema_fields = _fields(SCREENSHOT_FIELDS, _group(SCREENSHOT_COMMENTS, "Content"))
     existing = db.query(DocumentSchema).filter(
         DocumentSchema.document_type == "SCREENSHOT"
     ).first()
@@ -1428,25 +1433,25 @@ def seed_screenshot_schema(db):
 # ── OBITUARY schema ───────────────────────────────────────────────────────────
 
 OBITUARY_FIELDS = [
-    {"name": "deceased_full_name",    "type": "name",    "description": "Full legal name of the deceased exactly as printed", "required": True},
-    {"name": "birth_date",            "type": "date",    "description": "Date of birth", "required": False},
-    {"name": "death_date",            "type": "date",    "description": "Date of death — establishes timeline for estate transactions", "required": True},
-    {"name": "age_at_death",          "type": "text",    "description": "Age at time of death", "required": False},
-    {"name": "hometown",              "type": "text",    "description": "City/township where the deceased lived", "required": False},
-    {"name": "county",                "type": "text",    "description": "County of residence", "required": False},
-    {"name": "cause_of_death",        "type": "text",    "description": "Cause or location of death (hospice, hospital) if stated", "required": False},
-    {"name": "spouse_name",           "type": "name",    "description": "Surviving spouse name", "required": False},
-    {"name": "parents",               "type": "text",    "description": "Parents names as listed", "required": False},
-    {"name": "occupation",            "type": "text",    "description": "Career or occupation — farmer, banker, contractor, etc.", "required": False},
-    {"name": "education",             "type": "text",    "description": "School and graduation year if listed", "required": False},
-    {"name": "religious_affiliation", "type": "text",    "description": "Church or religious organization", "required": False},
-    {"name": "funeral_home",          "type": "name",    "description": "Funeral home name", "required": False},
-    {"name": "funeral_home_address",  "type": "address", "description": "Funeral home address", "required": False},
-    {"name": "service_date",          "type": "date",    "description": "Date of funeral mass or memorial service", "required": False},
-    {"name": "burial_location",       "type": "text",    "description": "Cemetery name and location", "required": False},
-    {"name": "source_url",            "type": "text",    "description": "URL of the obituary if captured from a funeral home website", "required": False},
-    {"name": "screenshot_date",       "type": "date",    "description": "Date the page was captured", "required": False},
-    {"name": "memorial_contributions","type": "text",    "description": "Organizations named for memorial donations — directly shows which charities the family endorses", "required": False},
+    {"name": "deceased_full_name",    "type": "name",    "description": "Full legal name of the deceased exactly as printed", "required": True,  "group": "Personal"},
+    {"name": "birth_date",            "type": "date",    "description": "Date of birth", "required": False, "group": "Personal"},
+    {"name": "death_date",            "type": "date",    "description": "Date of death — establishes timeline for estate transactions", "required": True,  "group": "Personal"},
+    {"name": "age_at_death",          "type": "text",    "description": "Age at time of death", "required": False, "group": "Personal"},
+    {"name": "hometown",              "type": "text",    "description": "City/township where the deceased lived", "required": False, "group": "Personal"},
+    {"name": "county",                "type": "text",    "description": "County of residence", "required": False, "group": "Personal"},
+    {"name": "cause_of_death",        "type": "text",    "description": "Cause or location of death (hospice, hospital) if stated", "required": False, "group": "Personal"},
+    {"name": "spouse_name",           "type": "name",    "description": "Surviving spouse name", "required": False, "group": "Family"},
+    {"name": "parents",               "type": "text",    "description": "Parents names as listed", "required": False, "group": "Family"},
+    {"name": "occupation",            "type": "text",    "description": "Career or occupation — farmer, banker, contractor, etc.", "required": False, "group": "Personal"},
+    {"name": "education",             "type": "text",    "description": "School and graduation year if listed", "required": False, "group": "Personal"},
+    {"name": "religious_affiliation", "type": "text",    "description": "Church or religious organization", "required": False, "group": "Personal"},
+    {"name": "funeral_home",          "type": "name",    "description": "Funeral home name", "required": False, "group": "Services"},
+    {"name": "funeral_home_address",  "type": "address", "description": "Funeral home address", "required": False, "group": "Services"},
+    {"name": "service_date",          "type": "date",    "description": "Date of funeral mass or memorial service", "required": False, "group": "Services"},
+    {"name": "burial_location",       "type": "text",    "description": "Cemetery name and location", "required": False, "group": "Services"},
+    {"name": "source_url",            "type": "text",    "description": "URL of the obituary if captured from a funeral home website", "required": False, "group": "Personal"},
+    {"name": "screenshot_date",       "type": "date",    "description": "Date the page was captured", "required": False, "group": "Personal"},
+    {"name": "memorial_contributions","type": "text",    "description": "Organizations named for memorial donations — directly shows which charities the family endorses", "required": False, "group": "Services"},
 ]
 
 # Children — up to 8 (most investigatively significant survivors)
@@ -1505,8 +1510,8 @@ def seed_obituary_schema(db):
     """Insert or update the OBITUARY schema."""
     schema_fields = _fields(
         OBITUARY_FIELDS,
-        OBITUARY_CHILDREN,
-        OBITUARY_SIBLINGS,
+        _group(OBITUARY_CHILDREN, "Family"),
+        _group(OBITUARY_SIBLINGS, "Family"),
     )
 
     existing = db.query(DocumentSchema).filter(
@@ -1540,39 +1545,39 @@ def seed_obituary_schema(db):
 # ── PLAT schema ───────────────────────────────────────────────────────────────
 
 PLAT_FIELDS = [
-    {"name": "instrument_number",    "type": "id_number", "description": "Recorder's instrument number for this plat", "required": True},
-    {"name": "recording_date",       "type": "date",      "description": "Date the plat was recorded with the county recorder", "required": True},
-    {"name": "recording_time",       "type": "text",      "description": "Time of recording", "required": False},
-    {"name": "recording_fee",        "type": "currency",  "description": "Fee paid to record the plat", "required": False},
-    {"name": "recorder_name",        "type": "name",      "description": "County recorder who accepted the filing", "required": False},
-    {"name": "county",               "type": "text",      "description": "County where the plat was recorded", "required": True},
-    {"name": "plat_title",           "type": "text",      "description": "Official title of the plat as printed (e.g. Replat of Lot #29 & #30 of Marion Acres Subdivision Phase 2)", "required": True},
-    {"name": "plat_type",            "type": "text",      "description": "Type of plat: Original Subdivision, Replat, Minor Subdivision, Vacation, Lot Split", "required": False},
-    {"name": "owner_name",           "type": "name",      "description": "Owner of the land at time of platting — the entity creating the subdivision", "required": False},
-    {"name": "owner_instrument",     "type": "id_number", "description": "Deed/instrument number showing the owner's title", "required": False},
-    {"name": "township",             "type": "text",      "description": "Township where the platted land is located", "required": False},
-    {"name": "section_description",  "type": "text",      "description": "Quarter-section description (e.g. Northwest Quarter of Section 26, Town 7 South, Range 3 East)", "required": False},
-    {"name": "total_area_acres",     "type": "text",      "description": "Total area of the plat in acres", "required": False},
-    {"name": "number_of_lots",       "type": "text",      "description": "Number of lots created by this plat", "required": False},
-    {"name": "lots_created",         "type": "text",      "description": "Names/numbers of lots created (e.g. Lot 29A)", "required": False},
-    {"name": "lots_vacated",         "type": "text",      "description": "Names/numbers of existing lots vacated or merged by this plat", "required": False},
-    {"name": "zoning",               "type": "text",      "description": "Zoning designation (R-1, B-1, etc.)", "required": False},
-    {"name": "subdivision_name",     "type": "text",      "description": "Parent subdivision name", "required": False},
-    {"name": "prior_plat_instrument","type": "id_number", "description": "Instrument number of the prior plat this replat references", "required": False},
-    {"name": "surveyor_name",        "type": "name",      "description": "Name of the registered professional surveyor who prepared the plat", "required": False},
-    {"name": "surveyor_ps_number",   "type": "id_number", "description": "Ohio PS (Professional Surveyor) license number", "required": False},
-    {"name": "survey_date",          "type": "date",      "description": "Date the field survey was performed", "required": False},
-    {"name": "engineering_firm",     "type": "text",      "description": "Engineering or surveying firm that prepared the plat", "required": False},
-    {"name": "engineering_firm_address","type": "address","description": "Address of the engineering firm", "required": False},
-    {"name": "planning_commission_approval_date","type": "date","description": "Date the regional planning commission approved the plat", "required": False},
-    {"name": "planning_commission_secretary","type": "name","description": "Secretary who signed the planning commission certificate", "required": False},
-    {"name": "auditor_certification_date","type": "date", "description": "Date the county auditor certified no unpaid taxes on the platted land", "required": False},
-    {"name": "auditor_name",         "type": "name",      "description": "County auditor who signed the tax certificate", "required": False},
-    {"name": "deed_delivery_person", "type": "text",      "description": "Person or entity who dropped off the plat at the recorder — can reveal contractors or legal agents connected to the owner", "required": False},
-    {"name": "roads_shown",          "type": "text",      "description": "Road names visible on the plat drawing — road names can confirm geographic location", "required": False},
-    {"name": "easements_created",    "type": "text",      "description": "Utility or other easements created or vacated by this plat", "required": False},
-    {"name": "covenants_reference",  "type": "id_number", "description": "Instrument number where subdivision covenants and restrictions are recorded", "required": False},
-    {"name": "health_dept_approval_date","type": "date",  "description": "Date of health department inspection/approval if shown", "required": False},
+    {"name": "instrument_number",    "type": "id_number", "description": "Recorder's instrument number for this plat", "required": True,  "group": "Recording"},
+    {"name": "recording_date",       "type": "date",      "description": "Date the plat was recorded with the county recorder", "required": True,  "group": "Recording"},
+    {"name": "recording_time",       "type": "text",      "description": "Time of recording", "required": False, "group": "Recording"},
+    {"name": "recording_fee",        "type": "currency",  "description": "Fee paid to record the plat", "required": False, "group": "Recording"},
+    {"name": "recorder_name",        "type": "name",      "description": "County recorder who accepted the filing", "required": False, "group": "Recording"},
+    {"name": "county",               "type": "text",      "description": "County where the plat was recorded", "required": True,  "group": "Property"},
+    {"name": "plat_title",           "type": "text",      "description": "Official title of the plat as printed (e.g. Replat of Lot #29 & #30 of Marion Acres Subdivision Phase 2)", "required": True,  "group": "Property"},
+    {"name": "plat_type",            "type": "text",      "description": "Type of plat: Original Subdivision, Replat, Minor Subdivision, Vacation, Lot Split", "required": False, "group": "Property"},
+    {"name": "owner_name",           "type": "name",      "description": "Owner of the land at time of platting — the entity creating the subdivision", "required": False, "group": "Property"},
+    {"name": "owner_instrument",     "type": "id_number", "description": "Deed/instrument number showing the owner's title", "required": False, "group": "Property"},
+    {"name": "township",             "type": "text",      "description": "Township where the platted land is located", "required": False, "group": "Property"},
+    {"name": "section_description",  "type": "text",      "description": "Quarter-section description (e.g. Northwest Quarter of Section 26, Town 7 South, Range 3 East)", "required": False, "group": "Property"},
+    {"name": "total_area_acres",     "type": "text",      "description": "Total area of the plat in acres", "required": False, "group": "Property"},
+    {"name": "number_of_lots",       "type": "text",      "description": "Number of lots created by this plat", "required": False, "group": "Property"},
+    {"name": "lots_created",         "type": "text",      "description": "Names/numbers of lots created (e.g. Lot 29A)", "required": False, "group": "Property"},
+    {"name": "lots_vacated",         "type": "text",      "description": "Names/numbers of existing lots vacated or merged by this plat", "required": False, "group": "Property"},
+    {"name": "zoning",               "type": "text",      "description": "Zoning designation (R-1, B-1, etc.)", "required": False, "group": "Property"},
+    {"name": "subdivision_name",     "type": "text",      "description": "Parent subdivision name", "required": False, "group": "Property"},
+    {"name": "prior_plat_instrument","type": "id_number", "description": "Instrument number of the prior plat this replat references", "required": False, "group": "Recording"},
+    {"name": "surveyor_name",        "type": "name",      "description": "Name of the registered professional surveyor who prepared the plat", "required": False, "group": "Recording"},
+    {"name": "surveyor_ps_number",   "type": "id_number", "description": "Ohio PS (Professional Surveyor) license number", "required": False, "group": "Recording"},
+    {"name": "survey_date",          "type": "date",      "description": "Date the field survey was performed", "required": False, "group": "Recording"},
+    {"name": "engineering_firm",     "type": "text",      "description": "Engineering or surveying firm that prepared the plat", "required": False, "group": "Recording"},
+    {"name": "engineering_firm_address","type": "address","description": "Address of the engineering firm", "required": False, "group": "Recording"},
+    {"name": "planning_commission_approval_date","type": "date","description": "Date the regional planning commission approved the plat", "required": False, "group": "Recording"},
+    {"name": "planning_commission_secretary","type": "name","description": "Secretary who signed the planning commission certificate", "required": False, "group": "Recording"},
+    {"name": "auditor_certification_date","type": "date", "description": "Date the county auditor certified no unpaid taxes on the platted land", "required": False, "group": "Recording"},
+    {"name": "auditor_name",         "type": "name",      "description": "County auditor who signed the tax certificate", "required": False, "group": "Recording"},
+    {"name": "deed_delivery_person", "type": "text",      "description": "Person or entity who dropped off the plat at the recorder — can reveal contractors or legal agents connected to the owner", "required": False, "group": "Recording"},
+    {"name": "roads_shown",          "type": "text",      "description": "Road names visible on the plat drawing — road names can confirm geographic location", "required": False, "group": "Property"},
+    {"name": "easements_created",    "type": "text",      "description": "Utility or other easements created or vacated by this plat", "required": False, "group": "Property"},
+    {"name": "covenants_reference",  "type": "id_number", "description": "Instrument number where subdivision covenants and restrictions are recorded", "required": False, "group": "Recording"},
+    {"name": "health_dept_approval_date","type": "date",  "description": "Date of health department inspection/approval if shown", "required": False, "group": "Recording"},
 ]
 
 # Adjacent lot owners — up to 6
@@ -1629,7 +1634,7 @@ If a field is not present on this plat, leave it null."""
 
 def seed_plat_schema(db):
     """Insert or update the PLAT schema."""
-    schema_fields = _fields(PLAT_FIELDS, PLAT_ADJACENT)
+    schema_fields = _fields(PLAT_FIELDS, _group(PLAT_ADJACENT, "Property"))
     existing = db.query(DocumentSchema).filter(
         DocumentSchema.document_type == "PLAT"
     ).first()
@@ -1661,25 +1666,25 @@ def seed_plat_schema(db):
 # ── CORRESPONDENCE schema ─────────────────────────────────────────────────────
 
 CORRESPONDENCE_FIELDS = [
-    {"name": "document_subtype",    "type": "text",    "description": "Type of correspondence: complaint letter, referral, formal notice, regulatory filing, demand letter, response letter, memorandum, email", "required": True},
-    {"name": "date",                "type": "date",    "description": "Date the document was written or signed", "required": False},
-    {"name": "from_name",           "type": "name",    "description": "Author or sender name", "required": False},
-    {"name": "from_org",            "type": "text",    "description": "Author's organization or firm", "required": False},
-    {"name": "to_name",             "type": "name",    "description": "Recipient name", "required": False},
-    {"name": "to_org",              "type": "text",    "description": "Recipient organization (e.g. Ohio Attorney General, IRS Exempt Organizations, FBI)", "required": False},
-    {"name": "to_address",          "type": "address", "description": "Recipient mailing address", "required": False},
-    {"name": "re_line",             "type": "text",    "description": "RE: subject line — what the letter is about", "required": False},
-    {"name": "subject_entity",      "type": "name",    "description": "Primary entity the correspondence concerns", "required": False},
-    {"name": "subject_ein",         "type": "id_number","description": "EIN of the subject organization if applicable", "required": False},
-    {"name": "document_summary",    "type": "text",    "description": "Brief summary of the document's purpose and key content", "required": False},
-    {"name": "full_text",           "type": "text",    "description": "Complete verbatim text of the letter or correspondence — do not summarize", "required": False},
-    {"name": "violations_alleged",  "type": "text",    "description": "Comma-separated list of violations, laws, or regulations cited (e.g. IRC 4941, IRC 4958, Ohio Rev. Code 1716, wire fraud)", "required": False},
-    {"name": "relief_requested",    "type": "text",    "description": "What action the author is requesting from the recipient", "required": False},
-    {"name": "signed",              "type": "boolean", "description": "True if the document has a wet or electronic signature; false if a template/draft with blank signature block", "required": False},
-    {"name": "is_draft",            "type": "boolean", "description": "True if the document is a draft or template (placeholder dates, blank signature, [Date] fields)", "required": False},
-    {"name": "reference_number",    "type": "id_number","description": "Any case number, complaint number, or reference number assigned", "required": False},
-    {"name": "attachments_mentioned","type": "text",   "description": "Documents or exhibits referenced as attachments in the letter", "required": False},
-    {"name": "source_url",          "type": "text",    "description": "URL if the document was retrieved from a web source", "required": False},
+    {"name": "document_subtype",    "type": "text",    "description": "Type of correspondence: complaint letter, referral, formal notice, regulatory filing, demand letter, response letter, memorandum, email", "required": True,  "group": "Header"},
+    {"name": "date",                "type": "date",    "description": "Date the document was written or signed", "required": False, "group": "Header"},
+    {"name": "from_name",           "type": "name",    "description": "Author or sender name", "required": False, "group": "Header"},
+    {"name": "from_org",            "type": "text",    "description": "Author's organization or firm", "required": False, "group": "Header"},
+    {"name": "to_name",             "type": "name",    "description": "Recipient name", "required": False, "group": "Header"},
+    {"name": "to_org",              "type": "text",    "description": "Recipient organization (e.g. Ohio Attorney General, IRS Exempt Organizations, FBI)", "required": False, "group": "Header"},
+    {"name": "to_address",          "type": "address", "description": "Recipient mailing address", "required": False, "group": "Header"},
+    {"name": "re_line",             "type": "text",    "description": "RE: subject line — what the letter is about", "required": False, "group": "Header"},
+    {"name": "subject_entity",      "type": "name",    "description": "Primary entity the correspondence concerns", "required": False, "group": "Header"},
+    {"name": "subject_ein",         "type": "id_number","description": "EIN of the subject organization if applicable", "required": False, "group": "Header"},
+    {"name": "document_summary",    "type": "text",    "description": "Brief summary of the document's purpose and key content", "required": False, "group": "Body"},
+    {"name": "full_text",           "type": "text",    "description": "Complete verbatim text of the letter or correspondence — do not summarize", "required": False, "group": "Body"},
+    {"name": "violations_alleged",  "type": "text",    "description": "Comma-separated list of violations, laws, or regulations cited (e.g. IRC 4941, IRC 4958, Ohio Rev. Code 1716, wire fraud)", "required": False, "group": "Body"},
+    {"name": "relief_requested",    "type": "text",    "description": "What action the author is requesting from the recipient", "required": False, "group": "Body"},
+    {"name": "signed",              "type": "boolean", "description": "True if the document has a wet or electronic signature; false if a template/draft with blank signature block", "required": False, "group": "Signatures"},
+    {"name": "is_draft",            "type": "boolean", "description": "True if the document is a draft or template (placeholder dates, blank signature, [Date] fields)", "required": False, "group": "Signatures"},
+    {"name": "reference_number",    "type": "id_number","description": "Any case number, complaint number, or reference number assigned", "required": False, "group": "Header"},
+    {"name": "attachments_mentioned","type": "text",   "description": "Documents or exhibits referenced as attachments in the letter", "required": False, "group": "Body"},
+    {"name": "source_url",          "type": "text",    "description": "URL if the document was retrieved from a web source", "required": False, "group": "Header"},
 ]
 
 # Allegations — up to 10 numbered allegations in a complaint
@@ -1725,7 +1730,7 @@ If a field is not present, leave it null."""
 
 def seed_correspondence_schema(db):
     """Insert or update the CORRESPONDENCE schema."""
-    schema_fields = _fields(CORRESPONDENCE_FIELDS, CORRESPONDENCE_ALLEGATIONS)
+    schema_fields = _fields(CORRESPONDENCE_FIELDS, _group(CORRESPONDENCE_ALLEGATIONS, "Body"))
     existing = db.query(DocumentSchema).filter(
         DocumentSchema.document_type == "CORRESPONDENCE"
     ).first()
