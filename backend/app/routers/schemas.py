@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import case
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -18,7 +19,14 @@ def list_schemas(
     schemas = (
         db.query(DocumentSchema)
         .filter(DocumentSchema.is_active == True)
-        .order_by(DocumentSchema.vertical, DocumentSchema.display_name)
+        .order_by(
+            case(
+                (DocumentSchema.vertical == 'general', 0),
+                else_=1,
+            ),
+            DocumentSchema.vertical,
+            DocumentSchema.display_name,
+        )
         .all()
     )
     return [
