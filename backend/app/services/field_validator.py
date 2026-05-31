@@ -4,9 +4,9 @@ Field validator — applies per-field validation rules defined in schema_fields 
 validate_extractions() is a pure function: no DB access, no side effects.
 Called in the pipeline after extraction and before confidence evaluation.
 """
-import re
-import logging
 from dataclasses import dataclass
+import logging
+import re
 
 logger = logging.getLogger(__name__)
 

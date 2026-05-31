@@ -261,13 +261,15 @@ Document text:
         # of field_name/field_value despite explicit instructions
         normalised = []
         for item in raw:
-            ai_conf = item.get("confidence", 1.0)
+            ai_conf_raw = item.get("confidence")
+            ai_conf = ai_conf_raw if ai_conf_raw is not None else 1.0
+            ocr_raw = item.get("ocr_confidence")
             normalised.append({
                 "field_name": item.get("field_name") or item.get("field", ""),
                 "field_value": item.get("field_value") or item.get("value"),
                 "field_type": item.get("field_type", "text"),
                 "confidence": ai_conf,
-                "ocr_confidence": item.get("ocr_confidence", ai_conf),
+                "ocr_confidence": ocr_raw if ocr_raw is not None else ai_conf,
             })
         return normalised
     except Exception as e:

@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from sqlalchemy.orm import Session
 
 from app.models.document_schema import DocumentSchema
-from app.services.extraction_engine import _extract_batch, save_extractions, ExtractionBatchError
+from app.services.extraction_engine import ExtractionBatchError, _extract_batch, save_extractions
 
 logger = logging.getLogger(__name__)
 

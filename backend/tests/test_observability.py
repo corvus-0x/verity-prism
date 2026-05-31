@@ -75,3 +75,44 @@ def test_current_processing_returns_counts(client, auth_headers, ws_and_docs):
     assert "pending" in data
     assert "needs_review" in data
     assert "total_active" in data
+
+
+def test_automation_rate_excludes_other_users_workspaces(db, client, auth_headers, ws_and_docs):
+    """Documents in a workspace owned by another user must not appear in the caller's metrics."""
+    user = db.query(User).filter(User.email == "tyler@example.com").first()
+    _, schema = ws_and_docs
+
+    # Baseline: caller's 3 docs are visible
+    resp = client.get("/observability/automation-rate", headers=auth_headers)
+    baseline_total = resp.json()["total"]
+    assert baseline_total >= 3
+
+    # Create a different user and their workspace with 2 docs
+    other_user = User(
+        id=str(uuid.uuid4()),
+        email=f"other_{uuid.uuid4()}@test.com",
+        full_name="Other User",
+        password_hash="x",
+    )
+    db.add(other_user)
+    other_ws = Workspace(
+        id=str(uuid.uuid4()), name="Other WS", vertical="general",
+        created_by=other_user.id,
+    )
+    db.add(other_ws)
+    db.flush()
+    for i in range(2):
+        db.add(Document(
+            id=str(uuid.uuid4()), workspace_id=other_ws.id,
+            filename=f"other_{i}.pdf", original_filename=f"other_{i}.pdf",
+            file_path=f"/tmp/other_{i}.pdf", file_type="pdf",
+            sha256_hash=f"other_hash_{i}", uploaded_by=other_user.id,
+            extraction_status="complete", schema_id=schema.id,
+        ))
+    db.commit()
+
+    # Caller's total must not have increased
+    resp = client.get("/observability/automation-rate", headers=auth_headers)
+    assert resp.json()["total"] == baseline_total, (
+        "Other user's documents leaked into automation-rate response"
+    )

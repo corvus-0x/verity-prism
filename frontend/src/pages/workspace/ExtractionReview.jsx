@@ -37,9 +37,9 @@ function FlagModal({ item, workspaceId, onClose, onFlagged }) {
   }
 
   return (
-    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50" role="dialog" aria-modal="true">
+    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50" role="dialog" aria-modal="true" aria-labelledby="flag-modal-title">
       <div className="bg-slate-900 border border-slate-700 rounded-xl p-6 w-full max-w-md shadow-2xl">
-        <h2 className="text-white font-semibold mb-1">Flag Document</h2>
+        <h2 id="flag-modal-title" className="text-white font-semibold mb-1">Flag Document</h2>
         <p className="text-slate-400 text-sm mb-4 truncate">{item.filename}</p>
 
         <label className="block text-slate-400 text-xs font-medium mb-1">Reason</label>

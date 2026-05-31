@@ -215,8 +215,8 @@ Add optional `validation` property to `schema_fields` JSON. Types confirmed from
 
 Post-extraction, pre-signal. Catches semantic errors that Claude extracts confidently but incorrectly (transposed dates, wrong numeric format). Cross-field rules (deed_date before recording_date) are Phase 3 — they require knowing both field values simultaneously.
 
-**7. Output format normalization**
-New capability entirely: a normalization layer applied to raw extracted values *before* they are stored. Configured per field in `schema_fields` JSON as an ordered list of transforms. Types confirmed:
+**7. Output format normalization** *(deferred — follow-on plan)*
+New capability: a normalization layer applied to raw extracted values *before* they are stored. Configured per field in `schema_fields` JSON as an ordered list of transforms. Not implemented in Phase 2E — see Deferred section below. Types confirmed for the follow-on plan:
 - `remove_chars` — strip symbols or punctuation (e.g., remove `#` from `#100`)
 - `find_replace` — swap strings at runtime (normalize entity name variants)
 - `date_format` — convert date to target format (e.g., `01.05.2026` → `05/01/2026`)

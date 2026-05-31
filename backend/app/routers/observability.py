@@ -117,8 +117,9 @@ def get_classification_details(
     """Per-schema accuracy metrics — avg AI confidence, avg OCR confidence, retry/correction rates."""
 
     schema_rows = (
-        db.query(DocumentSchema.document_type, DocumentSchema.id)
+        db.query(DocumentSchema.document_type, func.max(DocumentSchema.id).label("id"))
         .filter(DocumentSchema.is_active == True)
+        .group_by(DocumentSchema.document_type)
         .all()
     )
 

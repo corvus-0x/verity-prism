@@ -48,7 +48,7 @@ function ExtractionRow({ extraction: e, editable, workspaceId, documentId, onUpd
 
   const rowClass = isHumanCorrected
     ? 'bg-green-950'
-    : e.confidence < 0.7
+    : e.confidence < 0.7 || (e.ocr_confidence != null && e.ocr_confidence < 0.7)
     ? 'bg-yellow-950'
     : ''
 
