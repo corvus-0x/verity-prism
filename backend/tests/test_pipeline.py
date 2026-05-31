@@ -402,3 +402,44 @@ def test_extract_batch_falls_back_ocr_confidence_to_confidence(db, deed_schema):
         )
 
     assert results[0]["ocr_confidence"] == 0.80
+
+
+def test_evaluate_uses_per_field_ai_threshold_correct():
+    """When a field has ai_threshold in schema_fields, use it instead of the default."""
+    extractions = [
+        {"field_name": "ein", "confidence": 0.88, "ocr_confidence": 0.95},
+        {"field_name": "vendor_name", "confidence": 0.80, "ocr_confidence": 0.90},
+    ]
+    result = evaluate(
+        extractions,
+        threshold=0.75,
+        field_thresholds={"ein": 0.95},
+    )
+    assert "ein" in result.low_confidence_fields       # 0.88 < 0.95 (field threshold)
+    assert "vendor_name" not in result.low_confidence_fields  # 0.80 >= 0.75 (default)
+
+
+def test_evaluate_flags_low_ocr_confidence():
+    """Fields below the ocr_threshold are flagged even when ai confidence is high."""
+    extractions = [
+        {"field_name": "sale_price", "confidence": 0.90, "ocr_confidence": 0.50},
+    ]
+    result = evaluate(
+        extractions,
+        threshold=0.75,
+        ocr_threshold=0.70,
+    )
+    assert "sale_price" in result.low_confidence_fields  # ocr 0.50 < ocr_threshold 0.70
+
+
+def test_evaluate_passes_when_both_confidences_meet_thresholds():
+    """Field passes only when both ai and ocr confidence are above their thresholds."""
+    extractions = [
+        {"field_name": "grantor_name", "confidence": 0.92, "ocr_confidence": 0.88},
+    ]
+    result = evaluate(
+        extractions,
+        threshold=0.75,
+        ocr_threshold=0.80,
+    )
+    assert result.needs_review is False  # 0.92 >= 0.75 and 0.88 >= 0.80

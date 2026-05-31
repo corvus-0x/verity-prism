@@ -27,17 +27,47 @@ class EvaluationResult:
         return len(self.low_confidence_fields) > 0
 
 
-def evaluate(extractions: list[dict], threshold: float) -> EvaluationResult:
+def evaluate(
+    extractions: list[dict],
+    threshold: float,
+    field_thresholds: dict[str, float] | None = None,
+    ocr_threshold: float | None = None,
+    ocr_field_thresholds: dict[str, float] | None = None,
+) -> EvaluationResult:
     """
-    Identify fields whose confidence falls below the schema threshold.
-    Pure function — takes the extracted list[dict], returns which field names failed.
-    Does not read from or write to the database.
+    Identify fields whose confidence falls below their threshold.
+
+    threshold: default AI confidence threshold for all fields.
+    field_thresholds: per-field AI threshold overrides {field_name: threshold}.
+    ocr_threshold: default OCR confidence threshold (None = skip OCR check).
+    ocr_field_thresholds: per-field OCR threshold overrides {field_name: threshold}.
+
+    A field is flagged if AI confidence < its AI threshold OR
+    OCR confidence < its OCR threshold (when ocr_threshold is set).
+    Pure function — no DB access.
     """
-    low = [
-        e["field_name"]
-        for e in extractions
-        if e.get("field_name") and e.get("confidence", 1.0) < threshold
-    ]
+    low = []
+    _field_ai = field_thresholds or {}
+    _field_ocr = ocr_field_thresholds or {}
+
+    for e in extractions:
+        name = e.get("field_name")
+        if not name:
+            continue
+
+        ai_thresh = _field_ai.get(name, threshold)
+        ai_conf = e.get("confidence", 1.0)
+        ai_failed = ai_conf < ai_thresh
+
+        ocr_failed = False
+        if ocr_threshold is not None:
+            ocr_thresh = _field_ocr.get(name, ocr_threshold)
+            ocr_conf = e.get("ocr_confidence", 1.0)
+            ocr_failed = ocr_conf < ocr_thresh
+
+        if ai_failed or ocr_failed:
+            low.append(name)
+
     return EvaluationResult(
         low_confidence_fields=low,
         threshold_used=threshold,
@@ -59,7 +89,6 @@ def run_retry(
     runs one Claude call, and saves results as attempt=2 rows.
     Returns the retry extractions list (may be empty if Claude fails).
     """
-    # Build mini-batch: only schema fields that failed
     failing_set = set(low_confidence_field_names)
     fields_batch = [
         f for f in (schema.schema_fields or [])
