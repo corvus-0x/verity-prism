@@ -124,7 +124,7 @@ export default function ExtractionField({
       )}
 
       {/* Action buttons */}
-      {!isHumanCorrected && !verified && (
+      {!isHumanCorrected && !verified && (isLowConfidence || isMissing || isObscured) && (
         <div className="flex gap-1 mt-1.5">
           {isObscured ? (
             <button
