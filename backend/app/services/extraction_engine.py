@@ -198,7 +198,7 @@ def _extract_batch(
     """
     Ask Claude to extract a single batch of fields.
     Returns a list of extraction dicts with standardised keys:
-    field_name, field_value, field_type, confidence.
+    field_name, field_value, field_type, confidence, ocr_confidence.
     """
     fields_description = "\n".join([
         f"- {f['name']} ({f['type']}): {f['description']}"
