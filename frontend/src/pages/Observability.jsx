@@ -10,6 +10,7 @@ import {
   getVolume,
 } from '../api/observability'
 import LoadingSpinner from '../components/shared/LoadingSpinner'
+import AppShell from '../components/layout/AppShell'
 
 function StatCard({ label, value, sub, color = 'text-white' }) {
   return (
@@ -47,6 +48,7 @@ export default function Observability() {
   const automationPct = rate ? Math.round(rate.automation_rate * 100) : 0
 
   return (
+    <AppShell>
     <div className="max-w-6xl mx-auto px-6 py-8 space-y-8">
       <div>
         <h1 className="text-white text-xl font-semibold">Observability</h1>
@@ -181,5 +183,6 @@ export default function Observability() {
         </section>
       )}
     </div>
+    </AppShell>
   )
 }
