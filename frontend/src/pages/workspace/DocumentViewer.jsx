@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { useParams, useSearchParams, Link } from 'react-router-dom'
 import { listDocuments, getDocument, getExtractions, getDocumentFile } from '../../api/documents'
 import DocumentList from '../../components/documents/DocumentList'
@@ -7,6 +7,12 @@ import LoadingSpinner from '../../components/shared/LoadingSpinner'
 import { Document, Page, pdfjs } from 'react-pdf'
 import 'react-pdf/dist/Page/AnnotationLayer.css'
 import 'react-pdf/dist/Page/TextLayer.css'
+import SchemaReviewPane from '../../components/documents/SchemaReviewPane'
+import PDFHighlightOverlay from '../../components/documents/PDFHighlightOverlay'
+import useFieldHighlight from '../../hooks/useFieldHighlight'
+// useRegionCapture deferred: manual draw mode (drag-to-capture) needs a callback
+// threaded from DocumentViewer → SchemaReviewPane → ExtractionField. Follow-on task.
+import { getSchema } from '../../api/schemas'
 
 pdfjs.GlobalWorkerOptions.workerSrc = new URL(
   'pdfjs-dist/build/pdf.worker.min.mjs',
@@ -27,6 +33,13 @@ export default function DocumentViewer() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const fileUrlRef = useRef(null)
+  const [schema, setSchema] = useState(null)
+  const [pdfProxy, setPdfProxy] = useState(null)
+  const [textItems, setTextItems] = useState([])
+  const [pageViewport, setPageViewport] = useState(null)
+  const [activeFieldName, setActiveFieldName] = useState('')
+  const [activeFieldValue, setActiveFieldValue] = useState('')
+  const pageContainerRef = useRef(null)
 
   // Fetch the doc list independently — doesn't change when documentId changes
   useEffect(() => {
@@ -58,6 +71,11 @@ export default function DocumentViewer() {
         return
       }
       setDoc(docRes.value.data)
+      if (docRes.value.data.schema_id) {
+        getSchema(docRes.value.data.schema_id)
+          .then((r) => setSchema(r.data))
+          .catch(() => {})
+      }
       setExtractions(extRes.status === 'fulfilled' ? extRes.value.data : [])
 
       if (fileRes.status === 'fulfilled') {
@@ -76,6 +94,33 @@ export default function DocumentViewer() {
       }
     }
   }, [workspaceId, documentId])
+
+  useEffect(() => {
+    if (!fileUrl) return
+    const loadingTask = pdfjs.getDocument(fileUrl)
+    loadingTask.promise.then((pdf) => setPdfProxy(pdf))
+    return () => loadingTask.destroy?.()
+  }, [fileUrl])
+
+  useEffect(() => {
+    if (!pdfProxy || !currentPage) return
+    pdfProxy.getPage(currentPage).then((page) => {
+      const viewport = page.getViewport({ scale: 1.0 })
+      setPageViewport(viewport)
+      page.getTextContent().then((content) => {
+        setTextItems(content.items)
+      })
+    })
+  }, [pdfProxy, currentPage])
+
+  const { matches, activeIndex, activeMatch, next, prev } = useFieldHighlight(
+    activeFieldValue, textItems, pageViewport
+  )
+
+  const handleFieldFocus = useCallback((fieldName, fieldValue) => {
+    setActiveFieldName(fieldName)
+    setActiveFieldValue(fieldValue || '')
+  }, [])
 
   if (loading) return <LoadingSpinner />
 
@@ -168,12 +213,24 @@ export default function DocumentViewer() {
                 loading={<LoadingSpinner />}
                 error={<p className="text-slate-400 text-sm p-4">Could not load PDF.</p>}
               >
-                <Page
-                  pageNumber={currentPage}
-                  renderTextLayer={false}
-                  renderAnnotationLayer={false}
-                  className="shadow-2xl"
-                />
+                <div ref={pageContainerRef} style={{ position: 'relative' }}>
+                  <Page
+                    pageNumber={currentPage}
+                    renderTextLayer={true}
+                    renderAnnotationLayer={false}
+                    className="shadow-2xl"
+                  />
+                  {reviewMode && (
+                    <PDFHighlightOverlay
+                      activeMatch={activeMatch}
+                      activeFieldName={activeFieldName}
+                      matchCount={matches.length}
+                      matchIndex={activeIndex}
+                      onNext={next}
+                      onPrev={prev}
+                    />
+                  )}
+                </div>
               </Document>
             ) : (
               <LoadingSpinner />
@@ -181,19 +238,34 @@ export default function DocumentViewer() {
           </div>
 
           {/* Fields pane — 35% */}
-          <div className="flex-[35] overflow-y-auto p-4">
-            <FieldsPane
-              doc={doc}
-              extractions={extractions}
-              editable={reviewMode}
-              workspaceId={workspaceId}
-              documentId={documentId}
-              onUpdate={(corrected) =>
-                setExtractions((prev) =>
-                  prev.map((e) => (e.field_name === corrected.field_name ? corrected : e))
-                )
-              }
-            />
+          <div className="flex-[35] flex flex-col min-h-0 border-l border-slate-700">
+            {reviewMode && schema ? (
+              <SchemaReviewPane
+                schema={schema}
+                extractions={extractions}
+                workspaceId={workspaceId}
+                documentId={documentId}
+                onFieldFocus={handleFieldFocus}
+                onSaveComplete={() => {
+                  getExtractions(workspaceId, documentId).then((r) => setExtractions(r.data))
+                }}
+              />
+            ) : (
+              <div className="overflow-y-auto p-4">
+                <FieldsPane
+                  doc={doc}
+                  extractions={extractions}
+                  editable={reviewMode}
+                  workspaceId={workspaceId}
+                  documentId={documentId}
+                  onUpdate={(corrected) =>
+                    setExtractions((prev) =>
+                      prev.map((e) => (e.field_name === corrected.field_name ? corrected : e))
+                    )
+                  }
+                />
+              </div>
+            )}
           </div>
         </div>
       </div>

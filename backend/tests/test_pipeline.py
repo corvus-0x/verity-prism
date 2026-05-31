@@ -515,3 +515,42 @@ def test_pipeline_marks_needs_review_when_required_field_missing(
         "required-field failure is being overwritten by the final complete assignment"
     )
     assert doc.extraction_error is not None
+
+
+# ── Partial batch retry ───────────────────────────────────────────────────────
+
+def test_extract_fields_retries_partial_batch_failure(db, deed_schema):
+    """When the first batch call fails transiently, the partial retry recovers it."""
+    from app.services.extraction_engine import extract_fields
+    import json
+
+    call_count = 0
+
+    def side_effect(**kwargs):
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
+            raise Exception("Transient API error")
+        return MagicMock(
+            content=[MagicMock(text=json.dumps({"extractions": [
+                {"field_name": "grantor_name", "field_value": "Jane Smith",
+                 "field_type": "name", "confidence": 0.90, "ocr_confidence": 0.92},
+                {"field_name": "sale_price", "field_value": "285000",
+                 "field_type": "currency", "confidence": 0.88, "ocr_confidence": 0.90},
+            ]}))],
+            usage=MagicMock(input_tokens=100, output_tokens=50),
+        )
+
+    mock_client = MagicMock()
+    mock_client.messages.create.side_effect = side_effect
+
+    with patch("app.services.claude_client.get_client", return_value=mock_client):
+        results = extract_fields("deed content", deed_schema)
+
+    # Both fields recovered via retry
+    assert len(results) == 2
+    result_names = {r["field_name"] for r in results}
+    assert "grantor_name" in result_names
+    assert "sale_price" in result_names
+    # Confirm retry fired: first call failed, second succeeded
+    assert call_count == 2

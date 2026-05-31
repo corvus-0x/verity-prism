@@ -1,3 +1,5 @@
+import json
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -8,6 +10,7 @@ from app.models.document import Document
 from app.models.document_extraction import DocumentExtraction
 from app.models.document_schema import DocumentSchema
 from app.models.user import User
+from app.schemas.document import ExtractionCreateIn, ExtractionOut
 from app.schemas.review import ExtractionCorrectionIn, ExtractionCorrectionOut, FlagDocumentIn, FlagDocumentOut, ReviewQueueItem
 from app.services import audit
 from app.services.auth import get_current_user
@@ -127,6 +130,11 @@ def correct_extraction(
     if not source:
         raise HTTPException(status_code=404, detail="Extraction not found")
 
+    # Guard evidence payload size — image_b64 can be large; 200KB is generous for a field region
+    if body.evidence:
+        if len(json.dumps(body.evidence).encode("utf-8")) > 204_800:
+            raise HTTPException(status_code=413, detail="Evidence payload exceeds 200KB limit")
+
     before_state = {
         "field_name": source.field_name,
         "field_value": source.field_value,
@@ -142,8 +150,10 @@ def correct_extraction(
         field_value=body.field_value,
         field_type=source.field_type,
         confidence=1.0,
+        ocr_confidence=1.0,
         schema_id=source.schema_id,
         attempt=3,
+        evidence=body.evidence,
     )
     db.add(correction)
     db.flush()
@@ -244,3 +254,113 @@ def flag_document(
     )
 
     return doc
+
+
+@router.post(
+    "/documents/{document_id}/extractions",
+    response_model=ExtractionOut,
+    status_code=201,
+)
+def create_extraction(
+    workspace_id: str,
+    document_id: str,
+    body: ExtractionCreateIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """
+    Create a new attempt=3 extraction row for a field with no prior extraction.
+    Used by the review pane when an operator enters a value for a field the
+    pipeline never extracted.
+    """
+    get_workspace_or_404(workspace_id, user, db)
+
+    doc = db.query(Document).filter(
+        Document.id == document_id,
+        Document.workspace_id == workspace_id,
+        Document.is_deleted == False,
+    ).first()
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    # Validate schema_id matches doc and field_name exists in that schema
+    if doc.schema_id and body.schema_id != doc.schema_id:
+        raise HTTPException(status_code=400, detail="schema_id does not match document schema")
+    schema_for_validation = db.query(DocumentSchema).filter(
+        DocumentSchema.id == doc.schema_id
+    ).first()
+    if schema_for_validation:
+        valid_names = {f["name"] for f in (schema_for_validation.schema_fields or [])}
+        if valid_names and body.field_name not in valid_names:
+            raise HTTPException(
+                status_code=400,
+                detail=f"field '{body.field_name}' is not defined in schema",
+            )
+
+    if body.evidence:
+        if len(json.dumps(body.evidence).encode("utf-8")) > 204_800:
+            raise HTTPException(status_code=413, detail="Evidence payload exceeds 200KB limit")
+
+    row = DocumentExtraction(
+        document_id=document_id,
+        workspace_id=workspace_id,
+        field_name=body.field_name,
+        field_value=body.field_value,
+        field_type=body.field_type,
+        confidence=1.0,
+        ocr_confidence=1.0,
+        schema_id=body.schema_id,
+        attempt=3,
+        evidence=body.evidence,
+    )
+    db.add(row)
+    db.flush()
+
+    # Flip document to complete if no fields still need review
+    schema = db.query(DocumentSchema).filter(DocumentSchema.id == doc.schema_id).first()
+    if schema:
+        latest_subq = (
+            db.query(
+                DocumentExtraction.field_name,
+                func.max(DocumentExtraction.attempt).label("max_attempt"),
+            )
+            .filter(DocumentExtraction.document_id == document_id)
+            .group_by(DocumentExtraction.field_name)
+            .subquery()
+        )
+        remaining = (
+            db.query(func.count(DocumentExtraction.id))
+            .join(
+                latest_subq,
+                (DocumentExtraction.field_name == latest_subq.c.field_name)
+                & (DocumentExtraction.attempt == latest_subq.c.max_attempt),
+            )
+            .filter(
+                DocumentExtraction.document_id == document_id,
+                DocumentExtraction.attempt < 3,
+                DocumentExtraction.confidence < schema.default_confidence_threshold,
+            )
+            .scalar()
+        )
+        if remaining == 0:
+            doc.extraction_status = "complete"
+
+    db.commit()
+    db.refresh(row)
+
+    audit.log(
+        db,
+        action="field_created",
+        user_id=user.id,
+        workspace_id=workspace_id,
+        entity_type="document",
+        entity_id=document_id,
+        before_state=None,
+        after_state={
+            "field_name": row.field_name,
+            "field_value": row.field_value,
+            "evidence_type": (row.evidence or {}).get("type"),
+        },
+    )
+
+    return row

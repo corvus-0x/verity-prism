@@ -18,6 +18,7 @@ class ReviewQueueItem(BaseModel):
 
 class ExtractionCorrectionIn(BaseModel):
     field_value: str
+    evidence: dict | None = None
 
 
 class ExtractionCorrectionOut(BaseModel):
@@ -29,6 +30,7 @@ class ExtractionCorrectionOut(BaseModel):
     ocr_confidence: float
     attempt: int
     extracted_at: datetime
+    evidence: dict | None = None
 
     class Config:
         from_attributes = True

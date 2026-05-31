@@ -277,6 +277,7 @@ def get_document_file(
         audit.log(
             db,
             action="document_file_missing",
+            user_id=user.id,
             workspace_id=workspace_id,
             entity_type="document",
             entity_id=document_id,

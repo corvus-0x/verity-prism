@@ -25,10 +25,10 @@ export const getDocumentFile = (workspaceId, documentId) =>
 export const getReviewQueue = (workspaceId) =>
   client.get(`/workspaces/${workspaceId}/review-queue`)
 
-export const correctExtraction = (workspaceId, documentId, extractionId, fieldValue) =>
+export const correctExtraction = (workspaceId, documentId, extractionId, fieldValue, evidence = null) =>
   client.patch(
     `/workspaces/${workspaceId}/documents/${documentId}/extractions/${extractionId}/correct`,
-    { field_value: fieldValue }
+    { field_value: fieldValue, evidence }
   )
 
 function triggerDownload(blob, filename) {
@@ -78,4 +78,13 @@ export const flagDocument = (workspaceId, documentId, flagReason, flagNote = nul
   client.patch(`/workspaces/${workspaceId}/documents/${documentId}/flag`, {
     flag_reason: flagReason,
     flag_note: flagNote,
+  })
+
+export const createExtraction = (workspaceId, documentId, fieldName, fieldValue, fieldType, schemaId, evidence = null) =>
+  client.post(`/workspaces/${workspaceId}/documents/${documentId}/extractions`, {
+    field_name: fieldName,
+    field_value: fieldValue,
+    field_type: fieldType,
+    schema_id: schemaId,
+    evidence,
   })
