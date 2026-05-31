@@ -28,6 +28,14 @@ export default function AppShell({ children }) {
         >
           Schema Library
         </NavLink>
+        <NavLink
+          to="/observability"
+          className={({ isActive }) =>
+            `text-sm shrink-0 transition-colors ${isActive ? 'text-white' : 'text-slate-400 hover:text-white'}`
+          }
+        >
+          Observability
+        </NavLink>
         <form onSubmit={handleSearch} className="flex-1 max-w-2xl">
           <input
             type="text"
