@@ -13,6 +13,7 @@ from app.models.document import Document
 from app.models.document_extraction import DocumentExtraction
 from app.models.document_schema import DocumentSchema
 from app.models.user import User
+from app.models.workspace import Workspace
 from app.schemas.observability import (
     AutomationRateOut,
     ClassificationDetailsOut,
@@ -32,9 +33,10 @@ def get_automation_rate(
     user: User = Depends(get_current_user),
 ):
     """Straight-through processing rate across all non-deleted documents."""
+    caller_ws = db.query(Workspace.id).filter(Workspace.created_by == user.id).scalar_subquery()
     rows = (
         db.query(Document.extraction_status, func.count(Document.id))
-        .filter(Document.is_deleted == False)
+        .filter(Document.is_deleted == False, Document.workspace_id.in_(caller_ws))
         .group_by(Document.extraction_status)
         .all()
     )
@@ -64,6 +66,8 @@ def get_volume(
 
     cutoff = datetime(today.year, today.month, today.day, tzinfo=UTC) - timedelta(days=days - 1)
 
+    caller_ws = db.query(Workspace.id).filter(Workspace.created_by == user.id).scalar_subquery()
+
     inbound_rows = (
         db.query(
             func.date(Document.uploaded_at).label("d"),
@@ -72,6 +76,7 @@ def get_volume(
         .filter(
             Document.is_deleted == False,
             Document.uploaded_at >= cutoff,
+            Document.workspace_id.in_(caller_ws),
         )
         .group_by("d")
         .all()
@@ -85,6 +90,7 @@ def get_volume(
             Document.is_deleted == False,
             Document.extraction_status == "complete",
             Document.uploaded_at >= cutoff,
+            Document.workspace_id.in_(caller_ws),
         )
         .group_by("d")
         .all()
@@ -122,12 +128,25 @@ def get_classification_details(
     schema_ids = [s.id for s in schema_rows]
     schema_type_map = {s.id: s.document_type for s in schema_rows}
 
+    caller_ws = db.query(Workspace.id).filter(Workspace.created_by == user.id).scalar_subquery()
+
     # Doc counts per schema
     doc_counts = dict(
         db.query(Document.schema_id, func.count(Document.id))
-        .filter(Document.schema_id.in_(schema_ids), Document.is_deleted == False)
+        .filter(
+            Document.schema_id.in_(schema_ids),
+            Document.is_deleted == False,
+            Document.workspace_id.in_(caller_ws),
+        )
         .group_by(Document.schema_id)
         .all()
+    )
+
+    # Caller's document IDs (for scoping extraction aggregate queries)
+    caller_doc_ids = (
+        db.query(Document.id)
+        .filter(Document.is_deleted == False, Document.workspace_id.in_(caller_ws))
+        .scalar_subquery()
     )
 
     # Avg confidences (attempt=1 only)
@@ -137,7 +156,11 @@ def get_classification_details(
             func.avg(DocumentExtraction.confidence).label("avg_ai"),
             func.avg(DocumentExtraction.ocr_confidence).label("avg_ocr"),
         )
-        .filter(DocumentExtraction.schema_id.in_(schema_ids), DocumentExtraction.attempt == 1)
+        .filter(
+            DocumentExtraction.schema_id.in_(schema_ids),
+            DocumentExtraction.attempt == 1,
+            DocumentExtraction.document_id.in_(caller_doc_ids),
+        )
         .group_by(DocumentExtraction.schema_id)
         .all()
     )
@@ -146,7 +169,11 @@ def get_classification_details(
     # Retry docs (attempt=2) per schema
     retry_rows = (
         db.query(DocumentExtraction.schema_id, func.count(func.distinct(DocumentExtraction.document_id)))
-        .filter(DocumentExtraction.schema_id.in_(schema_ids), DocumentExtraction.attempt == 2)
+        .filter(
+            DocumentExtraction.schema_id.in_(schema_ids),
+            DocumentExtraction.attempt == 2,
+            DocumentExtraction.document_id.in_(caller_doc_ids),
+        )
         .group_by(DocumentExtraction.schema_id)
         .all()
     )
@@ -155,7 +182,11 @@ def get_classification_details(
     # Correction docs (attempt=3) per schema
     correction_rows = (
         db.query(DocumentExtraction.schema_id, func.count(func.distinct(DocumentExtraction.document_id)))
-        .filter(DocumentExtraction.schema_id.in_(schema_ids), DocumentExtraction.attempt == 3)
+        .filter(
+            DocumentExtraction.schema_id.in_(schema_ids),
+            DocumentExtraction.attempt == 3,
+            DocumentExtraction.document_id.in_(caller_doc_ids),
+        )
         .group_by(DocumentExtraction.schema_id)
         .all()
     )
@@ -187,11 +218,13 @@ def get_current_processing(
     user: User = Depends(get_current_user),
 ):
     """Count of documents currently pending or awaiting human review."""
+    caller_ws = db.query(Workspace.id).filter(Workspace.created_by == user.id).scalar_subquery()
     rows = (
         db.query(Document.extraction_status, func.count(Document.id))
         .filter(
             Document.is_deleted == False,
             Document.extraction_status.in_(["pending", "needs_review"]),
+            Document.workspace_id.in_(caller_ws),
         )
         .group_by(Document.extraction_status)
         .all()

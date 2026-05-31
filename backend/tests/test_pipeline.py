@@ -443,3 +443,75 @@ def test_evaluate_passes_when_both_confidences_meet_thresholds():
         ocr_threshold=0.80,
     )
     assert result.needs_review is False  # 0.92 >= 0.75 and 0.88 >= 0.80
+
+
+# ── needs_review persistence (guard test) ────────────────────────────────────
+
+def test_pipeline_marks_needs_review_when_required_field_missing(
+    db, workspace, user, tmp_path
+):
+    """Required field missing from extraction → doc must be needs_review after pipeline completes."""
+    from app.services.document_pipeline import _run_pipeline
+
+    # Schema with a required field
+    schema = DocumentSchema(
+        id=str(uuid.uuid4()),
+        document_type="REQUIRED-FIELD-TEST",
+        display_name="Required Field Test",
+        vertical="general",
+        schema_fields=[{
+            "name": "ein",
+            "type": "id_number",
+            "description": "EIN",
+            "validation": {"required": True}
+        }],
+        extraction_prompt="Extract the EIN.",
+        version=1,
+        is_active=True,
+        parse_strategy="claude",
+        default_confidence_threshold=0.75,
+    )
+    db.add(schema)
+
+    file_path = tmp_path / "test.pdf"
+    file_path.write_bytes(b"%PDF-1.4 no ein here")
+    doc = Document(
+        id=str(uuid.uuid4()),
+        workspace_id=workspace.id,
+        filename="test.pdf",
+        original_filename="test.pdf",
+        file_path=str(file_path),
+        file_type="pdf",
+        sha256_hash="reqtest123",
+        source_type="upload",
+        uploaded_by=user.id,
+        extraction_status="pending",
+    )
+    db.add(doc)
+    db.commit()
+
+    mock_client = MagicMock()
+    # Claude returns a result but WITHOUT the required 'ein' field
+    import json
+    payload = json.dumps({"extractions": [
+        {"field_name": "other_field", "field_value": "something", "field_type": "text",
+         "confidence": 0.90, "ocr_confidence": 0.90}
+    ]})
+    mock_client.messages.create.return_value = MagicMock(
+        content=[MagicMock(text=payload)],
+        usage=MagicMock(input_tokens=100, output_tokens=50),
+    )
+
+    with patch("app.services.document_pipeline.detect_document_type", return_value="REQUIRED-FIELD-TEST"), \
+         patch("app.services.document_pipeline.extract_text", return_value="no ein here"), \
+         patch("app.services.document_pipeline.generate_standardized_name", return_value="test.pdf"), \
+         patch("app.services.claude_client.get_client", return_value=mock_client):
+
+        _run_pipeline(doc.id, b"%PDF-1.4 no ein here", "test.pdf", workspace.id, user.id, db)
+
+    db.refresh(doc)
+    assert doc.extraction_status == "needs_review", (
+        f"Expected needs_review but got '{doc.extraction_status}' — "
+        "required-field failure is being overwritten by the final complete assignment"
+    )
+    assert doc.extraction_error is not None

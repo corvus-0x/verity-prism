@@ -356,7 +356,8 @@ def _run_pipeline(
     )
     _update_search_index(doc, ocr_text, extra_text, db)
 
-    doc.extraction_status = "complete"
+    if doc.extraction_status == "pending":
+        doc.extraction_status = "complete"
     db.commit()
 
     # ── Step 9: Audit log ────────────────────────────────────────────────────
