@@ -79,3 +79,12 @@ export const flagDocument = (workspaceId, documentId, flagReason, flagNote = nul
     flag_reason: flagReason,
     flag_note: flagNote,
   })
+
+export const createExtraction = (workspaceId, documentId, fieldName, fieldValue, fieldType, schemaId, evidence = null) =>
+  client.post(`/workspaces/${workspaceId}/documents/${documentId}/extractions`, {
+    field_name: fieldName,
+    field_value: fieldValue,
+    field_type: fieldType,
+    schema_id: schemaId,
+    evidence,
+  })
