@@ -1,5 +1,5 @@
 // frontend/src/components/documents/SchemaReviewPane.jsx
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useMemo } from 'react'
 import ExtractionField from './ExtractionField'
 import { correctExtraction, createExtraction } from '../../api/documents'
 
@@ -27,17 +27,21 @@ export default function SchemaReviewPane({
   const [saveError, setSaveError] = useState(null)
 
   // Build lookup: field_name → latest extraction row
-  const extractionByName = Object.fromEntries(
-    extractions.map((e) => [e.field_name, e])
+  const extractionByName = useMemo(
+    () => Object.fromEntries(extractions.map((e) => [e.field_name, e])),
+    [extractions]
   )
 
   // Group schema fields by their group key
-  const groups = {}
-  for (const field of (schema.fields || [])) {
-    const g = field.group || 'Other'
-    if (!groups[g]) groups[g] = []
-    groups[g].push(field)
-  }
+  const groups = useMemo(() => {
+    const g = {}
+    for (const field of (schema.fields || [])) {
+      const name = field.group || 'Other'
+      if (!g[name]) g[name] = []
+      g[name].push(field)
+    }
+    return g
+  }, [schema.fields])
 
   const handleFieldFocus = useCallback((fieldName) => {
     setActiveField(fieldName)
@@ -50,14 +54,14 @@ export default function SchemaReviewPane({
     setPendingChanges((prev) => ({ ...prev, [fieldName]: value }))
   }, [])
 
-  const handleVerify = useCallback(async (fieldName, value, note, evidenceType) => {
+  const handleVerify = useCallback(async (fieldName, value, note, evidenceType, skipCallback = false) => {
     const evidence = evidenceType
       ? { type: evidenceType, note: note || undefined }
       : null
     const extraction = extractionByName[fieldName]
 
     if (extraction) {
-      await correctExtraction(workspaceId, documentId, extraction.id, value)
+      await correctExtraction(workspaceId, documentId, extraction.id, value, evidence)
     } else {
       const field = (schema.fields || []).find((f) => f.name === fieldName)
       await createExtraction(
@@ -71,7 +75,7 @@ export default function SchemaReviewPane({
       delete next[fieldName]
       return next
     })
-    onSaveComplete()
+    if (!skipCallback) onSaveComplete()
   }, [extractionByName, schema, workspaceId, documentId, onSaveComplete])
 
   const dirtyCount = Object.keys(pendingChanges).length
@@ -82,13 +86,15 @@ export default function SchemaReviewPane({
     const entries = Object.entries(pendingChanges)
     const results = await Promise.allSettled(
       entries.map(([fieldName, value]) =>
-        handleVerify(fieldName, value, '', 'manual_draw')
+        handleVerify(fieldName, value, '', 'manual_entry', true)
       )
     )
     setSaving(false)
     const failed = results.filter((r) => r.status === 'rejected')
     if (failed.length > 0) {
       setSaveError(`${failed.length} field(s) failed to save — try again.`)
+    } else {
+      onSaveComplete()
     }
   }
 

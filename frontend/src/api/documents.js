@@ -25,10 +25,10 @@ export const getDocumentFile = (workspaceId, documentId) =>
 export const getReviewQueue = (workspaceId) =>
   client.get(`/workspaces/${workspaceId}/review-queue`)
 
-export const correctExtraction = (workspaceId, documentId, extractionId, fieldValue) =>
+export const correctExtraction = (workspaceId, documentId, extractionId, fieldValue, evidence = null) =>
   client.patch(
     `/workspaces/${workspaceId}/documents/${documentId}/extractions/${extractionId}/correct`,
-    { field_value: fieldValue }
+    { field_value: fieldValue, evidence }
   )
 
 function triggerDownload(blob, filename) {
