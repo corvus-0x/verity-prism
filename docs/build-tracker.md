@@ -180,6 +180,63 @@ Decisions made before any vertical work could start. These were flagged in princ
 
 ---
 
+## Code Audit Remediation — Phases 4–6 (2026-05-30, PRs #6–9)
+
+> Completed the second half of the 2026-05-29 audit. Phases 4–6 addressed search data integrity, architecture refactoring, and frontend security hardening.
+
+| Finding | What was fixed | Why it mattered |
+|---------|---------------|-----------------|
+| Phase 4 — Search integrity | `run_search` and `query_extractions` now filter `Document.is_deleted`. `search_vector` column migrated from TEXT to TSVECTOR with GIN index. Soft-delete columns added to Transaction, Finding, Lead, Note, Relationship. `get_conversation_history` workspace-scoped | Soft-deleted documents were still appearing in search results. The TSVECTOR migration was purely correctness — TEXT can hold tsvector values but the GIN index requires the native type and the query planner won't use it otherwise |
+| Phase 5 — Thin routers + lazy client | `get_workspace_or_404` extracted to `app/deps.py`. Export/SSE logic moved to `export_service.py`. Four module-level `Anthropic()` clients consolidated into lazy singleton `claude_client.py` | Three separate Anthropic client instances couldn't be patched from a single point in tests — every test that mocked Claude had to patch multiple locations. The singleton gives one patch target. Export logic in routers meant the router files were hundreds of lines of business logic — wrong layer |
+| Phase 6 — JWT hardening + frontend resilience | Login sets httpOnly SameSite=Lax cookie. `GET /auth/me` restores session on page refresh. `get_current_user` accepts Bearer or cookie (hybrid). Frontend dropped all localStorage. `AuthInit` on startup. `ProtectedRoute` checks auth store. `AIChat.handleSend` rolls back optimistic message on failure. SSE reader cancelled on unmount. 401 interceptor uses router navigation | localStorage is accessible to any XSS on the page. httpOnly cookie is invisible to JavaScript — a stolen token can't exfiltrate the session. The hybrid auth (Bearer or cookie) meant zero test changes — all existing tests use Bearer headers and still work |
+
+**Tests passing:** 141/141
+
+**Migration:** `a1b2c3d4e5f6` — `is_deleted`/`deleted_at` columns on Transaction, Finding, Lead, Note, Relationship. `search_vector` column type changed from TEXT to TSVECTOR with GIN index.
+
+---
+
+## Docs & Planning — Phase 2E Research + Roadmap (2026-05-30)
+
+> Before writing a line of Phase 2E code, ran a competitive research session against Hyland IDP (IDC MarketScape Leader 2025–2026), their technical documentation, and the Alfresco ng2-components library. The research shaped the entire phase design.
+
+| Decision | What changed | Why |
+|----------|-------------|-----|
+| Dual confidence model | Added `ocr_confidence` as a second per-field score alongside `confidence` (AI certainty) | Hyland's glossary confirmed the distinction: OCR confidence = text recognition reliability (weakest word for text fields, average across cells for table fields); AI confidence = model certainty in the extraction. One score can't diagnose both scan quality problems and schema prompt problems. |
+| Automation Rate as north star metric | Roadmap explicitly names automation rate as the primary dashboard metric | Hyland and every IDP vendor lead with this number. It answers the one question that matters: what fraction of documents require zero human intervention? Every Phase 2E improvement should move this number up. |
+| Five confirmed dashboards | Roadmap updated with exact dashboard names and data sources | Hyland shipped these in Q4 2025 / Q1 2026. They're now table stakes, not differentiators. Building to the industry standard rather than guessing. |
+| "Zero training" design principle | Encoded in Phase 2E roadmap section | Hyland charges $5,000/year per person for their training university — that cost signals product complexity. Target users are investigators and claims processors, not IT admins. The platform should be operable by someone who's never seen it in 20 minutes. |
+| OCR confidence from Claude, not pytesseract | Architecture decision: Claude estimates OCR readability per field during extraction | pytesseract gives page-level confidence, not field-level. Claude sees the OCR text and can assess how clearly each field's value appeared in the source — gives the field-level granularity the observability dashboard needs. |
+| Data connectors (Phase 2E → 2F) | Pushed to just before Phase 3 | Engine needs to be measurably reliable first — observability, quality metrics, thresholds. Piping in external data at volume before the engine is tuned wastes the data. Quality first, then scale. |
+| NL schema creation deferred | Listed as deferred in Phase 2E roadmap | "Zero training" matters but schema creation is a growth feature, not a quality prerequisite. The observability dashboard and field validation are what make the engine trustworthy. NL schema creation adds after that foundation exists. |
+| Output format normalization identified | Added to roadmap as deferred follow-on | Hyland confirmed this capability (remove_chars, find_replace, date_format, case, truncate, format_number). Significant capability but not a Phase 2E prerequisite — signal detection and dashboard both work on raw extracted values for now. |
+| Parent/child schema inheritance identified | Added to Phase 3 candidate list | Hyland has parent class → child class inheritance for document types (e.g., DEED parent → WARRANTY_DEED, QUITCLAIM_DEED children). Relevant for fraud cap schema packaging but not before verticals are built. |
+
+---
+
+## Phase 2E — Engine Quality + Observability (2026-05-30, PR #10)
+
+> 11 tasks executed via subagent-driven development. Each task dispatched as a fresh subagent with isolated context, two-stage review (spec compliance + code quality) after each. One critical pre-existing bug caught by the final Opus review.
+
+| Task | What It Builds | Why |
+|------|---------------|-----|
+| Dual confidence migration | `ocr_confidence FLOAT NOT NULL DEFAULT 1.0` on `document_extractions`. `flag_reason` VARCHAR + `flag_note` TEXT on `documents` | Schema changes land first, before any code uses them. Migration is idempotent — DO $$ blocks guard all ALTER statements so re-running is safe |
+| Dual confidence engine | Claude prompt updated to request `ocr_confidence` alongside `confidence`. Both normalized and stored per field. XML direct parse always gets `ocr_confidence: 1.0` | XML bypasses OCR entirely — there's no text recognition uncertainty. Confidence fallback: if Claude returns explicit null, coerce to default rather than propagate null into comparison operations that would silently fail |
+| Per-field thresholds | `ai_threshold` + `ocr_threshold` optional keys in `schema_fields` JSON entries. Evaluator reads these and falls back to schema default when absent | High-stakes fields (EIN, sale_amount) need tighter confidence requirements than low-stakes fields (document_notes). One schema-wide threshold treats all fields the same and routes too many documents to human review |
+| Field validation service | `field_validator.py` — pure function, no DB. `required`, `min_length`, `max_length`, `pattern` (regex fullmatch). Only required failures escalate to `needs_review`; format violations log warnings | Required field missing = the document is functionally incomplete. Format violations are advisory — the reviewer can still see the extracted value and decide. Escalating all validation errors would flood the review queue for minor formatting differences |
+| Pipeline clobber fix | `doc.extraction_status = "complete"` guarded: `if doc.extraction_status == "pending"` | Pre-existing bug caught by final Opus code review. The unconditional assignment ran after both the field validator and the confidence evaluator — any `needs_review` status set by either was silently overwritten back to `complete`. The feature worked in tests (pure function) but had zero runtime effect. One-line fix, one end-to-end test added to prove it |
+| Flag endpoint | `PATCH /workspaces/{id}/documents/{id}/flag` — stores `flag_reason` (Literal enum) + `flag_note`. Audit-logged. `flag_reason` is a `Literal` type, not `str` — invalid reasons rejected at the API boundary with 422 before handler runs | Structured rejection feedback turns "reviewer clicked reject" into queryable diagnostic data. The Literal constraint came from CodeRabbit review — a plain `str` field accepts arbitrary values that would make the Classification Details dashboard breakdown meaningless |
+| Observability router | 4 endpoints: `/automation-rate`, `/volume` (with off-by-one fix on cutoff), `/classification-details` (5 queries instead of N×4), `/current-processing`. All scoped to caller's workspaces via `created_by` subquery | The off-by-one in volume was caught by CodeRabbit: `timedelta(days=days)` set the cutoff one day before `day_list[0]`, silently dropping the oldest day's data from every response. N×4 query consolidation: for 10 schemas, old code issued 40 DB round trips; new code issues 4 |
+| Observability dashboard | `/observability` React page — 4 sections: automation rate stat cards, current processing, 30-day line chart, horizontal bar chart + detail table per schema. `Promise.allSettled` — each section degrades independently if its endpoint fails | Automation rate card is the first thing visible. Operator opens the page, sees whether the engine is working. Each section gated on its own data state so a single failing endpoint doesn't blank the whole page |
+| ExtractionTable dual confidence | AI confidence + OCR confidence pills per field. `rowClass` updated to flag yellow on low OCR confidence too — originally only checked AI confidence, so a field with high AI confidence but low OCR rendered no warning | The dual pills surface the diagnosis, not just the score. A reviewer seeing `AI: 91% / OCR: 42%` knows the extraction was confident but the source text was barely legible — rescan the document, not rewrite the schema |
+| ExtractionReview flagging UI | Flag button per review queue row. `FlagModal` — 5 structured reasons, optional note, Escape key dismiss, `aria-labelledby` pointing to modal title. Successful flag removes document from queue | Flag reasons are a fixed Literal enum matching the backend — the dropdown can only send values the API accepts. `note || null` converts empty string to null so the backend doesn't store empty strings as non-null flag notes |
+
+**Tests passing:** 160/160 (+19 new: test_field_validator.py, test_observability.py, test_review.py, pipeline end-to-end needs_review regression)
+
+**Migration:** `b2c3d4e5f6a7` — `ocr_confidence FLOAT NOT NULL DEFAULT 1.0` on `document_extractions`. `flag_reason VARCHAR` + `flag_note TEXT` (nullable) on `documents`. Requires `alembic upgrade head` on deploy.
+
+---
+
 ## Deferred & Relocated Work
 
 Things that were planned for one phase and moved, or explicitly punted. Captured here with the reasoning so when we reach that phase we're not starting from scratch.
