@@ -259,15 +259,29 @@ Things that were planned for one phase and moved, or explicitly punted. Captured
 
 ---
 
-### Partial Batch Failure Behavior — open decision from audit phase 3 (2026-05-29)
+### Full Document Review Pane — the core verification experience
 
-**Context:** The C2 fix handles total failure: all Claude batches fail → `extraction_status = "failed"`. But when *some* batches fail and some succeed, the document currently completes with partial fields and only a warning log — no visible signal to the investigator. They'd see a `complete` document that's missing some fields, with no indication why.
+**Decision made (2026-05-30):** The current review UI is a patch — it surfaces what failed. The real review experience is a schema-driven verification pane: every field the schema defines is visible alongside the PDF, pre-populated with extracted values where they exist and empty where they don't. The reviewer reads the PDF and confirms, corrects, or fills in any field directly.
 
-**The open question:** Should partial batch failure set `needs_review` instead of `complete`? Arguments:
-- For `needs_review`: investigators can't trust a document where extraction silently dropped fields
-- Against: `needs_review` was designed for low-confidence fields, not missing ones — blurring the meaning could confuse the review queue
+**Why this resolves partial batch failure:** The pipeline should auto-retry failed batches first (handles transient API errors). If retry also fails, route the document to the full review pane. The reviewer sees empty fields with the PDF open — fills them in from the source document. The same review pane handles all three failure modes uniformly:
+- Field never extracted (batch failure) → empty row, reviewer fills in
+- Field extracted with low confidence → pre-filled row, reviewer corrects
+- Field extracted confidently but wrong → pre-filled row, reviewer corrects
 
-**Decision needed before:** Phase 3 vertical work, since signals run against extracted fields and a partial extraction could cause false negatives on signal detection.
+A single unified path. No special cases per failure type.
+
+**What the right pane looks like:**
+- Every field in `schema.schema_fields` rendered as a form row (not just fields with extraction rows — the current approach)
+- Pre-filled with the latest-attempt extracted value where it exists
+- Confidence indicators (AI + OCR pills) on extracted fields; "Not extracted" label on empty ones
+- All fields editable inline — saving writes `attempt=3` rows
+- Field ordering follows schema definition order (same order as the extraction prompt)
+
+**What it replaces:** `ExtractionTable.jsx` in review mode currently maps over `extractions` (fields that exist in the DB). It needs to map over `schema.schema_fields` instead, joining to extractions for pre-fill values. Empty fields get editable rows with no pre-fill.
+
+**Backend already ready:** `GET /schemas/` returns full field definitions. `PATCH /extractions/{id}/correct` writes `attempt=3`. A new endpoint may be needed for creating attempt=3 rows for fields with no prior extraction (insert rather than patch).
+
+**Phase placement:** Phase 2E (deferred from current pass). Must land before Phase 3 vertical work — signals run against extracted fields and a silent partial extraction produces false negatives on signal detection. This is the remediation path that makes the review queue actionable rather than just diagnostic.
 
 ---
 

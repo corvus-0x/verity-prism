@@ -229,7 +229,11 @@ This eliminates post-processing scripts in signal detection and downstream syste
 **8. Document flagging with structured reasons**
 When a reviewer flags a document (not just corrects fields), they select a justification reason from a configured list and add a free-text note. The flag and note travel with the document through the rest of processing. Hyland defaults: "Unknown document type", "Document missing pages", "Low quality scan (illegible)". Prism equivalent: add `flag_reason` and `flag_note` columns to `documents`. The Classification Details dashboard shows rejection breakdown by reason — scan quality vs. wrong schema vs. missing pages. Turns unstructured rejections into queryable diagnostics.
 
-**Deferred from this phase:**
+**Deferred from this phase — must land before Phase 3:**
+- *Full document review pane* — the core verification experience. Right pane maps over `schema.schema_fields` (not just extractions) — every defined field visible alongside the PDF, pre-populated where extracted, empty where not. Reviewer fills in or corrects any field. Replaces the current `ExtractionTable` review mode which only surfaces fields that exist in the DB. Requires a new endpoint for creating `attempt=3` rows on fields with no prior extraction row (insert, not patch). See build tracker deferred section for full design.
+- *Partial batch retry* — when `batch_errors > 0` but `< len(batches)`, retry only the failed batches before flagging `needs_review`. Handles transient API errors silently. If retry also fails, route to the full review pane with empty fields visible. Currently partial failures complete silently with missing fields — no signal to investigator.
+
+**Deferred from this phase — can wait:**
 - *NL schema creation* — guided schema setup via plain English. Valuable for zero-training UX but not a quality prerequisite.
 - *Extraction feedback loop* — feed human corrections back into future extraction prompts. Worth building once correction volume gives it signal.
 - *Field-to-location highlighting* — click a field, highlight its position in the PDF. Already deferred from 2A; confirmed as standard by Hyland. Build when table extraction ships (requires text layer coordinates).
