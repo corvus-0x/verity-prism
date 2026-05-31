@@ -128,6 +128,12 @@ def correct_extraction(
     if not source:
         raise HTTPException(status_code=404, detail="Extraction not found")
 
+    # Guard evidence payload size — image_b64 can be large; 200KB is generous for a field region
+    if body.evidence:
+        import json as _json
+        if len(_json.dumps(body.evidence)) > 204_800:
+            raise HTTPException(status_code=413, detail="Evidence payload exceeds 200KB limit")
+
     before_state = {
         "field_name": source.field_name,
         "field_value": source.field_value,
@@ -275,6 +281,11 @@ def create_extraction(
     ).first()
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
+
+    if body.evidence:
+        import json as _json
+        if len(_json.dumps(body.evidence)) > 204_800:
+            raise HTTPException(status_code=413, detail="Evidence payload exceeds 200KB limit")
 
     row = DocumentExtraction(
         document_id=document_id,
