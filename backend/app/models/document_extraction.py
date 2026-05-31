@@ -21,7 +21,7 @@ class DocumentExtraction(Base):
                name="extraction_field_type"),
         default="text"
     )
-    confidence: Mapped[float] = mapped_column(Float, default=1.0)
+    confidence: Mapped[float] = mapped_column(Float, default=1.0, nullable=False)
     ocr_confidence: Mapped[float] = mapped_column(Float, default=1.0, nullable=False)
     attempt: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
     schema_id: Mapped[str] = mapped_column(String, ForeignKey("document_schemas.id"), nullable=True)
