@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -35,3 +35,29 @@ def list_schemas(
         }
         for s in schemas
     ]
+
+
+@router.get("/{schema_id}")
+def get_schema(
+    schema_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Return a single active schema by ID with full field definitions."""
+    schema = db.query(DocumentSchema).filter(
+        DocumentSchema.id == schema_id,
+        DocumentSchema.is_active == True,
+    ).first()
+    if not schema:
+        raise HTTPException(status_code=404, detail="Schema not found")
+    return {
+        "id": schema.id,
+        "document_type": schema.document_type,
+        "display_name": schema.display_name,
+        "vertical": schema.vertical,
+        "parse_strategy": schema.parse_strategy,
+        "default_confidence_threshold": schema.default_confidence_threshold,
+        "field_count": len(schema.schema_fields or []),
+        "fields": schema.schema_fields or [],
+        "version": schema.version,
+    }
