@@ -338,3 +338,67 @@ def test_pipeline_preserves_file_on_success(db, workspace, user, deed_schema, pe
     db.refresh(pending_doc)
     assert pending_doc.extraction_status == "complete"
     assert file_path.exists(), "Successful pipeline must not delete the stored file"
+
+
+# ── Dual confidence ───────────────────────────────────────────────────────────
+
+def test_extract_batch_returns_ocr_confidence(db, deed_schema):
+    """_extract_batch must include ocr_confidence in each returned dict."""
+    from app.services.extraction_engine import _extract_batch
+    import json
+
+    mock_client = MagicMock()
+    payload = json.dumps({"extractions": [
+        {
+            "field_name": "grantor_name",
+            "field_value": "Jane Smith",
+            "field_type": "name",
+            "confidence": 0.92,
+            "ocr_confidence": 0.85,
+        }
+    ]})
+    mock_client.messages.create.return_value = MagicMock(
+        content=[MagicMock(text=payload)],
+        usage=MagicMock(input_tokens=100, output_tokens=50),
+    )
+
+    with patch("app.services.claude_client.get_client", return_value=mock_client):
+        results = _extract_batch(
+            ocr_text="Grantor: Jane Smith",
+            fields_batch=[{"name": "grantor_name", "type": "name", "description": "Grantor name"}],
+            schema=deed_schema,
+        )
+
+    assert len(results) == 1
+    assert "ocr_confidence" in results[0]
+    assert results[0]["ocr_confidence"] == 0.85
+
+
+def test_extract_batch_falls_back_ocr_confidence_to_confidence(db, deed_schema):
+    """If Claude omits ocr_confidence, it defaults to the ai confidence value."""
+    from app.services.extraction_engine import _extract_batch
+    import json
+
+    mock_client = MagicMock()
+    payload = json.dumps({"extractions": [
+        {
+            "field_name": "grantor_name",
+            "field_value": "Jane Smith",
+            "field_type": "name",
+            "confidence": 0.80,
+            # ocr_confidence intentionally absent
+        }
+    ]})
+    mock_client.messages.create.return_value = MagicMock(
+        content=[MagicMock(text=payload)],
+        usage=MagicMock(input_tokens=100, output_tokens=50),
+    )
+
+    with patch("app.services.claude_client.get_client", return_value=mock_client):
+        results = _extract_batch(
+            ocr_text="Grantor: Jane Smith",
+            fields_batch=[{"name": "grantor_name", "type": "name", "description": "Grantor name"}],
+            schema=deed_schema,
+        )
+
+    assert results[0]["ocr_confidence"] == 0.80
