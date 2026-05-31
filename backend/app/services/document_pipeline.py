@@ -252,6 +252,24 @@ def _run_pipeline(
         _fail(doc, f"Extraction failed: {e}", db)
         return
 
+    # ── Step 6a: Field validation ────────────────────────────────────────────
+    if schema.parse_strategy == "claude" and schema.schema_fields:
+        try:
+            from app.services.field_validator import validate_extractions
+            validation_errors = validate_extractions(raw_extractions, schema.schema_fields)
+            if validation_errors:
+                required_failures = [e for e in validation_errors if e.rule == "required"]
+                for err in validation_errors:
+                    logger.warning(f"Validation error in doc {doc.id}: {err.message}")
+                if required_failures:
+                    doc.extraction_status = "needs_review"
+                    doc.extraction_error = "; ".join(
+                        e.message for e in required_failures[:3]
+                    )
+                    db.commit()
+        except Exception as e:
+            logger.warning(f"Field validation failed for doc {doc.id}: {e}")
+
     # C2 guard: a claude schema with defined fields that yielded zero rows is a failure,
     # not a silent complete. (extract_fields raises if all batches failed; this catches
     # the rare case where batches succeed but Claude returns no extractions.)
