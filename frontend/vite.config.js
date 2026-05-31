@@ -14,9 +14,20 @@ export default defineConfig({
     // API_TARGET is set to http://backend:8000 in Docker, localhost:8000 locally
     proxy: {
       '/auth': { target: process.env.API_TARGET || 'http://localhost:8000' },
-      '/workspaces': { target: process.env.API_TARGET || 'http://localhost:8000' },
+      '/workspaces': {
+        target: process.env.API_TARGET || 'http://localhost:8000',
+        bypass: (req) => {
+          if (req.headers.accept?.includes('text/html')) return '/index.html'
+        },
+      },
       '/signal-types': { target: process.env.API_TARGET || 'http://localhost:8000' },
-      '/schemas': { target: process.env.API_TARGET || 'http://localhost:8000' },
+      '/schemas': {
+        target: process.env.API_TARGET || 'http://localhost:8000',
+        bypass: (req) => {
+          if (req.headers.accept?.includes('text/html')) return '/index.html'
+        },
+      },
+      '/observability': { target: process.env.API_TARGET || 'http://localhost:8000' },
     },
   },
 })
