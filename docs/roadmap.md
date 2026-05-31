@@ -240,7 +240,20 @@ When a reviewer flags a document (not just corrects fields), they select a justi
 - *Parent/child schema inheritance* — e.g., DEED as parent class with WARRANTY_DEED, QUITCLAIM_DEED, SHERIFF_DEED as children inheriting base fields. Cleans up the schema registry. Phase 3 candidate when fraud cap schemas are packaged.
 - *Field redaction* — overlay or burned redaction for PII fields (SSN, etc.). Phase 4 compliance feature.
 
-### 2F — Data Connectors (pre-Phase 3)
+### 2F — Commercial Readiness + Data Connectors (pre-Phase 3)
+Must land before the first paying customer. Two cost levers and data connectors that feed the vertical work.
+
+**Prompt caching**
+Anthropic's caching API lets repeated prompt prefixes be served from cache. The schema field descriptions for any given document type are identical across every document ever processed — cache them. Cuts per-extraction input token cost by 60-90% at any volume. Implementation: add `cache_control` blocks to the extraction prompt's field description section in `_extract_batch`. See `claude-api` skill for pattern. One-time change, permanent savings.
+
+**Model routing by task**
+Not every task requires Sonnet quality. Swap field extraction batches to Haiku 4.5 (4× cheaper, adequate for structured extraction on clean documents). Keep Sonnet for AI chat (requires reasoning across 40+ documents) and type detection (ambiguous documents need the stronger model). Expected savings: ~75% reduction in per-document extraction cost. Implementation: `EXTRACTION_MODEL` and `CHAT_MODEL` constants in `claude_client.py`.
+
+**Before first paying customer:** prompt caching + model routing together cut per-document extraction cost from ~$0.04 to ~$0.01. At 500 docs/month that's the difference between $20 and $5 in AI costs per customer — meaningful at the margins when pricing tiers.
+
+**Usage metering foundation**
+`claude_call_logs` already tracks every Claude API call with token counts per workspace. Add a `billing_period_start` concept and a query that sums tokens (and maps to documents processed) per workspace per billing period. This is the data layer for tier enforcement — not the UI or billing integration, just the query that answers "how much has this workspace used this month." Phase 4A builds the enforcement and customer-facing usage display on top of this.
+
 Public data sources feed directly into the pipeline. Any vertical can use any connector.
 
 **Architecture:** `app/services/connectors/` — each connector fetches data, converts to a file, hands to the pipeline. The connector doesn't know which vertical is using it.
@@ -333,13 +346,36 @@ Structured PDF report for manual review
 **What it is:** Production infrastructure. The platform handles multiple clients, multiple verticals, at scale.  
 **Trigger:** Phase 3 complete. First paying customer in each of two verticals.
 
-### 4A — Multi-User and Organizations
-Currently a single-account system. Phase 4A adds the user model needed for team sales and multiple clients.
+### 4A — Multi-User, Organizations, and Billing
+Currently a single-account system. Phase 4A adds the user model needed for team sales, multiple clients, and paid tiers.
+
+**Pricing model:**
+Extraction is a bounded, predictable cost — it goes into base subscription tiers priced by document volume. Chat is unbounded and user-driven — it's a separate add-on or higher tier. This maps cleanly to how operators actually use the platform.
+
+| Tier | Documents/month | Chat sessions | Target |
+|---|---|---|---|
+| Extraction | 200 | None | Solo operator, occasional use |
+| Professional | 500 | 50 sessions | Small office, active caseload |
+| Office | 2,000 | 200 sessions | Prosecutor's office, mid-size insurer |
+| Enterprise | Custom | Unlimited | Large carrier, government agency |
+
+A **chat session** = one workspace conversation with a 30-minute idle timeout. That's the billing unit for chat. Overages priced at $2-3/session, giving heavy users a natural reason to upgrade tiers rather than feel penalized.
+
+**BYOK vs hosted:**
+- BYOK (customer's own Anthropic key): customer pays Anthropic directly. Platform fee only. Clean for self-hosted installs.
+- SaaS hosted: Tyler's key embedded in infrastructure, AI cost absorbed into subscription pricing. At the volume numbers above, even a medium office is $50-100/month in AI cost — manageable with a $200-400/month subscription.
+- At meaningful volume ($5k+/month API spend), Anthropic enterprise contracts offer negotiated rates below public API pricing.
+
+**Volume pricing path:** Start at public API rates. As customer count grows, negotiate with Anthropic directly. The threshold where this becomes available is roughly 10-20 paying customers at Office tier or above.
+
+**Technical items in this phase:**
 
 - **Organizations** — a top-level tenant. Workspaces belong to an org, not a user.
 - **User roles** — Admin (manage users, billing), Analyst (full workspace access), Viewer (read-only). Role-based access enforced at the API level.
 - **Invitations** — invite by email, join an org, scoped to a vertical if needed.
 - **Workspace isolation** — one org cannot see another org's workspaces, documents, or extracted data.
+- **Usage enforcement** — read from `claude_call_logs` (already tracking token counts per workspace). Check usage against org's tier limits before allowing chat sessions or large extraction batches. `billing_period_start` on the org record defines the reset date.
+- **Usage display** — operator-facing usage dashboard showing documents processed and chat sessions used this billing period vs their tier limit.
 
 *Trigger:* First team sale. A single investigator or developer can use the platform without this. A firm with multiple analysts cannot.
 
