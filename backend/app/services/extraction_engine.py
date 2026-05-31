@@ -333,16 +333,52 @@ def extract_fields(
                 f"Batch {idx + 1}/{len(batches)} failed for schema {schema.document_type}"
             )
 
-    if batch_errors == len(batches):
+    # Any batch failures: retry missing fields once before giving up.
+    # This covers both total failure (all batches failed) and partial failure
+    # (some batches failed). The "raise all failed" guard runs after retry so
+    # a transient error on every batch can still be recovered.
+    if batch_errors > 0:
+        extracted_names = {e["field_name"] for e in all_extractions}
+        retry_fields = [
+            f for batch in batches
+            for f in batch
+            if f.get("name") not in extracted_names
+        ]
+
+        if retry_fields:
+            logger.info(
+                f"Retrying {len(retry_fields)} fields from partial failure "
+                f"for schema {schema.document_type}"
+            )
+            retry_batches = [
+                retry_fields[i: i + BATCH_SIZE]
+                for i in range(0, len(retry_fields), BATCH_SIZE)
+            ]
+            retry_errors = 0
+            for retry_batch in retry_batches:
+                try:
+                    retry_results = _extract_batch(
+                        ocr_text, retry_batch, schema,
+                        document_id=document_id,
+                        workspace_id=workspace_id,
+                        call_type="batch_retry_partial",
+                        attempt=1,
+                    )
+                    all_extractions.extend(retry_results)
+                except ExtractionBatchError:
+                    retry_errors += 1
+            if retry_errors > 0:
+                logger.warning(
+                    f"Partial retry: {retry_errors}/{len(retry_batches)} retry "
+                    f"batch(es) still failing for schema {schema.document_type}"
+                )
+
+    # After retry: if we still have nothing and every original batch failed,
+    # the API is likely unavailable — raise so the pipeline marks the doc failed.
+    if batch_errors == len(batches) and not all_extractions:
         raise ExtractionBatchError(
             f"All {len(batches)} extraction batch(es) failed for schema "
             f"{schema.document_type} — Claude API may be unavailable"
-        )
-
-    if batch_errors > 0:
-        logger.warning(
-            f"Extraction partial: {batch_errors}/{len(batches)} batches failed, "
-            f"{len(all_extractions)} fields extracted for schema {schema.document_type}"
         )
 
     logger.info(

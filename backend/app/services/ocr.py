@@ -17,7 +17,7 @@ def extract_text_from_pdf(file_bytes: bytes) -> str:
         if text:
             pages.append(text)
         else:
-            pix = page.get_pixmap(dpi=200)
+            pix = page.get_pixmap(dpi=300)
             img = Image.open(io.BytesIO(pix.tobytes("png")))
             ocr_text = pytesseract.image_to_string(img)
             pages.append(ocr_text.strip())

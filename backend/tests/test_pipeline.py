@@ -515,3 +515,37 @@ def test_pipeline_marks_needs_review_when_required_field_missing(
         "required-field failure is being overwritten by the final complete assignment"
     )
     assert doc.extraction_error is not None
+
+
+# ── Partial batch retry ───────────────────────────────────────────────────────
+
+def test_extract_fields_retries_partial_batch_failure(db, deed_schema):
+    """When the first batch call fails transiently, the partial retry recovers it."""
+    from app.services.extraction_engine import extract_fields
+    import json
+
+    call_count = 0
+
+    def side_effect(**kwargs):
+        nonlocal call_count
+        call_count += 1
+        # First call fails (simulates transient error), retry succeeds
+        if call_count == 1:
+            raise Exception("Transient API error")
+        return MagicMock(
+            content=[MagicMock(text=json.dumps({"extractions": [
+                {"field_name": "grantor_name", "field_value": "Jane Smith",
+                 "field_type": "name", "confidence": 0.90, "ocr_confidence": 0.92}
+            ]}))],
+            usage=MagicMock(input_tokens=100, output_tokens=50),
+        )
+
+    mock_client = MagicMock()
+    mock_client.messages.create.side_effect = side_effect
+
+    with patch("app.services.claude_client.get_client", return_value=mock_client):
+        results = extract_fields("deed content", deed_schema)
+
+    # Retry should have recovered the failed batch
+    assert len(results) > 0
+    assert any(r["field_name"] == "grantor_name" for r in results)
