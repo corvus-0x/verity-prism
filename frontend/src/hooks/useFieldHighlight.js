@@ -59,11 +59,13 @@ export default function useFieldHighlight(fieldValue, textItems, pageViewport) {
   useEffect(() => { setActiveIndex(0) }, [fieldValue])
 
   const next = useCallback(() => {
-    setActiveIndex((i) => (i + 1) % Math.max(matches.length, 1))
+    if (matches.length === 0) return
+    setActiveIndex((i) => (i + 1) % matches.length)
   }, [matches.length])
 
   const prev = useCallback(() => {
-    setActiveIndex((i) => (i - 1 + Math.max(matches.length, 1)) % Math.max(matches.length, 1))
+    if (matches.length === 0) return
+    setActiveIndex((i) => (i - 1 + matches.length) % matches.length)
   }, [matches.length])
 
   const safeIndex = Math.min(activeIndex, Math.max(matches.length - 1, 0))
