@@ -22,6 +22,7 @@ class DocumentExtraction(Base):
         default="text"
     )
     confidence: Mapped[float] = mapped_column(Float, default=1.0)
+    ocr_confidence: Mapped[float] = mapped_column(Float, default=1.0, nullable=False)
     attempt: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
     schema_id: Mapped[str] = mapped_column(String, ForeignKey("document_schemas.id"), nullable=True)
     extracted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC))

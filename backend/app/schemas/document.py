@@ -29,6 +29,7 @@ class ExtractionOut(BaseModel):
     field_value: str | None
     field_type: str
     confidence: float
+    ocr_confidence: float
     attempt: int
     extracted_at: datetime
 

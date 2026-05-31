@@ -40,3 +40,5 @@ class Document(Base):
     uploaded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
     is_deleted: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     deleted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=True)
+    flag_reason: Mapped[str] = mapped_column(String, nullable=True)
+    flag_note: Mapped[str] = mapped_column(String, nullable=True)
