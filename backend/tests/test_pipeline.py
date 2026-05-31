@@ -529,13 +529,14 @@ def test_extract_fields_retries_partial_batch_failure(db, deed_schema):
     def side_effect(**kwargs):
         nonlocal call_count
         call_count += 1
-        # First call fails (simulates transient error), retry succeeds
         if call_count == 1:
             raise Exception("Transient API error")
         return MagicMock(
             content=[MagicMock(text=json.dumps({"extractions": [
                 {"field_name": "grantor_name", "field_value": "Jane Smith",
-                 "field_type": "name", "confidence": 0.90, "ocr_confidence": 0.92}
+                 "field_type": "name", "confidence": 0.90, "ocr_confidence": 0.92},
+                {"field_name": "sale_price", "field_value": "285000",
+                 "field_type": "currency", "confidence": 0.88, "ocr_confidence": 0.90},
             ]}))],
             usage=MagicMock(input_tokens=100, output_tokens=50),
         )
@@ -546,6 +547,10 @@ def test_extract_fields_retries_partial_batch_failure(db, deed_schema):
     with patch("app.services.claude_client.get_client", return_value=mock_client):
         results = extract_fields("deed content", deed_schema)
 
-    # Retry should have recovered the failed batch
-    assert len(results) > 0
-    assert any(r["field_name"] == "grantor_name" for r in results)
+    # Both fields recovered via retry
+    assert len(results) == 2
+    result_names = {r["field_name"] for r in results}
+    assert "grantor_name" in result_names
+    assert "sale_price" in result_names
+    # Confirm retry fired: first call failed, second succeeded
+    assert call_count == 2

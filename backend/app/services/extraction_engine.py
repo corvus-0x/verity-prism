@@ -339,6 +339,8 @@ def extract_fields(
     # a transient error on every batch can still be recovered.
     if batch_errors > 0:
         extracted_names = {e["field_name"] for e in all_extractions}
+        # f["name"] is the schema key; extracted_names uses Claude's response key "field_name"
+        # — same string value, different dict keys (schema vs extraction output)
         retry_fields = [
             f for batch in batches
             for f in batch
@@ -362,7 +364,7 @@ def extract_fields(
                         document_id=document_id,
                         workspace_id=workspace_id,
                         call_type="batch_retry_partial",
-                        attempt=1,
+                        attempt=2,
                     )
                     all_extractions.extend(retry_results)
                 except ExtractionBatchError:
@@ -372,6 +374,12 @@ def extract_fields(
                     f"Partial retry: {retry_errors}/{len(retry_batches)} retry "
                     f"batch(es) still failing for schema {schema.document_type}"
                 )
+
+        if batch_errors == len(batches) and all_extractions:
+            logger.warning(
+                f"Total batch failure recovered partially by retry: "
+                f"{len(all_extractions)} fields recovered for schema {schema.document_type}"
+            )
 
     # After retry: if we still have nothing and every original batch failed,
     # the API is likely unavailable — raise so the pipeline marks the doc failed.
