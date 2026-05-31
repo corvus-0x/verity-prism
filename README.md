@@ -6,7 +6,7 @@ Fraud investigation is the proving ground. The same engine runs insurance, legal
 
 ---
 
-![Verity Prism — document viewer with extracted fields](docs/assets/screenshot-document-viewer.png)
+<!-- screenshot — add before publishing -->
 
 ---
 
