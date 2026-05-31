@@ -1,77 +1,31 @@
 # Verity Prism
 
-An intelligent document processing (IDP) platform that ingests documents, extracts every data point into structured database fields, and makes everything searchable via plain English queries.
+An intelligent document processing platform that turns any document into structured, queryable data — and gives operators the tools to verify every extraction against the source.
 
-Fraud investigation is the proving ground. The same engine runs insurance, legal, and compliance verticals without modification.
+Fraud investigation is the proving ground. The same engine runs insurance, legal, and compliance verticals without modification. Most IDP tools require $5,000/year per person in certified training. This one should be operable by a new user in 20 minutes.
 
 ---
 
-## What Works Now
+<!-- screenshot placeholder — add before publishing -->
 
-**Document ingestion pipeline**
-- Upload PDF, image, or XML → SHA-256 hash (evidence lock) → OCR at 300 DPI → type detection → field extraction → full-text search index
-- Background processing: upload returns immediately, pipeline runs async
-- Partial batch retry: failed extraction batches retried once before routing to human review
-- 11 document type schemas: DEED, 990, SOS-FILING, UCC, PARCEL-RECORD, BUILDING-PERMIT, AUDIT-REPORT, SCREENSHOT, OBITUARY, PLAT, CORRESPONDENCE
-- XML direct parse for structured files (IRS 990 XML → 1.0 confidence, no OCR needed)
-- Unknown document types auto-create investigation leads instead of silently failing
+---
 
-**Extraction engine**
-- Schema-driven: adding a new document type is one database row — no code change
-- One row per extracted field per document (`document_extractions` table) — every field individually queryable
-- **Dual confidence per field**: AI confidence (model certainty) + OCR confidence (text clarity) — distinguishes scan quality problems from schema prompt problems
-- Per-field confidence thresholds: high-stakes fields (EIN, sale_amount) can require tighter confidence than low-stakes fields
-- Field validation rules: `required`, `min_length`, `max_length`, `regex` per field in schema definition
-- Schema fields grouped into document-logical sections (Parties, Financial, Property, Recording etc.) for the review form
-- Vertical-aware schema lookup: fraud-specific schemas only activate in fraud workspaces
+## What It Does
 
-**Document viewer + review pane**
-- Split-pane view: source PDF (65%) + fields panel (35%)
-- react-pdf renders in-browser — no plugin or external viewer required
-- **Full document review pane** (`?review=1`): schema-driven form shows every defined field whether extracted or not
-  - Four field states: auto-extracted (high confidence), low confidence, not extracted, source obscured
-  - Active field highlights its location on the PDF with a blue box and label
-  - Clicking a field searches the PDF text layer for its value; ← → navigates multiple matches
-  - Operator corrections store a PDF region capture (page, bounding box, base64 image, note) as evidence
-  - "Save all" commits all pending corrections in one action
-- Document flagging: structured rejection reasons (unknown type, missing pages, low quality scan etc.) with optional note, travel through audit trail
+**Ingest any document** — PDF, scanned image, or XML — and extract every data point into individual database fields. A deed with 64 fields produces 64 rows. Every field is individually queryable, confidence-scored, and evidence-linked.
 
-**NLP search**
-- Plain English queries → PostgreSQL full-text search + field-level filters on `document_extractions`
-- Numeric guard prevents CAST crashes on non-numeric values
-- No SQL required
+**Review what the AI missed** — A schema-driven pane shows every field the schema defines alongside the PDF. Low-confidence fields are pre-filled and flagged. Fields the AI never extracted are empty and editable. Click any field and a highlight box appears on the PDF at that value's location. Corrections store a captured PDF region as evidence.
 
-**Agentic AI chat**
-- Native Anthropic tool-use loop (up to 10 rounds, synthesis pass fallback)
-- 6 workspace-scoped read-only tools: `search_documents`, `get_entity`, `query_extractions`, `get_transactions`, `get_findings`, `get_leads`
-- `workspace_id` injected by dispatcher — Claude cannot access data outside the current workspace
-- Vertical tool registry: fraud workspaces get additional tools; engine tools ship to all verticals
+**Search and investigate** — Plain-English queries hit a full-text + field-level search index. An agentic AI chat (native Anthropic tool-use) answers questions grounded in actual extracted data from the workspace — not hallucinated from training data.
 
-**Observability dashboard** (`/observability`)
-- Automation Rate: % of documents processed straight-through vs requiring human review
-- Inbound/Completed volume trend over the last 30 days
-- Extraction quality by schema: avg AI confidence, avg OCR confidence, retry rate, correction rate
-- Current processing: pending + review queue counts
-
-**Platform**
-- JWT authentication (httpOnly cookie + Bearer hybrid), workspace isolation, role-aware access
-- Immutable audit log (PostgreSQL trigger blocks UPDATE/DELETE at DB level)
-- Soft deletes everywhere — nothing is permanently removed
-- Schema library: browse all active document types, field definitions, parse strategies at `/schemas`
-- Vertical-aware UI: General workspaces show engine nav; Fraud workspaces add Transactions, Findings, Leads
-
-**Test coverage**
-- 171 tests, all passing — auth, workspaces, documents, extractions, entities, findings, transactions, leads, notes, search, AI chat, agentic tool loop, observability, schema review
+**Track everything** — Immutable audit log enforced at the PostgreSQL trigger level. Every upload, search, correction, and file access is a permanent, tamper-proof record.
 
 ---
 
 ## Quick Start
 
 ```bash
-# Copy and fill in your Anthropic API key
-cp backend/.env.example backend/.env
-
-# Start everything
+cp backend/.env.example backend/.env   # add your Anthropic API key
 docker-compose up --build
 ```
 
@@ -81,15 +35,31 @@ docker-compose up --build
 | Backend API | http://localhost:8000 |
 | API docs | http://localhost:8000/docs |
 
-**Seed document schemas** (required on first run):
 ```bash
+# Required on first run — seeds all 11 document type schemas
 docker-compose exec backend python -m app.seeds.document_schemas
-```
 
-**Run database migrations** (required after any pull):
-```bash
+# Required after any pull
 cd backend && alembic upgrade head
 ```
+
+---
+
+## Stack
+
+| Layer | Technology |
+|---|---|
+| Frontend | React 18 + Vite + Tailwind CSS + Recharts |
+| Backend | Python 3.12 + FastAPI |
+| Database | PostgreSQL 16 |
+| ORM + Migrations | SQLAlchemy 2.0 + Alembic |
+| AI | Anthropic Claude API (claude-sonnet-4-6) |
+| OCR | PyMuPDF + pytesseract (300 DPI) |
+| Auth | JWT via httpOnly cookie + Bearer |
+| PDF rendering | react-pdf (pdf.js, text layer) |
+| Containers | Docker + docker-compose |
+
+**171 tests.** All passing.
 
 ---
 
@@ -101,47 +71,75 @@ Documents → Ingestion Pipeline → Extraction Engine → Knowledge Base → Ve
                store)               field extract)       FTS, audit)     insurance, ...)
 ```
 
-**Engine vs. cap:** The engine ships to every customer. A vertical cap installs on top — schema sets, signal definitions, workflow config, export formats. The fraud cap never ships to an insurance customer. Adding a new vertical means writing a cap, not modifying the engine.
+**Engine vs. cap.** The extraction engine ships to every customer — it knows nothing about fraud or insurance. A vertical cap installs on top: schema definitions, signal rules, workflow config, export formats. The fraud cap never ships to an insurance customer. Adding a new vertical is configuration, not code.
 
-**`document_extractions` is the central table.** One row per extracted field per document. A deed with 64 fields = 64 rows. Every data point is individually queryable without JSON parsing. Each row carries both AI confidence and OCR confidence for diagnostics.
+**Row-per-field extraction.** `document_extractions` stores one row per field per document. A 64-field deed = 64 rows. Every data point is individually queryable, confidence-scored, and filterable — no JSON parsing required.
 
-**`document_schemas` drives everything.** `parse_strategy` (`claude` or `xml_direct`) tells the pipeline how to extract. `vertical` scopes a schema to a specific vertical or `general` for all. `schema_fields` JSON defines each field with name, type, description, group, optional thresholds, and optional validation rules. No code change to add a new document type.
+**Schema-driven pipeline.** `document_schemas` drives type detection, routing, and extraction. `parse_strategy` selects Claude extraction or XML direct parse. Adding a new document type is one database row.
+
+---
+
+## Capabilities
+
+<details>
+<summary>Extraction engine</summary>
+
+- Dual confidence per field: AI confidence (model certainty) + OCR confidence (text clarity in source)
+- Per-field thresholds: high-stakes fields can require tighter confidence than low-stakes fields
+- Field validation: `required`, `min_length`, `max_length`, `regex` per field in schema definition
+- Partial batch retry: transient API failures retried silently before routing to human review
+- Schema field groups: fields organized into document-logical sections for the review form
+
+</details>
+
+<details>
+<summary>Document review pane</summary>
+
+- Schema-driven: shows every defined field whether extracted or not
+- PDF text layer highlighting: active field highlights its location on the source document
+- Multi-match navigation when a value appears in multiple places (grantor name in deed body + signature + notary)
+- Four field states: auto-extracted, low confidence, not extracted, source obscured (physical damage)
+- Evidence capture: corrections store page number, bounding box, and cropped PDF image
+- Document flagging: structured rejection reasons travel through the audit trail
+
+</details>
+
+<details>
+<summary>Observability dashboard</summary>
+
+- Automation rate: % of documents processed without human intervention
+- 30-day volume trend: inbound vs completed
+- Extraction quality by schema: avg AI confidence, avg OCR confidence, retry rate, correction rate
+- Current processing: pending + review queue counts
+
+</details>
+
+<details>
+<summary>Platform</summary>
+
+- Immutable audit log (PostgreSQL trigger — UPDATE/DELETE raise an exception at the DB level)
+- Soft deletes everywhere — nothing permanently removed from an evidence platform
+- Real-time extraction status via SSE — badge flips without a page refresh
+- Data export: per-document and workspace CSV/JSON with formula injection protection
+- Schema library at `/schemas` — browse all active document types and field definitions
+
+</details>
 
 ---
 
 ## Build Journal
 
-11 posts on how and why this platform was built — not feature announcements, but the reasoning behind specific decisions: why the database is structured the way it is, why the AI agent uses tool use instead of context injection, how a real document set shaped the schema design, what the audit found that wasn't there, and why surfacing a problem without a fix is as bad as not detecting it.
+11 posts on the reasoning behind specific decisions — not feature announcements, but the thinking that shaped the architecture.
 
 [From Case to Code](https://corvus-0x.hashnode.dev) on Hashnode.
 
 ---
 
-## Stack
-
-| Layer | Technology |
-|---|---|
-| Frontend | React 18 + Vite + Tailwind CSS + Recharts |
-| Backend | Python 3.12 + FastAPI |
-| Database | PostgreSQL 16 |
-| ORM + Migrations | SQLAlchemy 2.0 + Alembic (9 migrations) |
-| AI | Anthropic Claude API (claude-sonnet-4-6) |
-| OCR | PyMuPDF + pytesseract (300 DPI) |
-| Auth | JWT via httpOnly cookie + Bearer (python-jose + passlib/bcrypt) |
-| PDF rendering | react-pdf (pdf.js, text layer enabled) |
-| Containers | Docker + docker-compose |
-
----
-
 ## Documentation
 
-**Start here if you want to understand the architecture:**
-
-- [`docs/decisions/`](docs/decisions/) — Architecture Decision Records: why the database is structured as row-per-field, why adding a document type requires no code change, why the engine knows nothing about fraud or insurance, why SSE uses fetch+ReadableStream instead of native EventSource
-- [`docs/roadmap.md`](docs/roadmap.md) — phase status, what's complete, what's next, and why each phase gates the next
-- [`docs/build-inventory.md`](docs/build-inventory.md) — every component, what it does, what it connects to, and what's planned
-- [`docs/superpowers/specs/`](docs/superpowers/specs/) — design specifications written before each build
-- [`docs/superpowers/plans/`](docs/superpowers/plans/) — implementation plans
+- [`docs/roadmap.md`](docs/roadmap.md) — phase status and what's next
+- [`docs/build-tracker.md`](docs/build-tracker.md) — session log with the why behind each build decision
+- [`docs/superpowers/specs/`](docs/superpowers/specs/) — design specs written before each build
 
 ---
 
