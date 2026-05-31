@@ -22,7 +22,7 @@ export default function SchemaReviewPane({
   onFieldFocus, onSaveComplete,
 }) {
   const [activeField, setActiveField] = useState(null)
-  const [pendingChanges, setPendingChanges] = useState({})  // { fieldName: value }
+  const [pendingChanges, setPendingChanges] = useState({})  // { fieldName: { value, note } }
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState(null)
 
@@ -46,12 +46,15 @@ export default function SchemaReviewPane({
   const handleFieldFocus = useCallback((fieldName) => {
     setActiveField(fieldName)
     const extraction = extractionByName[fieldName]
-    const fieldValue = pendingChanges[fieldName] ?? extraction?.field_value ?? ''
+    const fieldValue = pendingChanges[fieldName]?.value ?? extraction?.field_value ?? ''
     onFieldFocus(fieldName, fieldValue)
   }, [extractionByName, pendingChanges, onFieldFocus])
 
-  const handleFieldChange = useCallback((fieldName, value) => {
-    setPendingChanges((prev) => ({ ...prev, [fieldName]: value }))
+  const handleFieldChange = useCallback((fieldName, value, note) => {
+    setPendingChanges((prev) => ({
+      ...prev,
+      [fieldName]: { value, note: note ?? prev[fieldName]?.note ?? '' },
+    }))
   }, [])
 
   const handleVerify = useCallback(async (fieldName, value, note, evidenceType, skipCallback = false) => {
@@ -85,8 +88,8 @@ export default function SchemaReviewPane({
     setSaveError(null)
     const entries = Object.entries(pendingChanges)
     const results = await Promise.allSettled(
-      entries.map(([fieldName, value]) =>
-        handleVerify(fieldName, value, '', 'manual_entry', true)
+      entries.map(([fieldName, { value, note }]) =>
+        handleVerify(fieldName, value, note || '', 'manual_entry', true)
       )
     )
     setSaving(false)

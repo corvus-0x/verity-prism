@@ -11,6 +11,7 @@ from app.models.workspace import Workspace
 @pytest.fixture
 def ws_schema_doc(db, auth_headers, client):
     user = db.query(User).filter(User.email == "tyler@example.com").first()
+    assert user is not None, "registered_user fixture must run before ws_schema_doc"
     ws_resp = client.post("/workspaces/", json={"name": "Review WS", "vertical": "general"},
                           headers=auth_headers)
     ws_id = ws_resp.json()["id"]

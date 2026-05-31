@@ -41,7 +41,7 @@ export default function ExtractionField({
 
   const handleChange = (v) => {
     setValue(v)
-    onChange(field.name, v)
+    onChange(field.name, v, note)
   }
 
   const handleVerify = async (type = 'auto_highlight') => {
@@ -117,7 +117,7 @@ export default function ExtractionField({
         <input
           className="w-full text-xs rounded px-2 py-0.5 mt-1 bg-slate-800/50 border border-slate-700 text-slate-400 placeholder:text-slate-600 outline-none"
           value={note}
-          onChange={(e) => setNote(e.target.value)}
+          onChange={(e) => { setNote(e.target.value); onChange(field.name, value, e.target.value) }}
           placeholder="note (e.g. nominal consideration, stamp overlay)…"
           onClick={(e) => e.stopPropagation()}
         />
@@ -132,7 +132,7 @@ export default function ExtractionField({
               onClick={(e) => { e.stopPropagation(); handleVerify('obscured') }}
               className="flex-1 text-xs py-1 bg-purple-800 hover:bg-purple-700 text-purple-100 rounded disabled:opacity-50 transition-colors"
             >
-              {saving ? '…' : '📷 Capture obscured region'}
+              {saving ? '…' : '✓ Mark as obscured'}
             </button>
           ) : (
             <>

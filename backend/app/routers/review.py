@@ -1,3 +1,5 @@
+import json
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -130,8 +132,7 @@ def correct_extraction(
 
     # Guard evidence payload size — image_b64 can be large; 200KB is generous for a field region
     if body.evidence:
-        import json as _json
-        if len(_json.dumps(body.evidence)) > 204_800:
+        if len(json.dumps(body.evidence).encode("utf-8")) > 204_800:
             raise HTTPException(status_code=413, detail="Evidence payload exceeds 200KB limit")
 
     before_state = {
@@ -282,9 +283,22 @@ def create_extraction(
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
 
+    # Validate schema_id matches doc and field_name exists in that schema
+    if doc.schema_id and body.schema_id != doc.schema_id:
+        raise HTTPException(status_code=400, detail="schema_id does not match document schema")
+    schema_for_validation = db.query(DocumentSchema).filter(
+        DocumentSchema.id == doc.schema_id
+    ).first()
+    if schema_for_validation:
+        valid_names = {f["name"] for f in (schema_for_validation.schema_fields or [])}
+        if valid_names and body.field_name not in valid_names:
+            raise HTTPException(
+                status_code=400,
+                detail=f"field '{body.field_name}' is not defined in schema",
+            )
+
     if body.evidence:
-        import json as _json
-        if len(_json.dumps(body.evidence)) > 204_800:
+        if len(json.dumps(body.evidence).encode("utf-8")) > 204_800:
             raise HTTPException(status_code=413, detail="Evidence payload exceeds 200KB limit")
 
     row = DocumentExtraction(
