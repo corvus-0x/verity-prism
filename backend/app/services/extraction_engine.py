@@ -198,7 +198,7 @@ def _extract_batch(
     """
     Ask Claude to extract a single batch of fields.
     Returns a list of extraction dicts with standardised keys:
-    field_name, field_value, field_type, confidence.
+    field_name, field_value, field_type, confidence, ocr_confidence.
     """
     fields_description = "\n".join([
         f"- {f['name']} ({f['type']}): {f['description']}"
@@ -217,14 +217,15 @@ Extract ONLY these {len(fields_batch)} fields:
 {fields_description}
 
 Rules:
-- Use EXACTLY these JSON key names: "field_name", "field_value", "field_type", "confidence"
+- Use EXACTLY these JSON key names: "field_name", "field_value", "field_type", "confidence", "ocr_confidence"
 - field_value must be a string or null — never a number or boolean
-- confidence is 0.0 to 1.0
+- confidence: your certainty in the extraction (0.0 to 1.0)
+- ocr_confidence: how clearly this field's text appeared in the source document (0.0 to 1.0). Low when source text is garbled, missing, or hard to read.
 - Respond with JSON only — no markdown, no explanation
 
 Required format:
 {{"extractions": [
-    {{"field_name": "exact_name_from_list", "field_value": "extracted text or null", "field_type": "text", "confidence": 0.9}},
+    {{"field_name": "exact_name_from_list", "field_value": "extracted text or null", "field_type": "text", "confidence": 0.9, "ocr_confidence": 0.95}},
     ...
 ]}}
 
@@ -260,11 +261,15 @@ Document text:
         # of field_name/field_value despite explicit instructions
         normalised = []
         for item in raw:
+            ai_conf_raw = item.get("confidence")
+            ai_conf = ai_conf_raw if ai_conf_raw is not None else 1.0
+            ocr_raw = item.get("ocr_confidence")
             normalised.append({
                 "field_name": item.get("field_name") or item.get("field", ""),
                 "field_value": item.get("field_value") or item.get("value"),
                 "field_type": item.get("field_type", "text"),
-                "confidence": item.get("confidence", 1.0),
+                "confidence": ai_conf,
+                "ocr_confidence": ocr_raw if ocr_raw is not None else ai_conf,
             })
         return normalised
     except Exception as e:
@@ -374,6 +379,7 @@ def save_extractions(
             field_value=field_value,
             field_type=item.get("field_type", "text"),
             confidence=item.get("confidence", 1.0),
+            ocr_confidence=item.get("ocr_confidence", item.get("confidence", 1.0)),
             schema_id=schema_id,
             attempt=attempt,
         )

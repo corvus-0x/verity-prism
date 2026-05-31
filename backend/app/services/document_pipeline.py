@@ -252,6 +252,24 @@ def _run_pipeline(
         _fail(doc, f"Extraction failed: {e}", db)
         return
 
+    # ── Step 6a: Field validation ────────────────────────────────────────────
+    if schema.parse_strategy == "claude" and schema.schema_fields:
+        try:
+            from app.services.field_validator import validate_extractions
+            validation_errors = validate_extractions(raw_extractions, schema.schema_fields)
+            if validation_errors:
+                required_failures = [e for e in validation_errors if e.rule == "required"]
+                for err in validation_errors:
+                    logger.warning(f"Validation error in doc {doc.id}: {err.message}")
+                if required_failures:
+                    doc.extraction_status = "needs_review"
+                    doc.extraction_error = "; ".join(
+                        e.message for e in required_failures[:3]
+                    )
+                    db.commit()
+        except Exception as e:
+            logger.warning(f"Field validation failed for doc {doc.id}: {e}")
+
     # C2 guard: a claude schema with defined fields that yielded zero rows is a failure,
     # not a silent complete. (extract_fields raises if all batches failed; this catches
     # the rare case where batches succeed but Claude returns no extractions.)
@@ -268,7 +286,23 @@ def _run_pipeline(
     if schema.parse_strategy == "claude":
         try:
             from app.services.extraction_evaluator import evaluate, run_retry
-            eval_result = evaluate(raw_extractions, schema.default_confidence_threshold)
+            _field_ai_thresholds = {
+                f["name"]: f["ai_threshold"]
+                for f in (schema.schema_fields or [])
+                if "ai_threshold" in f
+            }
+            _field_ocr_thresholds = {
+                f["name"]: f["ocr_threshold"]
+                for f in (schema.schema_fields or [])
+                if "ocr_threshold" in f
+            }
+            eval_result = evaluate(
+                raw_extractions,
+                schema.default_confidence_threshold,
+                field_thresholds=_field_ai_thresholds or None,
+                ocr_threshold=schema.default_confidence_threshold,
+                ocr_field_thresholds=_field_ocr_thresholds or None,
+            )
             if eval_result.needs_review:
                 logger.info(
                     f"Evaluator: {len(eval_result.low_confidence_fields)} low-confidence fields "
@@ -282,9 +316,14 @@ def _run_pipeline(
                     low_confidence_field_names=eval_result.low_confidence_fields,
                     db=db,
                 )
-                # Re-evaluate retry results — if still below threshold, flag for human review
                 if retry_extractions:
-                    final_eval = evaluate(retry_extractions, schema.default_confidence_threshold)
+                    final_eval = evaluate(
+                        retry_extractions,
+                        schema.default_confidence_threshold,
+                        field_thresholds=_field_ai_thresholds or None,
+                        ocr_threshold=schema.default_confidence_threshold,
+                        ocr_field_thresholds=_field_ocr_thresholds or None,
+                    )
                     if final_eval.needs_review:
                         doc.extraction_status = "needs_review"
                         db.commit()
@@ -293,11 +332,9 @@ def _run_pipeline(
                             f"{len(final_eval.low_confidence_fields)} fields still below threshold"
                         )
                 else:
-                    # Retry produced nothing — flag for human review regardless
                     doc.extraction_status = "needs_review"
                     db.commit()
         except Exception as e:
-            # Evaluator failure is non-fatal — document stays complete
             logger.warning(f"Extraction evaluator failed for doc {doc.id}: {e}")
 
     # ── Step 7: Standardized filename ───────────────────────────────────────
@@ -319,7 +356,8 @@ def _run_pipeline(
     )
     _update_search_index(doc, ocr_text, extra_text, db)
 
-    doc.extraction_status = "complete"
+    if doc.extraction_status == "pending":
+        doc.extraction_status = "complete"
     db.commit()
 
     # ── Step 9: Audit log ────────────────────────────────────────────────────

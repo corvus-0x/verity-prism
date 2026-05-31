@@ -177,7 +177,66 @@ Full finding details and resolution notes in `docs/code-audit-2026-05-29.md`.
 **Phase 6 ✅ — Frontend resilience + JWT hardening:**  
 `POST /auth/login` sets httpOnly, SameSite=Lax cookie; `GET /auth/me` restores session on page refresh; `POST /auth/logout` clears cookie. `get_current_user` accepts Bearer or cookie (hybrid — zero test changes). Frontend: no localStorage, `withCredentials: true`, `AuthInit` on startup, `ProtectedRoute` checks `user`. `AIChat.handleSend` rolls back optimistic message and shows toast on failure. SSE reader cancelled on unmount. 401 interceptor uses router navigation.
 
-### 2E — Data Connectors
+### 2E — Engine Quality + Observability
+**Priority: get the engine measurably reliable before expanding it.** These items tell you whether extraction is actually working and give you the controls to improve it. Everything else — connectors, NL schema creation, vertical packaging — is only as good as the engine underneath.
+
+**1. Dual confidence model** *(prerequisite — do before dashboard)*
+Add `ocr_confidence` column to `document_extractions` alongside the existing `confidence` field (which is AI confidence). These diagnose different problems: low OCR confidence = bad scan quality; low AI confidence = ambiguous field definition in the schema. Right now Prism can't tell the difference. For text fields, OCR confidence = weakest word-level score. For table fields, OCR confidence = average across cells. The extraction engine populates both; the dashboard visualizes them as separate trends.
+
+**2. Observability dashboard** *(do after dual confidence is in)*
+Five dashboards confirmed from Hyland's own product. Each maps directly to data already in Prism's database — no new tables required for most of them.
+
+| Dashboard | What it shows | Prism data source |
+|---|---|---|
+| Automation Rate Summary | % docs straight-through vs. human review vs. failed | `documents.status` counts |
+| Inbound/Outbound Volume | Doc ingestion and completion volume over time | `documents.uploaded_at` / `completed_at` by day |
+| Classification Details | Accuracy per schema, confidence trends, retry rates | `document_extractions` + `document_schemas` |
+| Current System Processing | Real-time pipeline status — pending/processing counts | `documents` where status = pending/processing |
+| Task Completion by User | Per-reviewer throughput and correction rate | Requires multi-user (Phase 4A) — defer |
+
+**Automation Rate is the single most important metric.** It answers: what percentage of documents require no human intervention? Industry benchmark is 80%+. Every Phase 2E improvement should move this number up.
+
+Confidence scores never surface to end users as raw numbers — they feed these dashboards and routing logic only.
+
+**3. Dual confidence in the Review UI**
+`ExtractionReview.jsx` currently shows a single confidence value per field. Once `ocr_confidence` is added to `document_extractions`, the review panel should display both — OCR confidence (scan quality) and AI confidence (extraction certainty) — so reviewers understand *why* a field was flagged, not just *that* it was flagged. Confirmed pattern from Hyland's own review UI.
+
+**4. Three extraction types on schema fields**
+Hyland defines three types: **Text** (OCR of written content), **Table** (grid data — columns defined at schema level, OCR confidence = average across cells), **Reasoning** (full document visual analysis — no OCR confidence). Prism's current `claude` parse strategy is effectively Reasoning mode for all fields. Add `extraction_type` per field in `schema_fields` JSON: `text | table | reasoning`. Tables need column definitions and different confidence math. This shapes how the extraction engine batches fields and how the dashboard buckets confidence scores.
+
+**5. Two separate thresholds per field**
+Hyland confirmed: there are two independent thresholds — **Field Review Threshold** (AI confidence) and **OCR Review Threshold** (scan quality confidence) — each configurable at both project level and per-field override. Prism currently has one threshold per schema. Update `schema_fields` JSON to support `ai_confidence_threshold` and `ocr_confidence_threshold` per field, both optional overrides of the schema-level defaults.
+
+**6. Field validation rules — concrete types**
+Add optional `validation` property to `schema_fields` JSON. Types confirmed from Hyland docs:
+- `min_length` / `max_length` — character count bounds
+- `regex` — pattern match (EIN format, email, currency)
+- `required` — field must have a value; empty = flagged
+
+Post-extraction, pre-signal. Catches semantic errors that Claude extracts confidently but incorrectly (transposed dates, wrong numeric format). Cross-field rules (deed_date before recording_date) are Phase 3 — they require knowing both field values simultaneously.
+
+**7. Output format normalization** *(deferred — follow-on plan)*
+New capability: a normalization layer applied to raw extracted values *before* they are stored. Configured per field in `schema_fields` JSON as an ordered list of transforms. Not implemented in Phase 2E — see Deferred section below. Types confirmed for the follow-on plan:
+- `remove_chars` — strip symbols or punctuation (e.g., remove `#` from `#100`)
+- `find_replace` — swap strings at runtime (normalize entity name variants)
+- `date_format` — convert date to target format (e.g., `01.05.2026` → `05/01/2026`)
+- `case` — upper / lower / sentence case
+- `truncate` — trim N chars from left or right
+- `format_number` — normalize currency, decimals, separators
+
+This eliminates post-processing scripts in signal detection and downstream systems. A deed's `sale_amount` extracted as `$1,250,000.00` gets normalized to `1250000` before storage — signal detection compares numbers, not strings.
+
+**8. Document flagging with structured reasons**
+When a reviewer flags a document (not just corrects fields), they select a justification reason from a configured list and add a free-text note. The flag and note travel with the document through the rest of processing. Hyland defaults: "Unknown document type", "Document missing pages", "Low quality scan (illegible)". Prism equivalent: add `flag_reason` and `flag_note` columns to `documents`. The Classification Details dashboard shows rejection breakdown by reason — scan quality vs. wrong schema vs. missing pages. Turns unstructured rejections into queryable diagnostics.
+
+**Deferred from this phase:**
+- *NL schema creation* — guided schema setup via plain English. Valuable for zero-training UX but not a quality prerequisite.
+- *Extraction feedback loop* — feed human corrections back into future extraction prompts. Worth building once correction volume gives it signal.
+- *Field-to-location highlighting* — click a field, highlight its position in the PDF. Already deferred from 2A; confirmed as standard by Hyland. Build when table extraction ships (requires text layer coordinates).
+- *Parent/child schema inheritance* — e.g., DEED as parent class with WARRANTY_DEED, QUITCLAIM_DEED, SHERIFF_DEED as children inheriting base fields. Cleans up the schema registry. Phase 3 candidate when fraud cap schemas are packaged.
+- *Field redaction* — overlay or burned redaction for PII fields (SSN, etc.). Phase 4 compliance feature.
+
+### 2F — Data Connectors (pre-Phase 3)
 Public data sources feed directly into the pipeline. Any vertical can use any connector.
 
 **Architecture:** `app/services/connectors/` — each connector fetches data, converts to a file, hands to the pipeline. The connector doesn't know which vertical is using it.
@@ -324,6 +383,6 @@ The fraud vertical was built first because it's the hardest case. If the engine 
 |---|---|
 | Core Hardening | ✅ CORS configurable, file size bounded, soft-delete consistent, Alembic verified on fresh DB. |
 | Phase 1 | ✅ All backend tasks pass. Frontend working. Documents flow through full pipeline end-to-end. |
-| Phase 2 | 2A ✅ (document viewer, eval loop, observability). 2C ✅ (SSE status, export, audit log UI). 2D ✅ (all 6 audit phases — search integrity, thin routers, JWT hardening). 2B moved to Phase 3. Remaining: 2E (data connectors). |
+| Phase 2 | 2A ✅ (document viewer, eval loop, observability). 2C ✅ (SSE status, export, audit log UI). 2D ✅ (all 6 audit phases — search integrity, thin routers, JWT hardening). 2B moved to Phase 3. Remaining: 2E (engine operability — NL schema creation, observability dashboard, per-field thresholds, field validation, feedback loop), 2F (data connectors — held until just before Phase 3). |
 | Phase 3 | **No vertical work starts until:** extraction reliability is measurable (2A complete) and at least one full case has run with observable confidence metrics. Fraud vertical installs as a complete package. Insurance vertical processes a real claim end-to-end. Both run on the same engine with no engine modifications. |
 | Phase 4 | Multi-user orgs with role-based access. Platform runs on AWS. Two paying clients in different verticals. New vertical takes one week to install, not one month. |

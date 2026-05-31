@@ -3,12 +3,12 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.deps import get_workspace_or_404
 from app.models.document import Document
 from app.models.document_extraction import DocumentExtraction
 from app.models.document_schema import DocumentSchema
 from app.models.user import User
-from app.deps import get_workspace_or_404
-from app.schemas.review import ExtractionCorrectionIn, ExtractionCorrectionOut, ReviewQueueItem
+from app.schemas.review import ExtractionCorrectionIn, ExtractionCorrectionOut, FlagDocumentIn, FlagDocumentOut, ReviewQueueItem
 from app.services import audit
 from app.services.auth import get_current_user
 
@@ -197,3 +197,50 @@ def correct_extraction(
     )
 
     return correction
+
+
+@router.patch(
+    "/documents/{document_id}/flag",
+    response_model=FlagDocumentOut,
+)
+def flag_document(
+    workspace_id: str,
+    document_id: str,
+    body: FlagDocumentIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """
+    Store a structured rejection reason on a document.
+    Flag reason and note travel with the document through processing.
+    Does not change extraction_status — use the correction endpoint to resolve fields.
+    """
+    get_workspace_or_404(workspace_id, user, db)
+
+    doc = db.query(Document).filter(
+        Document.id == document_id,
+        Document.workspace_id == workspace_id,
+        Document.is_deleted == False,
+    ).first()
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    before_state = {"flag_reason": doc.flag_reason, "flag_note": doc.flag_note}
+
+    doc.flag_reason = body.flag_reason
+    doc.flag_note = body.flag_note
+    db.commit()
+    db.refresh(doc)
+
+    audit.log(
+        db,
+        action="document_flagged",
+        user_id=user.id,
+        workspace_id=workspace_id,
+        entity_type="document",
+        entity_id=document_id,
+        before_state=before_state,
+        after_state={"flag_reason": doc.flag_reason, "flag_note": doc.flag_note},
+    )
+
+    return doc

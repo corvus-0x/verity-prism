@@ -338,3 +338,180 @@ def test_pipeline_preserves_file_on_success(db, workspace, user, deed_schema, pe
     db.refresh(pending_doc)
     assert pending_doc.extraction_status == "complete"
     assert file_path.exists(), "Successful pipeline must not delete the stored file"
+
+
+# ── Dual confidence ───────────────────────────────────────────────────────────
+
+def test_extract_batch_returns_ocr_confidence(db, deed_schema):
+    """_extract_batch must include ocr_confidence in each returned dict."""
+    from app.services.extraction_engine import _extract_batch
+    import json
+
+    mock_client = MagicMock()
+    payload = json.dumps({"extractions": [
+        {
+            "field_name": "grantor_name",
+            "field_value": "Jane Smith",
+            "field_type": "name",
+            "confidence": 0.92,
+            "ocr_confidence": 0.85,
+        }
+    ]})
+    mock_client.messages.create.return_value = MagicMock(
+        content=[MagicMock(text=payload)],
+        usage=MagicMock(input_tokens=100, output_tokens=50),
+    )
+
+    with patch("app.services.claude_client.get_client", return_value=mock_client):
+        results = _extract_batch(
+            ocr_text="Grantor: Jane Smith",
+            fields_batch=[{"name": "grantor_name", "type": "name", "description": "Grantor name"}],
+            schema=deed_schema,
+        )
+
+    assert len(results) == 1
+    assert "ocr_confidence" in results[0]
+    assert results[0]["ocr_confidence"] == 0.85
+
+
+def test_extract_batch_falls_back_ocr_confidence_to_confidence(db, deed_schema):
+    """If Claude omits ocr_confidence, it defaults to the ai confidence value."""
+    from app.services.extraction_engine import _extract_batch
+    import json
+
+    mock_client = MagicMock()
+    payload = json.dumps({"extractions": [
+        {
+            "field_name": "grantor_name",
+            "field_value": "Jane Smith",
+            "field_type": "name",
+            "confidence": 0.80,
+            # ocr_confidence intentionally absent
+        }
+    ]})
+    mock_client.messages.create.return_value = MagicMock(
+        content=[MagicMock(text=payload)],
+        usage=MagicMock(input_tokens=100, output_tokens=50),
+    )
+
+    with patch("app.services.claude_client.get_client", return_value=mock_client):
+        results = _extract_batch(
+            ocr_text="Grantor: Jane Smith",
+            fields_batch=[{"name": "grantor_name", "type": "name", "description": "Grantor name"}],
+            schema=deed_schema,
+        )
+
+    assert results[0]["ocr_confidence"] == 0.80
+
+
+def test_evaluate_uses_per_field_ai_threshold_correct():
+    """When a field has ai_threshold in schema_fields, use it instead of the default."""
+    extractions = [
+        {"field_name": "ein", "confidence": 0.88, "ocr_confidence": 0.95},
+        {"field_name": "vendor_name", "confidence": 0.80, "ocr_confidence": 0.90},
+    ]
+    result = evaluate(
+        extractions,
+        threshold=0.75,
+        field_thresholds={"ein": 0.95},
+    )
+    assert "ein" in result.low_confidence_fields       # 0.88 < 0.95 (field threshold)
+    assert "vendor_name" not in result.low_confidence_fields  # 0.80 >= 0.75 (default)
+
+
+def test_evaluate_flags_low_ocr_confidence():
+    """Fields below the ocr_threshold are flagged even when ai confidence is high."""
+    extractions = [
+        {"field_name": "sale_price", "confidence": 0.90, "ocr_confidence": 0.50},
+    ]
+    result = evaluate(
+        extractions,
+        threshold=0.75,
+        ocr_threshold=0.70,
+    )
+    assert "sale_price" in result.low_confidence_fields  # ocr 0.50 < ocr_threshold 0.70
+
+
+def test_evaluate_passes_when_both_confidences_meet_thresholds():
+    """Field passes only when both ai and ocr confidence are above their thresholds."""
+    extractions = [
+        {"field_name": "grantor_name", "confidence": 0.92, "ocr_confidence": 0.88},
+    ]
+    result = evaluate(
+        extractions,
+        threshold=0.75,
+        ocr_threshold=0.80,
+    )
+    assert result.needs_review is False  # 0.92 >= 0.75 and 0.88 >= 0.80
+
+
+# ── needs_review persistence (guard test) ────────────────────────────────────
+
+def test_pipeline_marks_needs_review_when_required_field_missing(
+    db, workspace, user, tmp_path
+):
+    """Required field missing from extraction → doc must be needs_review after pipeline completes."""
+    from app.services.document_pipeline import _run_pipeline
+
+    # Schema with a required field
+    schema = DocumentSchema(
+        id=str(uuid.uuid4()),
+        document_type="REQUIRED-FIELD-TEST",
+        display_name="Required Field Test",
+        vertical="general",
+        schema_fields=[{
+            "name": "ein",
+            "type": "id_number",
+            "description": "EIN",
+            "validation": {"required": True}
+        }],
+        extraction_prompt="Extract the EIN.",
+        version=1,
+        is_active=True,
+        parse_strategy="claude",
+        default_confidence_threshold=0.75,
+    )
+    db.add(schema)
+
+    file_path = tmp_path / "test.pdf"
+    file_path.write_bytes(b"%PDF-1.4 no ein here")
+    doc = Document(
+        id=str(uuid.uuid4()),
+        workspace_id=workspace.id,
+        filename="test.pdf",
+        original_filename="test.pdf",
+        file_path=str(file_path),
+        file_type="pdf",
+        sha256_hash="reqtest123",
+        source_type="upload",
+        uploaded_by=user.id,
+        extraction_status="pending",
+    )
+    db.add(doc)
+    db.commit()
+
+    mock_client = MagicMock()
+    # Claude returns a result but WITHOUT the required 'ein' field
+    import json
+    payload = json.dumps({"extractions": [
+        {"field_name": "other_field", "field_value": "something", "field_type": "text",
+         "confidence": 0.90, "ocr_confidence": 0.90}
+    ]})
+    mock_client.messages.create.return_value = MagicMock(
+        content=[MagicMock(text=payload)],
+        usage=MagicMock(input_tokens=100, output_tokens=50),
+    )
+
+    with patch("app.services.document_pipeline.detect_document_type", return_value="REQUIRED-FIELD-TEST"), \
+         patch("app.services.document_pipeline.extract_text", return_value="no ein here"), \
+         patch("app.services.document_pipeline.generate_standardized_name", return_value="test.pdf"), \
+         patch("app.services.claude_client.get_client", return_value=mock_client):
+
+        _run_pipeline(doc.id, b"%PDF-1.4 no ein here", "test.pdf", workspace.id, user.id, db)
+
+    db.refresh(doc)
+    assert doc.extraction_status == "needs_review", (
+        f"Expected needs_review but got '{doc.extraction_status}' — "
+        "required-field failure is being overwritten by the final complete assignment"
+    )
+    assert doc.extraction_error is not None

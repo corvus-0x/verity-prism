@@ -17,6 +17,7 @@ import Leads from './pages/workspace/Leads'
 import AIChat from './pages/workspace/AIChat'
 import ExtractionReview from './pages/workspace/ExtractionReview'
 import AuditLog from './pages/workspace/AuditLog'
+import Observability from './pages/Observability'
 import useAuthStore from './store/auth'
 
 function NavigatorSetter() {
@@ -58,6 +59,9 @@ export default function App() {
         } />
         <Route path="/schemas" element={
           <ProtectedRoute><SchemaLibrary /></ProtectedRoute>
+        } />
+        <Route path="/observability" element={
+          <ProtectedRoute><Observability /></ProtectedRoute>
         } />
         <Route path="/workspaces/:workspaceId" element={
           <ProtectedRoute><WorkspaceLayout /></ProtectedRoute>

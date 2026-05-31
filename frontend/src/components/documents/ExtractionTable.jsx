@@ -10,7 +10,7 @@ export default function ExtractionTable({ extractions, editable = false, workspa
         <tr className="text-left text-slate-500 border-b border-slate-700">
           <th className="pb-2 font-medium">Field</th>
           <th className="pb-2 font-medium">Value</th>
-          <th className="pb-2 font-medium text-right">{editable ? 'Status' : 'Confidence'}</th>
+          <th className="pb-2 font-medium text-right">{editable ? 'Status / Confidence' : 'Confidence'}</th>
         </tr>
       </thead>
       <tbody className="divide-y divide-slate-800">
@@ -29,6 +29,17 @@ export default function ExtractionTable({ extractions, editable = false, workspa
   )
 }
 
+function ConfidencePill({ label, value }) {
+  const pct = Math.round(value * 100)
+  const color = pct >= 90 ? 'text-green-400' : pct >= 70 ? 'text-yellow-400' : 'text-red-400'
+  return (
+    <span className="flex items-center gap-1">
+      <span className="text-slate-600 text-xs">{label}</span>
+      <span className={`text-xs font-medium ${color}`}>{pct}%</span>
+    </span>
+  )
+}
+
 function ExtractionRow({ extraction: e, editable, workspaceId, documentId, onUpdate }) {
   const [editing, setEditing] = useState(false)
   const [inputValue, setInputValue] = useState(e.field_value || '')
@@ -37,7 +48,7 @@ function ExtractionRow({ extraction: e, editable, workspaceId, documentId, onUpd
 
   const rowClass = isHumanCorrected
     ? 'bg-green-950'
-    : e.confidence < 0.7
+    : e.confidence < 0.7 || (e.ocr_confidence != null && e.ocr_confidence < 0.7)
     ? 'bg-yellow-950'
     : ''
 
@@ -73,43 +84,45 @@ function ExtractionRow({ extraction: e, editable, workspaceId, documentId, onUpd
         {isHumanCorrected ? (
           <span className="text-xs text-green-400 font-medium">Corrected</span>
         ) : editable ? (
-          <div className="flex items-center justify-end gap-1">
-            <span className={`text-xs ${e.confidence >= 0.7 ? 'text-yellow-400' : 'text-red-400'}`}>
-              {Math.round(e.confidence * 100)}%
-            </span>
-            {editing ? (
-              <>
+          <div className="flex flex-col items-end gap-0.5">
+            <ConfidencePill label="AI" value={e.confidence} />
+            {e.ocr_confidence != null && (
+              <ConfidencePill label="OCR" value={e.ocr_confidence} />
+            )}
+            <div className="flex items-center gap-1 mt-1">
+              {editing ? (
+                <>
+                  <button
+                    onClick={handleAccept}
+                    disabled={saving}
+                    className="text-xs px-2 py-0.5 bg-blue-600 hover:bg-blue-500 text-white rounded disabled:opacity-50"
+                  >
+                    {saving ? '…' : 'Accept'}
+                  </button>
+                  <button
+                    onClick={() => { setEditing(false); setInputValue(e.field_value || '') }}
+                    className="text-xs px-2 py-0.5 bg-slate-700 hover:bg-slate-600 text-slate-300 rounded"
+                  >
+                    Cancel
+                  </button>
+                </>
+              ) : (
                 <button
-                  onClick={handleAccept}
-                  disabled={saving}
-                  className="text-xs px-2 py-0.5 bg-blue-600 hover:bg-blue-500 text-white rounded disabled:opacity-50"
-                >
-                  {saving ? '…' : 'Accept'}
-                </button>
-                <button
-                  onClick={() => { setEditing(false); setInputValue(e.field_value || '') }}
+                  onClick={() => setEditing(true)}
                   className="text-xs px-2 py-0.5 bg-slate-700 hover:bg-slate-600 text-slate-300 rounded"
                 >
-                  Cancel
+                  Edit
                 </button>
-              </>
-            ) : (
-              <button
-                onClick={() => setEditing(true)}
-                className="text-xs px-2 py-0.5 bg-slate-700 hover:bg-slate-600 text-slate-300 rounded"
-              >
-                Edit
-              </button>
-            )}
+              )}
+            </div>
           </div>
         ) : (
-          <span className={`text-xs ${
-            e.confidence >= 0.9 ? 'text-green-400'
-            : e.confidence >= 0.7 ? 'text-yellow-400'
-            : 'text-red-400'
-          }`}>
-            {Math.round(e.confidence * 100)}%
-          </span>
+          <div className="flex flex-col items-end gap-0.5">
+            <ConfidencePill label="AI" value={e.confidence} />
+            {e.ocr_confidence != null && (
+              <ConfidencePill label="OCR" value={e.ocr_confidence} />
+            )}
+          </div>
         )}
       </td>
     </tr>

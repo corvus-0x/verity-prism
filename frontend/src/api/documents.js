@@ -73,3 +73,9 @@ export const getWorkspaceExtractionsJSON = async (workspaceId) => {
   )
   triggerDownload(res.data, `workspace_extractions.json`)
 }
+
+export const flagDocument = (workspaceId, documentId, flagReason, flagNote = null) =>
+  client.patch(`/workspaces/${workspaceId}/documents/${documentId}/flag`, {
+    flag_reason: flagReason,
+    flag_note: flagNote,
+  })

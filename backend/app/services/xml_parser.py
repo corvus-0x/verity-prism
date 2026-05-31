@@ -106,6 +106,7 @@ def parse_xml_document(
             "field_value": value,
             "field_type": field_type,
             "confidence": 1.0,
+            "ocr_confidence": 1.0,
         })
 
     logger.info(
