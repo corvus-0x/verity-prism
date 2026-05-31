@@ -17,25 +17,33 @@ export default function AppShell({ children }) {
   return (
     <div className="min-h-screen bg-slate-900 flex flex-col">
       <header className="bg-slate-800 border-b border-slate-700 px-6 py-3 flex items-center gap-4">
-        <NavLink to="/workspaces" className="text-white font-bold text-lg shrink-0 hover:text-slate-200">
-          Verity Prism
-        </NavLink>
-        <NavLink
-          to="/schemas"
-          className={({ isActive }) =>
-            `text-sm shrink-0 transition-colors ${isActive ? 'text-white' : 'text-slate-400 hover:text-white'}`
-          }
-        >
-          Schema Library
-        </NavLink>
-        <NavLink
-          to="/observability"
-          className={({ isActive }) =>
-            `text-sm shrink-0 transition-colors ${isActive ? 'text-white' : 'text-slate-400 hover:text-white'}`
-          }
-        >
-          Observability
-        </NavLink>
+        <span className="text-white font-bold text-lg shrink-0 mr-2">Verity Prism</span>
+        <div className="flex items-center gap-1 border-l border-slate-700 pl-4">
+          <NavLink
+            to="/workspaces"
+            className={({ isActive }) =>
+              `text-sm px-3 py-1.5 rounded shrink-0 transition-colors ${isActive ? 'bg-slate-700 text-white' : 'text-slate-400 hover:text-white hover:bg-slate-700/50'}`
+            }
+          >
+            Workspaces
+          </NavLink>
+          <NavLink
+            to="/schemas"
+            className={({ isActive }) =>
+              `text-sm px-3 py-1.5 rounded shrink-0 transition-colors ${isActive ? 'bg-slate-700 text-white' : 'text-slate-400 hover:text-white hover:bg-slate-700/50'}`
+            }
+          >
+            Schemas
+          </NavLink>
+          <NavLink
+            to="/observability"
+            className={({ isActive }) =>
+              `text-sm px-3 py-1.5 rounded shrink-0 transition-colors ${isActive ? 'bg-slate-700 text-white' : 'text-slate-400 hover:text-white hover:bg-slate-700/50'}`
+            }
+          >
+            Observability
+          </NavLink>
+        </div>
         <form onSubmit={handleSearch} className="flex-1 max-w-2xl">
           <input
             type="text"
