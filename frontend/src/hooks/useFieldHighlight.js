@@ -1,5 +1,5 @@
 // frontend/src/hooks/useFieldHighlight.js
-import { useMemo, useState, useCallback } from 'react'
+import { useMemo, useState, useCallback, useEffect } from 'react'
 
 /**
  * Searches PDF text layer items for a field value.
@@ -16,7 +16,7 @@ import { useMemo, useState, useCallback } from 'react'
  *   activeMatch: the currently active match (or null)
  *   next/prev: functions to cycle through matches
  */
-export function useFieldHighlight(fieldValue, textItems, pageViewport) {
+export default function useFieldHighlight(fieldValue, textItems, pageViewport) {
   const [activeIndex, setActiveIndex] = useState(0)
 
   const matches = useMemo(() => {
@@ -56,8 +56,7 @@ export function useFieldHighlight(fieldValue, textItems, pageViewport) {
   }, [fieldValue, textItems, pageViewport])
 
   // Reset to first match whenever the search value changes
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  useMemo(() => setActiveIndex(0), [fieldValue])
+  useEffect(() => { setActiveIndex(0) }, [fieldValue])
 
   const next = useCallback(() => {
     setActiveIndex((i) => (i + 1) % Math.max(matches.length, 1))
