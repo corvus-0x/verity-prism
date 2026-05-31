@@ -32,6 +32,15 @@ class ExtractionOut(BaseModel):
     ocr_confidence: float
     attempt: int
     extracted_at: datetime
+    evidence: dict | None = None
 
     class Config:
         from_attributes = True
+
+
+class ExtractionCreateIn(BaseModel):
+    field_name: str
+    field_value: str | None
+    field_type: str = "text"
+    schema_id: str
+    evidence: dict | None = None
