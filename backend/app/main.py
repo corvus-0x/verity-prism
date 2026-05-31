@@ -11,6 +11,7 @@ from app.routers import (
     findings,
     leads,
     notes,
+    observability,
     review,
     schemas,
     search,
@@ -44,6 +45,7 @@ app.include_router(search.router)
 app.include_router(ai.router)
 app.include_router(schemas.router)
 app.include_router(review.router)
+app.include_router(observability.router)
 app.include_router(audit.router)
 
 @app.get("/health")
