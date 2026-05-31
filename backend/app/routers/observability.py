@@ -109,7 +109,6 @@ def get_classification_details(
     user: User = Depends(get_current_user),
 ):
     """Per-schema accuracy metrics — avg AI confidence, avg OCR confidence, retry/correction rates."""
-    from sqlalchemy import case  # noqa: F401 — imported here to keep top-level imports minimal
 
     schema_rows = (
         db.query(DocumentSchema.document_type, DocumentSchema.id)
