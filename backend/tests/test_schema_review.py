@@ -101,3 +101,24 @@ def test_get_schema_by_id(client, auth_headers, ws_schema_doc):
 def test_get_schema_by_id_404(client, auth_headers):
     resp = client.get("/schemas/nonexistent-id", headers=auth_headers)
     assert resp.status_code == 404
+
+
+def test_create_extraction_flips_doc_to_complete_when_all_fields_resolved(client, auth_headers, ws_schema_doc, db):
+    """When the only remaining field gets a manual extraction, doc status flips to complete."""
+    ws_id, schema, doc = ws_schema_doc
+    # doc starts as needs_review with no extraction rows (no low-confidence fields to fail the check)
+    resp = client.post(
+        f"/workspaces/{ws_id}/documents/{doc.id}/extractions",
+        json={
+            "field_name": "grantor_name",
+            "field_value": "Jane Smith",
+            "field_type": "name",
+            "schema_id": schema.id,
+        },
+        headers=auth_headers,
+    )
+    assert resp.status_code == 201
+    # Refresh the doc and check status
+    db.expire_all()
+    updated_doc = db.query(Document).filter(Document.id == doc.id).first()
+    assert updated_doc.extraction_status == "complete"
