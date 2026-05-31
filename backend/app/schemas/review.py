@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel
 
@@ -34,7 +35,7 @@ class ExtractionCorrectionOut(BaseModel):
 
 
 class FlagDocumentIn(BaseModel):
-    flag_reason: str   # "unknown_type" | "missing_pages" | "low_quality_scan" | "wrong_schema" | "other"
+    flag_reason: Literal["unknown_type", "missing_pages", "low_quality_scan", "wrong_schema", "other"]
     flag_note: str | None = None
 
 

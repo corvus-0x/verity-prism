@@ -212,7 +212,8 @@ def flag_document(
 ):
     """
     Store a structured rejection reason on a document.
-    Flag reason and note travel with the document through the rest of processing.
+    Flag reason and note travel with the document through processing.
+    Does not change extraction_status — use the correction endpoint to resolve fields.
     """
     get_workspace_or_404(workspace_id, user, db)
 

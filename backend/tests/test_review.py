@@ -79,3 +79,18 @@ def test_flag_document_returns_404_for_unknown_doc(client, auth_headers, workspa
         headers=auth_headers,
     )
     assert resp.status_code == 404
+
+
+def test_flag_document_rejected_for_wrong_workspace(client, auth_headers, document_with_review_status):
+    """Cannot flag a document belonging to a different workspace."""
+    doc = document_with_review_status
+    # Create a second workspace
+    other_ws = client.post("/workspaces/", json={"name": "Other WS", "vertical": "general"},
+                            headers=auth_headers).json()["id"]
+    resp = client.patch(
+        f"/workspaces/{other_ws}/documents/{doc.id}/flag",
+        json={"flag_reason": "other"},
+        headers=auth_headers,
+    )
+    # Document doesn't belong to other_ws — should 404
+    assert resp.status_code == 404
