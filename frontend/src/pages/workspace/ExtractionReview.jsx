@@ -17,6 +17,12 @@ function FlagModal({ item, workspaceId, onClose, onFlagged }) {
   const [note, setNote] = useState('')
   const [saving, setSaving] = useState(false)
 
+  useEffect(() => {
+    const handleKey = (e) => { if (e.key === 'Escape' && !saving) onClose() }
+    document.addEventListener('keydown', handleKey)
+    return () => document.removeEventListener('keydown', handleKey)
+  }, [saving, onClose])
+
   const handleSubmit = async () => {
     setSaving(true)
     try {
@@ -31,7 +37,7 @@ function FlagModal({ item, workspaceId, onClose, onFlagged }) {
   }
 
   return (
-    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
+    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50" role="dialog" aria-modal="true">
       <div className="bg-slate-900 border border-slate-700 rounded-xl p-6 w-full max-w-md shadow-2xl">
         <h2 className="text-white font-semibold mb-1">Flag Document</h2>
         <p className="text-slate-400 text-sm mb-4 truncate">{item.filename}</p>
@@ -40,6 +46,7 @@ function FlagModal({ item, workspaceId, onClose, onFlagged }) {
         <select
           value={reason}
           onChange={(e) => setReason(e.target.value)}
+          autoFocus
           className="w-full bg-slate-800 border border-slate-600 text-white text-sm rounded px-3 py-2 mb-3 focus:outline-none focus:border-blue-500"
         >
           {FLAG_REASONS.map((r) => (
@@ -59,7 +66,8 @@ function FlagModal({ item, workspaceId, onClose, onFlagged }) {
         <div className="flex justify-end gap-2">
           <button
             onClick={onClose}
-            className="px-4 py-1.5 text-sm bg-slate-700 hover:bg-slate-600 text-slate-300 rounded transition-colors"
+            disabled={saving}
+            className="px-4 py-1.5 text-sm bg-slate-700 hover:bg-slate-600 text-slate-300 rounded transition-colors disabled:opacity-50"
           >
             Cancel
           </button>

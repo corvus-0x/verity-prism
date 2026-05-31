@@ -54,22 +54,24 @@ export default function Observability() {
       </div>
 
       {/* ── Automation Rate ───────────────────────────────── */}
-      <section>
-        <h2 className="text-slate-300 text-sm font-semibold uppercase tracking-wide mb-3">
-          Automation Rate
-        </h2>
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <StatCard
-            label="Automation Rate"
-            value={`${automationPct}%`}
-            sub="straight-through"
-            color={automationPct >= 80 ? 'text-green-400' : automationPct >= 60 ? 'text-yellow-400' : 'text-red-400'}
-          />
-          <StatCard label="Total Documents" value={rate?.total ?? '—'} />
-          <StatCard label="Needs Review" value={rate?.needs_review ?? '—'} color="text-yellow-400" />
-          <StatCard label="Failed" value={rate?.failed ?? '—'} color={rate?.failed > 0 ? 'text-red-400' : 'text-slate-400'} />
-        </div>
-      </section>
+      {rate && (
+        <section>
+          <h2 className="text-slate-300 text-sm font-semibold uppercase tracking-wide mb-3">
+            Automation Rate
+          </h2>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <StatCard
+              label="Automation Rate"
+              value={`${automationPct}%`}
+              sub="straight-through"
+              color={automationPct >= 80 ? 'text-green-400' : automationPct >= 60 ? 'text-yellow-400' : 'text-red-400'}
+            />
+            <StatCard label="Total Documents" value={rate.total ?? '—'} />
+            <StatCard label="Needs Review" value={rate.needs_review ?? '—'} color="text-yellow-400" />
+            <StatCard label="Failed" value={rate.failed ?? '—'} color={rate.failed > 0 ? 'text-red-400' : 'text-slate-400'} />
+          </div>
+        </section>
+      )}
 
       {/* ── Current Processing ───────────────────────────── */}
       {current && (
