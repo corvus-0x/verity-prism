@@ -289,9 +289,9 @@ Things that were planned for one phase and moved, or explicitly punted. Captured
 
 ---
 
-### Code Audit Remaining Phases — Roadmap Phase 2D
+### ~~Code Audit Remaining Phases~~ — COMPLETE (2026-05-30)
 
-Phases 1–3 merged (PRs #4 and #5). Phases 4–6 are now tracked in the roadmap as Phase 2D. Full finding details and fix instructions in `docs/code-audit-2026-05-29.md`.
+All 6 phases merged. Phases 1–3 in PRs #4 and #5. Phases 4–6 in PRs #6–9. Full finding details in `docs/code-audit-2026-05-29.md`. Nothing remaining from the 2026-05-29 audit.
 
 ---
 
