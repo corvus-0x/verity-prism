@@ -1,0 +1,90 @@
+name: CI
+
+# Required GitHub repository secrets (Settings → Secrets → Actions):
+#   ANTHROPIC_API_KEY  — Anthropic API key referenced by the backend test step.
+#                        Must be set even though tests/evals are excluded from
+#                        CI runs — the workflow references it and will fail to
+#                        resolve if absent. Most tests mock Claude directly.
+#
+# All other values (DATABASE_URL, SECRET_KEY, UPLOAD_DIR) are hardcoded
+# in the workflow and do not require secrets.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  backend:
+    name: Backend — lint + tests
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        # pgvector/pgvector, not stock postgres — tests run CREATE EXTENSION vector
+        # (must match the db image in docker-compose.yml)
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: catalyst
+          POSTGRES_PASSWORD: catalyst
+          POSTGRES_DB: catalyst_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install dependencies
+        run: pip install -r backend/requirements.txt ruff
+
+      - name: Lint (ruff)
+        run: ruff check backend/app
+
+      - name: Run tests
+        env:
+          DATABASE_URL: postgresql://catalyst:catalyst@localhost:5432/catalyst_test
+          TEST_DATABASE_URL: postgresql://catalyst:catalyst@localhost:5432/catalyst_test
+          SECRET_KEY: ci-test-secret-key-please-change-0123456789abcdef
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          UPLOAD_DIR: /tmp/uploads
+        run: pytest tests/ -v --ignore=tests/evals
+        working-directory: ${{ github.workspace }}/backend
+
+  frontend:
+    name: Frontend — lint + tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+        working-directory: frontend
+
+      - name: Lint (eslint)
+        run: npm run lint
+        working-directory: frontend
+
+      - name: Run tests
+        run: npm test
+        working-directory: frontend

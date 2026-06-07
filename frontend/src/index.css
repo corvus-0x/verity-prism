@@ -1,0 +1,156 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  *, *::before, *::after { box-sizing: border-box; }
+
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  body {
+    font-family: Outfit, system-ui, sans-serif;
+    letter-spacing: 0.01em;
+  }
+
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: #040810; }
+  ::-webkit-scrollbar-thumb { background: #1A2A3F; border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: #243650; }
+}
+
+@layer components {
+  /* Primary CTA — signal red */
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg
+           text-sm font-medium transition-all duration-150 cursor-pointer select-none;
+    background: #991B1B;
+    color: #FFFFFF;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.10), 0 1px 4px rgba(0,0,0,0.5);
+  }
+  .btn-primary:hover:not(:disabled) {
+    background: #B91C1C;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.15), 0 2px 14px rgba(220,38,38,0.22);
+    transform: translateY(-1px);
+  }
+  .btn-primary:active:not(:disabled) {
+    transform: scale(0.98) translateY(0px);
+    box-shadow: inset 0 1px 0 rgba(0,0,0,0.1), 0 1px 2px rgba(0,0,0,0.6);
+  }
+  .btn-primary:disabled { opacity: 0.35; cursor: not-allowed; }
+  .btn-primary:focus-visible {
+    outline: 2px solid #DC2626;
+    outline-offset: 2px;
+  }
+
+  /* Ghost / secondary */
+  .btn-ghost {
+    @apply inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg
+           text-sm font-medium transition-all duration-150 cursor-pointer select-none;
+    color: #8BA8C4;
+    border: 1px solid #1A2A3F;
+    background: transparent;
+  }
+  .btn-ghost:hover:not(:disabled) {
+    color: #E4F0FC;
+    border-color: #243650;
+    background: rgba(255,255,255,0.025);
+  }
+  .btn-ghost:active:not(:disabled) { transform: scale(0.98); }
+  .btn-ghost:disabled { opacity: 0.35; cursor: not-allowed; }
+  .btn-ghost:focus-visible {
+    outline: 2px solid #DC2626;
+    outline-offset: 2px;
+  }
+
+  /* Form inputs */
+  .field-input {
+    @apply w-full rounded-lg px-4 py-2 text-sm outline-none transition-all duration-150;
+    background: #111E30;
+    border: 1px solid #1A2A3F;
+    color: #E4F0FC;
+  }
+  .field-input::placeholder { color: #3D5570; }
+  .field-input:focus {
+    border-color: #DC2626;
+    box-shadow: 0 0 0 3px rgba(220,38,38,0.08);
+  }
+
+  /* Document / workspace cards */
+  .surface-card {
+    @apply rounded-xl transition-all duration-200;
+    background: #0C1424;
+    border: 1px solid #1A2A3F;
+  }
+  .surface-card:hover {
+    border-color: #243650;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 20px rgba(0,0,0,0.4), 0 0 0 1px rgba(232,160,0,0.04);
+  }
+
+  /* Sidebar nav — inactive */
+  .nav-link,
+  .nav-link-active {
+    @apply flex items-center gap-2 rounded-md text-sm transition-all duration-150;
+    border-left: 2px solid transparent;
+    padding: 0.5rem calc(0.75rem - 2px);
+  }
+  .nav-link { color: #5C7A9B; }
+  .nav-link:hover { color: #BAD0E8; background: rgba(255,255,255,0.03); }
+  .nav-link:focus-visible,
+  .nav-link-active:focus-visible {
+    outline: 2px solid #DC2626;
+    outline-offset: 2px;
+  }
+  /* Sidebar nav — active */
+  .nav-link-active {
+    color: #E4F0FC;
+    border-left-color: #DC2626;
+    background: rgba(220,38,38,0.05);
+  }
+
+  /* Monospace for data values (hashes, IDs, extracted field values) */
+  .mono-val {
+    font-family: 'JetBrains Mono', 'Courier New', monospace;
+    font-size: 0.82em;
+    letter-spacing: -0.01em;
+  }
+}
+
+/* Keyframes */
+@keyframes fade-up {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes scale-in {
+  from { opacity: 0; transform: scale(0.95) translateY(6px); }
+  to   { opacity: 1; transform: scale(1) translateY(0); }
+}
+@keyframes spin-ring {
+  to { transform: rotate(360deg); }
+}
+
+.animate-fade-up   { animation: fade-up   0.28s cubic-bezier(0.16,1,0.3,1) forwards; }
+.animate-fade-in   { animation: fade-in   0.2s ease forwards; }
+.animate-scale-in  { animation: scale-in  0.22s cubic-bezier(0.16,1,0.3,1) forwards; }
+.animate-spin-ring { animation: spin-ring 0.9s linear infinite; }
+
+.delay-50  { animation-delay:  50ms; }
+.delay-100 { animation-delay: 100ms; }
+.delay-150 { animation-delay: 150ms; }
+.delay-200 { animation-delay: 200ms; }
+.delay-250 { animation-delay: 250ms; }
+
+/* Precision grid — subtle red-tinted grid lines for hero backgrounds */
+.bg-precision-grid {
+  background-image:
+    linear-gradient(rgba(220,38,38,0.025) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(220,38,38,0.025) 1px, transparent 1px);
+  background-size: 48px 48px;
+}

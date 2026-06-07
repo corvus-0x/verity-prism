@@ -1,0 +1,86 @@
+"""
+Embedding Service — generates and stores document-level vector embeddings.
+
+Embeddings enable semantic similarity search alongside FTS in the hybrid
+search layer. One embedding per document, generated after extraction
+completes. Disabled gracefully when OPENAI_API_KEY is not configured.
+"""
+import logging
+import os
+
+from sqlalchemy.orm import Session
+
+logger = logging.getLogger(__name__)
+
+_openai_client = None
+
+
+def _get_openai_client():
+    global _openai_client
+    if _openai_client is None:
+        from openai import OpenAI
+        _openai_client = OpenAI(api_key=os.environ["OPENAI_API_KEY"])
+    return _openai_client
+
+
+def is_available() -> bool:
+    """Return True if embedding generation is configured."""
+    return bool(os.getenv("OPENAI_API_KEY"))
+
+
+def build_text_representation(document_id: str, db: Session) -> str:
+    """
+    Build an embeddable text string from a document's extracted fields.
+    Format: "Type: DEED | grantor_name: Oak Ridge LLC | sale_amount: 1250000.00 | ..."
+    """
+    from app.models.document import Document
+    from app.models.document_extraction import DocumentExtraction
+
+    doc = db.query(Document).filter(Document.id == document_id).first()
+    extractions = (
+        db.query(DocumentExtraction)
+        .filter(DocumentExtraction.document_id == document_id)
+        .all()
+    )
+
+    parts = []
+    if doc and doc.detected_doc_type:
+        parts.append(f"Type: {doc.detected_doc_type}")
+    for e in extractions:
+        if e.field_value:
+            parts.append(f"{e.field_name}: {e.field_value}")
+
+    return " | ".join(parts)
+
+
+def generate_embedding(text: str) -> list[float]:
+    """Generate a 1536-dim vector using OpenAI text-embedding-3-small."""
+    response = _get_openai_client().embeddings.create(
+        input=text,
+        model="text-embedding-3-small",
+    )
+    return response.data[0].embedding
+
+
+def embed_document(document_id: str, workspace_id: str, db: Session) -> None:
+    """
+    Build text representation, generate embedding, store on documents.embedding.
+    No-op if OPENAI_API_KEY is not configured. Never raises — embedding
+    failure must not fail a document.
+    """
+    if not is_available():
+        return
+
+    from app.models.document import Document
+
+    text = build_text_representation(document_id, db)
+    if not text.strip():
+        return
+
+    embedding = generate_embedding(text)
+
+    doc = db.query(Document).filter(Document.id == document_id).first()
+    if doc:
+        doc.embedding = embedding
+        db.commit()
+        logger.info("Embedded document %s (%d chars)", document_id, len(text))

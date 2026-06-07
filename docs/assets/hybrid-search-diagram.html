@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Hybrid Search Architecture</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: #0f172a;
+    font-family: 'SF Mono', 'Fira Code', 'Fira Mono', 'Roboto Mono', monospace;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    padding: 48px;
+  }
+
+  .diagram {
+    width: 900px;
+  }
+
+  .title {
+    text-align: center;
+    color: #94a3b8;
+    font-size: 12px;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    margin-bottom: 40px;
+  }
+
+  .columns {
+    display: grid;
+    grid-template-columns: 1fr 80px 1fr;
+    gap: 0;
+    align-items: start;
+  }
+
+  .col {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0;
+  }
+
+  .col-header {
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    padding: 8px 20px;
+    border-radius: 4px;
+    margin-bottom: 20px;
+    font-weight: 600;
+  }
+
+  .keyword .col-header {
+    color: #60a5fa;
+    background: rgba(96, 165, 250, 0.08);
+    border: 1px solid rgba(96, 165, 250, 0.2);
+  }
+
+  .semantic .col-header {
+    color: #a78bfa;
+    background: rgba(167, 139, 250, 0.08);
+    border: 1px solid rgba(167, 139, 250, 0.2);
+  }
+
+  .node {
+    width: 100%;
+    padding: 14px 18px;
+    border-radius: 8px;
+    margin-bottom: 0;
+    position: relative;
+  }
+
+  .node-label {
+    font-size: 11px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    margin-bottom: 4px;
+    opacity: 0.5;
+  }
+
+  .node-value {
+    font-size: 13px;
+    color: #e2e8f0;
+    line-height: 1.5;
+  }
+
+  .node-sub {
+    font-size: 11px;
+    color: #64748b;
+    margin-top: 4px;
+    line-height: 1.4;
+  }
+
+  .keyword .node {
+    background: rgba(96, 165, 250, 0.06);
+    border: 1px solid rgba(96, 165, 250, 0.15);
+  }
+
+  .keyword .node-label { color: #60a5fa; }
+
+  .semantic .node {
+    background: rgba(167, 139, 250, 0.06);
+    border: 1px solid rgba(167, 139, 250, 0.15);
+  }
+
+  .semantic .node-label { color: #a78bfa; }
+
+  .arrow-down {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 32px;
+    color: #334155;
+    font-size: 18px;
+  }
+
+  .keyword .arrow-down { color: rgba(96, 165, 250, 0.3); }
+  .semantic .arrow-down { color: rgba(167, 139, 250, 0.3); }
+
+  /* Center merge column */
+  .center-col {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-end;
+    padding-top: 44px;
+  }
+
+  .merge-lines {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    height: 340px;
+    position: relative;
+  }
+
+  .merge-lines::before {
+    content: '';
+    position: absolute;
+    left: 50%;
+    top: 0;
+    bottom: 0;
+    width: 1px;
+    background: linear-gradient(to bottom, transparent, #334155 20%, #334155 80%, transparent);
+    transform: translateX(-50%);
+  }
+
+  /* Merge node at bottom */
+  .merge-wrapper {
+    margin-top: 32px;
+    width: 900px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+
+  .merge-arrows {
+    display: flex;
+    justify-content: space-between;
+    width: 100%;
+    padding: 0 80px;
+    margin-bottom: 0;
+    position: relative;
+    height: 40px;
+  }
+
+  .merge-arrows::before {
+    content: '';
+    position: absolute;
+    left: 80px;
+    right: 80px;
+    top: 20px;
+    height: 1px;
+    background: #334155;
+  }
+
+  .merge-arrows::after {
+    content: '';
+    position: absolute;
+    left: 50%;
+    top: 20px;
+    bottom: 0;
+    width: 1px;
+    background: #334155;
+    transform: translateX(-50%);
+  }
+
+  .merge-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    margin-top: 17px;
+  }
+
+  .keyword-dot { background: rgba(96, 165, 250, 0.5); }
+  .semantic-dot { background: rgba(167, 139, 250, 0.5); }
+
+  .merge-node {
+    background: rgba(20, 184, 166, 0.06);
+    border: 1px solid rgba(20, 184, 166, 0.2);
+    border-radius: 8px;
+    padding: 14px 24px;
+    text-align: center;
+    width: 380px;
+  }
+
+  .merge-node .node-label {
+    color: #2dd4bf;
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    opacity: 0.7;
+    margin-bottom: 4px;
+  }
+
+  .merge-node .node-value {
+    font-size: 13px;
+    color: #e2e8f0;
+  }
+
+  .merge-node .node-sub {
+    font-size: 11px;
+    color: #64748b;
+    margin-top: 4px;
+  }
+
+  .example-query {
+    text-align: center;
+    margin-bottom: 32px;
+  }
+
+  .example-label {
+    font-size: 10px;
+    color: #475569;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    margin-bottom: 10px;
+  }
+
+  .example-row {
+    display: flex;
+    justify-content: center;
+    gap: 32px;
+  }
+
+  .example-pill {
+    padding: 6px 16px;
+    border-radius: 20px;
+    font-size: 12px;
+  }
+
+  .example-pill.kw {
+    background: rgba(96, 165, 250, 0.08);
+    border: 1px solid rgba(96, 165, 250, 0.2);
+    color: #93c5fd;
+  }
+
+  .example-pill.sem {
+    background: rgba(167, 139, 250, 0.08);
+    border: 1px solid rgba(167, 139, 250, 0.2);
+    color: #c4b5fd;
+  }
+
+  .footer-note {
+    text-align: center;
+    color: #334155;
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    margin-top: 28px;
+  }
+</style>
+</head>
+<body>
+<div class="diagram">
+  <div class="title">Hybrid Search — Two Retrieval Paths</div>
+
+  <div class="example-query">
+    <div class="example-label">Query type determines the path</div>
+    <div class="example-row">
+      <span class="example-pill kw">"sale_amount &gt; 2× appraised_value"</span>
+      <span class="example-pill sem">"find documents similar to this deed"</span>
+    </div>
+  </div>
+
+  <div class="columns">
+    <!-- Keyword column -->
+    <div class="col keyword">
+      <div class="col-header">Keyword Query</div>
+
+      <div class="node">
+        <div class="node-label">Step 1</div>
+        <div class="node-value">translate_query()</div>
+        <div class="node-sub">Claude converts natural language → structured filters</div>
+      </div>
+
+      <div class="arrow-down">↓</div>
+
+      <div class="node">
+        <div class="node-label">Step 2</div>
+        <div class="node-value">PostgreSQL FTS</div>
+        <div class="node-sub">plainto_tsquery() on documents.search_vector (TSVECTOR + GIN index)</div>
+      </div>
+
+      <div class="arrow-down">↓</div>
+
+      <div class="node">
+        <div class="node-label">Step 3</div>
+        <div class="node-value">Field-level SQL filters</div>
+        <div class="node-sub">CAST field_value → numeric comparison against document_extractions</div>
+      </div>
+
+      <div class="arrow-down">↓</div>
+
+      <div class="node">
+        <div class="node-label">Result</div>
+        <div class="node-value">Exact matches</div>
+        <div class="node-sub">Documents where the field value actually meets the condition</div>
+      </div>
+    </div>
+
+    <!-- Center spacer -->
+    <div></div>
+
+    <!-- Semantic column -->
+    <div class="col semantic">
+      <div class="col-header">Semantic Query</div>
+
+      <div class="node">
+        <div class="node-label">Step 1</div>
+        <div class="node-value">generate_embedding()</div>
+        <div class="node-sub">OpenAI text-embedding-3-small → 1536-dim vector</div>
+      </div>
+
+      <div class="arrow-down">↓</div>
+
+      <div class="node">
+        <div class="node-label">Step 2</div>
+        <div class="node-value">PGVector cosine distance</div>
+        <div class="node-sub">documents.embedding &lt;=&gt; query_vector ORDER BY distance (ivfflat index)</div>
+      </div>
+
+      <div class="arrow-down">↓</div>
+
+      <div class="node">
+        <div class="node-label">Step 3</div>
+        <div class="node-value">Approximate nearest neighbors</div>
+        <div class="node-sub">Top-N documents by semantic similarity, filtered to workspace + non-deleted</div>
+      </div>
+
+      <div class="arrow-down">↓</div>
+
+      <div class="node">
+        <div class="node-label">Result</div>
+        <div class="node-value">Similar documents</div>
+        <div class="node-sub">Documents whose extracted-field text is semantically closest to the query</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Merge -->
+  <div class="merge-wrapper">
+    <div class="merge-arrows">
+      <div class="merge-dot keyword-dot"></div>
+      <div class="merge-dot semantic-dot"></div>
+    </div>
+
+    <div class="merge-node">
+      <div class="node-label">mode="hybrid" (default)</div>
+      <div class="node-value">run_search() merges both paths</div>
+      <div class="node-sub">Keyword results first → semantic-only results appended, no duplicates</div>
+    </div>
+  </div>
+
+  <div class="footer-note">verity prism · search_service.py</div>
+</div>
+</body>
+</html>

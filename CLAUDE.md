@@ -1,0 +1,185 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+---
+
+## What This Is
+
+**Verity Prism** — An **Intelligent Document Processing (IDP) platform** that ingests documents, extracts every data point into structured database fields, and makes everything searchable via plain English queries. Fraud investigation is Vertical 1. Insurance automation is Vertical 2. Additional verticals follow.
+
+Full component detail: `docs/build-inventory.md`
+Roadmap + phase status: `docs/roadmap.md`
+Design specs + plans: `docs/superpowers/`
+Private/sensitive case files: `private/` (gitignored — never commit)
+
+---
+
+## Tech Stack
+
+| Layer | Technology |
+|-------|-----------|
+| Frontend | React + Vite |
+| Backend | Python 3.12 + FastAPI |
+| Database | PostgreSQL 16 |
+| ORM + Migrations | SQLAlchemy 2.0 + Alembic |
+| AI | Claude API (claude-sonnet-4-6) |
+| OCR | PyMuPDF + pytesseract |
+| Auth | JWT (python-jose + passlib/bcrypt) |
+| Containers | Docker + docker-compose |
+
+---
+
+## Common Commands
+
+### Start everything
+```bash
+docker-compose up --build
+```
+Frontend: `http://localhost:5173` | Backend API: `http://localhost:8000` | API docs: `http://localhost:8000/docs`
+
+### Backend only (faster iteration)
+```bash
+cd backend
+uvicorn app.main:app --reload
+```
+
+### Run all tests (Docker — required for DB access)
+```bash
+docker-compose run --rm -e TEST_DATABASE_URL=postgresql://catalyst:catalyst@db:5432/catalyst_test backend pytest tests/ -v
+```
+
+### Run a single test file
+```bash
+docker-compose run --rm -e TEST_DATABASE_URL=postgresql://catalyst:catalyst@db:5432/catalyst_test backend pytest tests/test_documents.py -v
+```
+
+### Database migrations
+```bash
+cd backend
+alembic revision --autogenerate -m "description of change"
+alembic upgrade head
+alembic downgrade -1   # roll back one step
+```
+
+### Connect to the database directly
+```bash
+docker-compose exec db psql -U catalyst -d catalyst
+```
+
+---
+
+## Architecture
+
+### Engine vs. Cap
+
+The engine ships to every customer. Vertical caps install on top for domain-specific logic.
+
+```
+Document Sources → Ingestion → Extraction Pipeline → Knowledge Base → Verticals → UI
+```
+
+**Engine** — processes documents, extracts fields, indexes data, answers queries. No domain knowledge.
+
+**Vertical cap** — signal definitions, workflow config, export formats. Fraud cap never ships to an insurance customer.
+
+### Backend layout
+
+Routers are thin: validate input → call service → return response. Business logic lives in `app/services/`.
+
+```
+app/
+├── routers/       # HTTP endpoints — thin, call services
+├── services/      # Business logic — document_pipeline, extraction_engine, search_service, ai_engine, audit
+├── models/        # SQLAlchemy ORM models — one file per table group
+├── schemas/       # Pydantic request/response models
+└── main.py        # FastAPI app, routers registered here
+```
+
+### Key design decisions
+
+**`document_extractions` is the central IDP table.** One row per extracted field per document. A deed with 64 fields = 64 rows. Every data point is individually queryable without JSON parsing.
+
+**`document_schemas` drives extraction and routing.** Each document type has a schema with `parse_strategy` (`claude` or `xml_direct`), `default_confidence_threshold`, and field definitions. Adding a new document type is a database operation — no code changes.
+
+**`workspaces` is the general term** for what the fraud vertical UI calls a "Case." The backend always uses `workspace_id`. Frontend labels it per vertical.
+
+**Audit log is immutable.** A PostgreSQL trigger (`audit_log_immutable`) prevents UPDATE or DELETE on `audit_log` at the database level. Call `audit.log()` from services after every meaningful action.
+
+**SHA-256 hash is always first.** In `document_pipeline.py`, the hash is computed before OCR, before extraction, before naming. This is the evidence lock.
+
+**Soft deletes everywhere.** Nothing is hard-deleted. Set `is_deleted = True` and `deleted_at = now()`. Filter active records with `.filter(Entity.is_deleted == False)`.
+
+**AI chat uses native tool use.** `ai_engine.chat()` runs a loop of up to 10 Claude rounds. Claude calls tools (`search_documents`, `get_entity`, `query_extractions`, etc.) to pull workspace data on demand. `workspace_id` is injected by the dispatcher — never a parameter Claude can set.
+
+---
+
+## Docstring Conventions
+
+Every function in `app/services/` gets a docstring. One concise block — no multi-paragraph essays. Cover:
+
+- **What it does** (one line, plain English)
+- **Why it works this way** — only if the constraint isn't obvious from the name
+- **How callers use it** — only if it's a FastAPI dependency or has a non-obvious return
+
+Routers, models, and schemas do **not** need docstrings.
+
+---
+
+## Test Conventions
+
+- Test database: `catalyst_test` (separate from dev database)
+- `conftest.py` drops and recreates all tables before each test — every test starts clean
+- `auth_headers` fixture handles login and returns `{"Authorization": "Bearer <token>"}`
+- Mock Claude API calls with `unittest.mock.patch("app.services.ai_engine.client")` — patch the module-level client instance, not the class
+- TDD: write the failing test first, confirm it fails, then implement
+
+---
+
+## Environment Variables
+
+Required in `backend/.env` (copy from `backend/.env.example`):
+```
+DATABASE_URL=postgresql://catalyst:catalyst@localhost:5432/catalyst
+SECRET_KEY=<long random string>
+ANTHROPIC_API_KEY=sk-ant-...
+UPLOAD_DIR=./uploads
+CORS_ORIGINS=["http://localhost:5173"]
+MAX_UPLOAD_BYTES=52428800
+```
+
+---
+
+## Blog Post Conventions
+
+Blog posts live in `docs/blog/`. Always start from `docs/blog/template.md`.
+
+**Voice — Corvus (alias, never connect to real name):**
+- Reasoning over announcement — walk through *how* you got there, not *what* you decided
+- Confident without being loud — don't say it's good, let the work demonstrate it
+- Metaphors from the physical world — water, weight, pressure, animals. Accurate, not decorative.
+- Never: "excited to share", "thrilled to announce", "game-changing", "amazing"
+- Posts are about the work, not about Corvus
+
+**Structure (from template):**
+1. Opening hook — drop into a specific moment or tension, no explanation, move on
+2. Context/problem — what friction existed before this decision
+3. The decision — reasoning that led there, specific details over abstractions
+4. Why it had to be this way — connect to the larger purpose
+5. Quiet close — what works now, what it proves, one paragraph, no triumphalism
+
+**Naming:** `post-NNN-kebab-case-title.md` | **Published on:** Hashnode, alias `-corvus`, blog "From Case to Code"
+
+---
+
+## Git Workflow
+
+**Branch per implementation plan. PR at completion.**
+
+1. Create `feat/<plan-name>` branch at the start of each implementation plan
+2. Commit each task to that branch as work progresses
+3. When all tasks are done: push branch, open PR against `main`
+4. CodeRabbit reviews the PR automatically
+5. Apply CodeRabbit fixes with `/coderabbit autofix` before merging
+
+Never commit code directly to `main` during active implementation work. Main receives merges from reviewed PRs only — with one exception: **docs-only changes** (build tracker entries, README tweaks, blog posts, roadmap updates) may commit directly to main, matching established practice.
