@@ -379,6 +379,26 @@ Decisions made before any vertical work could start. These were flagged in princ
 
 ---
 
+## Repo Rebuild + Public Relaunch (2026-06-06, evening session)
+
+> Session opened with one question: "is the repo clean of personal information?" The previous session had deferred the history question. This session answered it: a fresh-clone audit of what GitHub actually serves, a full demo-cast sweep at the tip, and a rebuilt repo whose entire history is verifiable by grepping one tree.
+
+| Task | What It Builds | Why |
+|------|---------------|-----|
+| Demo-cast sweep at the tip | 27 files brought fully onto the fictional demo cast: plan docs, specs, test fixtures, Storybook stories, MSW handlers, schema seeds, the 990 fetch script | The earlier pass covered docs and docstrings; fixtures and plan docs still carried older example values. One test broke in the process (`test_get_entity_case_insensitive`): a lowercase search probe was only half-replaced by the pattern list and no longer matched the entity it was probing for. The fix aligned the probe with the entity name and kept the case-insensitivity semantics. Lesson: blanket string replacement needs a test run behind it, not a grep |
+| Sweep committed straight to main, no PR | Two direct commits, then verification | Review tools quote diffs verbatim into PR threads, and PR metadata is not in git: it survives every rewrite. A sweep's before/after does not belong in any permanent public thread. The docs-only main exception was extended deliberately, once, for this |
+| History rebuilt: fresh repo seeded from the verified tree | Old repo renamed to a private archive (PR threads and review history preserved, visible to no one else). New repo created under the same name, seeded with a single `git commit-tree` root that reuses the exact verified tree object. PR and issue metadata archived to `private/` before the rename | The deferred question from the last session came due, and the answer was structural: force-pushing a rewritten history does not clean a public GitHub repo. `refs/pull/*` keeps pre-rewrite commits fetchable forever, and review threads live in GitHub's database where git cannot reach. A filtered 550-commit history can never be proven clean; a single seeded commit is verifiable by grepping one tree. Verified by fresh mirror clone + `refs/pull/*` fetch + full-pattern grep: zero hits. Rename-to-archive beat deletion because it loses nothing and exposes nothing |
+| Images eyeballed, not grepped | Every PNG and GIF at both repo tips visually reviewed frame by frame | Text scans cannot see pixels. The sibling repo's demo GIF passed every grep while its opening frame showed a stale case list; it was caught only by extracting and reading the frames. Re-recorded against the seeded demo workspace, every frame verified before commit |
+| "How This Is Built" README section | New section citing the in-repo harness: `.claude/skills/` codegen, the storybook-reviewer agent, CLAUDE.md conventions, CodeRabbit + CI as merge gates. Test count corrected 237 → 240 | Leaning into AI-assisted development as the differentiator instead of hedging it. The harness is versioned in the tree, so the claim is checkable rather than asserted. The count is an execution count (222 backend + 18 frontend), same standard as PR #17: claims a screener can verify |
+| v1.0.0 + roadmap issues + profile README | Release tagged on both repos, 5 issues seeded from docs/roadmap.md under a `roadmap` label, profile README created at corvus-0x/corvus-0x | A one-commit repo with an empty Issues tab reads as a dump. Releases and a labeled roadmap (nothing invented, all drawn from the roadmap doc) read as a live project. The profile README is the first thing a recruiter sees, above the pins |
+| Public relaunch | Both repos + profile flipped public the same night, after CI green on every commit and explicit review of each artifact | The window between "verified clean" and "public" was kept short on purpose: nothing accumulates in a private repo except drift |
+
+**Tests passing:** 240/240 (222 backend, 18 frontend)
+
+**Standing rule from this session:** anything that captures a screen gets recorded against the seeded demo workspace only. Text is protected by construction now; pixels are the only door left.
+
+---
+
 ## Deferred & Relocated Work
 
 Things that were planned for one phase and moved, or explicitly punted. Captured here with the reasoning so when we reach that phase we're not starting from scratch.
