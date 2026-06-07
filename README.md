@@ -61,7 +61,20 @@ cd backend && alembic upgrade head
 | PDF rendering | react-pdf (pdf.js, text layer) |
 | Containers | Docker + docker-compose |
 
-**237 tests** — 219 backend, 18 frontend. All passing.
+**240 tests**: 222 backend, 18 frontend. All passing.
+
+---
+
+## How This Is Built
+
+AI-first, on purpose. Claude Code writes most of the implementation. The harness it works inside is versioned in this repo:
+
+- **`.claude/skills/`** carries the project codegen: `gen-migration` produces Alembic migrations inside Docker, `new-story` scaffolds Storybook stories against the design checklist, `verity-prism-pr-description` builds PR descriptions from the phase spec instead of from memory.
+- **`.claude/agents/storybook-reviewer.md`** is a custom review agent. Every story file gets graded against the component checklist before it merges.
+- **`CLAUDE.md`** holds the same conventions a new engineer would get in onboarding: TDD with the failing test first, thin routers, soft deletes everywhere, docstring standards. The AI is held to all of them.
+- **Every PR** gets a CodeRabbit review and a full CI run. Nothing merges red.
+
+The division of labor is deliberate. Architecture, the data model, and what counts as done stay human decisions.
 
 ---
 
