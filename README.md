@@ -143,7 +143,7 @@ Documents → Ingestion Pipeline → Extraction Engine → Knowledge Base → Ve
 <summary>Platform</summary>
 
 - Immutable audit log (PostgreSQL trigger — UPDATE/DELETE raise an exception at the DB level)
-- Soft deletes everywhere — nothing permanently removed from an evidence platform
+- Soft deletes everywhere — nothing permanently removed from a document platform of record
 - Real-time extraction status via SSE — badge flips without a page refresh
 - Data export: per-document and workspace CSV/JSON with formula injection protection
 - Schema library at `/schemas` — browse all active document types and field definitions
@@ -154,7 +154,7 @@ Documents → Ingestion Pipeline → Extraction Engine → Knowledge Base → Ve
 
 ## Build Journal
 
-1 posts on the reasoning behind specific decisions — not feature announcements, but the thinking that shaped the architecture.
+13 posts on the reasoning behind specific decisions — not feature announcements, but the thinking that shaped the architecture.
 
 [From Case to Code](https://corvus-0x.hashnode.dev) on Hashnode.
 
