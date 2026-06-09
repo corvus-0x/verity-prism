@@ -4,11 +4,21 @@
 
 An intelligent document processing platform that turns any document into structured, queryable data — and gives operators the tools to verify every extraction against the source.
 
-Fraud investigation is the proving ground. The same engine runs insurance, legal, and compliance verticals without modification. Most IDP tools require $5,000/year per person in certified training. This one should be operable by a new user in 20 minutes.
+Fraud investigation is the proving ground. The same engine runs insurance, legal, and compliance verticals without modification. This one should be operable by a new user in 20 minutes.
 
 ---
 
 ![Document review pane — extracted fields with confidence scores beside the source PDF](docs/assets/review-pane.png)
+
+---
+
+## Why It Exists
+
+Intelligent document processing is enterprise software priced like enterprise software. Hyland OnBase — the incumbent in records and case management — runs six-figure annual licenses, and the people who operate it pay $3,000 per certification to learn how. The cloud APIs meter the same work by the page: AWS Textract charges $50 per 1,000 pages to pull the fields off a form, $15 per 1,000 more for the tables on it, and Azure stacks extraction, add-ons, and query fields the same way.
+
+None of that was a path I had. No enterprise budget, no vendor relationship, no certification. So the constraint set the shape: it had to run on a laptop in Docker, cost nothing but an API key to stand up, and be learnable without a course. A new user should be productive in 20 minutes — not after a $5,000 certification track.
+
+The limit turned out to be the design. A document platform whose every extraction you can verify against the source — that you can read end to end and run yourself — is worth more to the people doing the work than one they need a certificate to touch.
 
 ---
 
@@ -144,7 +154,7 @@ Documents → Ingestion Pipeline → Extraction Engine → Knowledge Base → Ve
 
 ## Build Journal
 
-11 posts on the reasoning behind specific decisions — not feature announcements, but the thinking that shaped the architecture.
+1 posts on the reasoning behind specific decisions — not feature announcements, but the thinking that shaped the architecture.
 
 [From Case to Code](https://corvus-0x.hashnode.dev) on Hashnode.
 
@@ -155,6 +165,17 @@ Documents → Ingestion Pipeline → Extraction Engine → Knowledge Base → Ve
 - [`docs/roadmap.md`](docs/roadmap.md) — phase status and what's next
 - [`docs/build-tracker.md`](docs/build-tracker.md) — session log with the why behind each build decision
 - [`docs/superpowers/specs/`](docs/superpowers/specs/) — design specs written before each build
+
+---
+
+## Pricing sources
+
+The cost figures in *Why It Exists*, with their basis — strongest evidence first:
+
+- **AWS Textract** — [official pricing](https://aws.amazon.com/textract/pricing/), confirmed June 2026: $50 per 1,000 pages (Forms), $15 per 1,000 (Tables).
+- **Hyland OnBase certifications** — [Hyland University](https://university.hyland.com/pages/certifications), [University of Colorado OnBase training](https://www.cu.edu/uis/onbase-online-training-and-certifications): $3,000 per certification.
+- **Hyland OnBase licenses** — Hyland does not publish pricing. The six-figure enterprise figure is user-reported via [ITQlick](https://www.itqlick.com/onbase/pricing) and [TrustRadius](https://www.trustradius.com/products/onbase-by-hyland/pricing); smaller deployments run lower.
+- **Azure AI Document Intelligence** — [official pricing](https://azure.microsoft.com/en-us/pricing/details/document-intelligence/): per-page metered extraction plus add-ons and query fields.
 
 ---
 
