@@ -7,8 +7,8 @@ export const handlers = [
       token_type: 'bearer',
       user: {
         id: 'user-1',
-        email: 'tyler@example.com',
-        full_name: 'Tyler Collins',
+        email: 'analyst@example.com',
+        full_name: 'Test Analyst',
         role: 'investigator',
         created_at: '2026-01-01T00:00:00Z',
       },

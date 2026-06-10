@@ -52,8 +52,9 @@ def test_get_client_without_langsmith_key_returns_plain_client(monkeypatch):
 def test_get_client_wraps_with_langsmith_when_key_set(monkeypatch):
     """When LANGSMITH_API_KEY is set, wrap_anthropic is called."""
     monkeypatch.setenv("LANGSMITH_API_KEY", "ls__test_key")
+    from unittest.mock import MagicMock, patch
+
     import app.services.claude_client as cc
-    from unittest.mock import patch, MagicMock
     cc._client = None
     mock_wrapped = MagicMock()
     with patch("langsmith.wrappers.wrap_anthropic", return_value=mock_wrapped) as mock_wrap:

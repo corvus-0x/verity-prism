@@ -1,6 +1,7 @@
 import io
+from unittest.mock import MagicMock, patch
+
 import pytest
-from unittest.mock import patch, MagicMock
 
 
 @pytest.fixture
@@ -81,11 +82,12 @@ def test_is_valid_xml_bytes_returns_false_for_non_xml():
 
 
 import uuid
-from unittest.mock import patch, MagicMock
-from app.models.document_schema import DocumentSchema
-from app.models.workspace import Workspace
-from app.models.user import User
+from unittest.mock import MagicMock, patch
+
 from app.models.document import Document
+from app.models.document_schema import DocumentSchema
+from app.models.user import User
+from app.models.workspace import Workspace
 
 
 def test_pipeline_uses_xml_parser_when_parse_strategy_is_xml_direct(db):
@@ -248,8 +250,9 @@ from app.services.extraction_engine import get_schema_for_type
 
 def test_obituary_schema_not_available_in_general_workspace(db):
     """OBITUARY is fraud-vertical only — general workspaces should not receive it."""
-    from app.models.document_schema import DocumentSchema
     import uuid
+
+    from app.models.document_schema import DocumentSchema
     schema = DocumentSchema(
         id=str(uuid.uuid4()),
         document_type="OBITUARY",
@@ -269,8 +272,9 @@ def test_obituary_schema_not_available_in_general_workspace(db):
 
 def test_obituary_schema_available_in_fraud_workspace(db):
     """OBITUARY schema is available in fraud workspaces."""
-    from app.models.document_schema import DocumentSchema
     import uuid
+
+    from app.models.document_schema import DocumentSchema
     schema = DocumentSchema(
         id=str(uuid.uuid4()),
         document_type="OBITUARY",

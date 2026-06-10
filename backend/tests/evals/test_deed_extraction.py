@@ -11,10 +11,11 @@ returns correct values for the 7 required fields.
 """
 import re
 import uuid
+
 import pytest
+
 from app.models.document_schema import DocumentSchema
 from app.services.extraction_engine import extract_fields
-
 
 DEED_REQUIRED_FIELDS = [
     {"name": "instrument_number", "type": "id_number", "required": True,

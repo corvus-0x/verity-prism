@@ -1,11 +1,12 @@
 import os
+
 import pytest
-from alembic import command
 from alembic.config import Config
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
 
+from alembic import command
 from app.database import Base, get_db
 from app.main import app
 
@@ -81,11 +82,11 @@ def client(db):
 @pytest.fixture
 def registered_user(client):
     client.post("/auth/register", json={
-        "email": "tyler@example.com",
+        "email": "analyst@example.com",
         "password": "TestPass123!",
-        "full_name": "Tyler Collins"
+        "full_name": "Test Analyst"
     })
-    return {"email": "tyler@example.com", "password": "TestPass123!"}
+    return {"email": "analyst@example.com", "password": "TestPass123!"}
 
 
 @pytest.fixture

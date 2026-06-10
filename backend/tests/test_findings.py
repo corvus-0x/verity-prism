@@ -1,5 +1,6 @@
 import pytest
 
+
 @pytest.fixture
 def workspace_id(client, auth_headers):
     return client.post("/workspaces/", json={"name": "Test", "vertical": "fraud"},

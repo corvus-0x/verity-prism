@@ -1,5 +1,6 @@
+from unittest.mock import MagicMock, patch
+
 import pytest
-from unittest.mock import patch, MagicMock
 
 
 @pytest.fixture
@@ -121,16 +122,18 @@ def test_multi_turn_conversation_no_duplicate_user_message(client, auth_headers,
 # ---------------------------------------------------------------------------
 # Agentic loop mechanic tests
 # ---------------------------------------------------------------------------
-from app.services.ai_engine import chat, _synthesis_pass, _extract_text
-from app.models.workspace import Workspace
-from app.models.ai import AIConversation
 import uuid
+
+from app.models.ai import AIConversation
+from app.models.workspace import Workspace
+from app.services.ai_engine import _extract_text, chat
 
 
 @pytest.fixture
 def ws_and_conv(db):
-    from app.models.user import User
     import hashlib
+
+    from app.models.user import User
     user = User(
         id=str(uuid.uuid4()),
         email="loop_test@example.com",
@@ -240,10 +243,12 @@ def test_extract_text_fallback_when_no_text_block():
 
 def test_get_conversation_history_workspace_scoped(db):
     """L1: history lookup must filter by workspace_id, not conversation_id alone."""
-    import uuid, hashlib
+    import hashlib
+    import uuid
+
+    from app.models.ai import AIConversation, AIMessage
     from app.models.user import User
     from app.models.workspace import Workspace
-    from app.models.ai import AIConversation, AIMessage
     from app.services.ai_engine import get_conversation_history
 
     user = User(id=str(uuid.uuid4()), email=f"l1_{uuid.uuid4().hex[:6]}@test.com",
