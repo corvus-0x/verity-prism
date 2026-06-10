@@ -167,8 +167,11 @@ Document text (first 1500 characters):
     start = time.time()
     response = None
     try:
+        # Type detection stays on the stronger model — ambiguous documents
+        # (e.g. screenshots of property records) need it. CHAT_MODEL is the
+        # single source of truth in claude_client.py.
         response = claude_client.get_client().messages.create(
-            model="claude-sonnet-4-6",
+            model=CHAT_MODEL,
             max_tokens=50,
             messages=[{"role": "user", "content": prompt}],
         )
@@ -260,8 +263,10 @@ Required format:
     document_text = ocr_text[:TEXT_LIMIT]
     prompt_chars = len(static_prompt) + len(document_text)
 
-    # Scale max_tokens to batch size: ~100 tokens per field + 200 overhead
-    max_tokens = min(len(fields_batch) * 100 + 200, 4096)
+    # Scale max_tokens to batch size: ~100 tokens per field + 200 overhead.
+    # Cap must stay above a full batch's need (40 × 100 + 200 = 4200) or long
+    # field values get the JSON truncated mid-response.
+    max_tokens = min(len(fields_batch) * 100 + 200, 8192)
 
     start = time.time()
     response = None
@@ -302,10 +307,15 @@ Required format:
             ai_conf_raw = item.get("confidence")
             ai_conf = ai_conf_raw if ai_conf_raw is not None else 1.0
             ocr_raw = item.get("ocr_confidence")
+            # Fall back to the alternate key only when the canonical key is
+            # absent (None) — `or` would also swallow a legitimate '' value.
+            field_value = item.get("field_value")
+            if field_value is None:
+                field_value = item.get("value")
             normalised.append(
                 {
                     "field_name": item.get("field_name") or item.get("field", ""),
-                    "field_value": item.get("field_value") or item.get("value"),
+                    "field_value": field_value,
                     "field_type": item.get("field_type", "text"),
                     "confidence": ai_conf,
                     "ocr_confidence": ocr_raw if ocr_raw is not None else ai_conf,
@@ -528,7 +538,9 @@ def save_extractions(
         field_name = item.get("field_name") or item.get("field")
         if not field_name:
             continue
-        field_value = item.get("field_value") or item.get("value")
+        field_value = item.get("field_value")
+        if field_value is None:
+            field_value = item.get("value")
         field_type = item.get("field_type", "text")
         field_value = _normalize_field_value(field_value, field_type)
         row = DocumentExtraction(

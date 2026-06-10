@@ -5,6 +5,7 @@ All Claude calls are mocked via `patch("app.services.claude_client.get_client")`
 _run_pipeline is called directly (not through the HTTP router) so we can
 inspect DB state after each step without fighting background-task timing.
 """
+
 import uuid
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -18,8 +19,8 @@ from app.models.user import User
 from app.models.workspace import Workspace
 from app.services.extraction_evaluator import EvaluationResult, evaluate
 
-
 # ── Evaluator unit tests ─────────────────────────────────────────────────────
+
 
 def test_evaluate_returns_no_review_when_all_confident():
     extractions = [
@@ -55,7 +56,35 @@ def test_evaluate_empty_input_is_not_needs_review():
     assert result.total_fields == 0
 
 
+def test_evaluate_skips_fields_absent_from_document():
+    # A null or blank field_value means the field is not present in this
+    # document — not a low-confidence extraction. Claude reports ~0.1
+    # confidence for "not found"; flagging those would route every document
+    # with optional fields to human review.
+    extractions = [
+        {"field_name": "easement_note", "field_value": None, "confidence": 0.1},
+        {"field_name": "second_grantor", "field_value": "   ", "confidence": 0.1},
+        {"field_name": "grantor_name", "field_value": "Oak Ridge LLC", "confidence": 0.95},
+    ]
+    result = evaluate(extractions, threshold=0.75)
+    assert result.needs_review is False
+    assert result.low_confidence_fields == []
+
+
+def test_evaluate_still_flags_low_confidence_fields_with_real_values():
+    # The absent-field skip must not swallow genuine low-confidence
+    # extractions that DO have a value.
+    extractions = [
+        {"field_name": "easement_note", "field_value": None, "confidence": 0.1},
+        {"field_name": "sale_price", "field_value": "1250000.00", "confidence": 0.40},
+    ]
+    result = evaluate(extractions, threshold=0.75)
+    assert result.needs_review is True
+    assert result.low_confidence_fields == ["sale_price"]
+
+
 # ── Shared fixtures ──────────────────────────────────────────────────────────
+
 
 @pytest.fixture
 def user(db):
@@ -129,6 +158,7 @@ def pending_doc(db, workspace, user, tmp_path):
 def _mock_claude_extraction(mock_client, extractions: list[dict]):
     """Configure mock_client to return a valid extraction response."""
     import json
+
     payload = json.dumps({"extractions": extractions})
     mock_client.messages.create.return_value = MagicMock(
         content=[MagicMock(text=payload)],
@@ -138,6 +168,7 @@ def _mock_claude_extraction(mock_client, extractions: list[dict]):
 
 # ── Happy-path test ──────────────────────────────────────────────────────────
 
+
 def test_pipeline_happy_path_marks_complete_with_extractions(
     db, workspace, user, deed_schema, pending_doc
 ):
@@ -145,26 +176,44 @@ def test_pipeline_happy_path_marks_complete_with_extractions(
     from app.services.document_pipeline import _run_pipeline
 
     mock_client = MagicMock()
-    _mock_claude_extraction(mock_client, [
-        {"field_name": "grantor_name", "field_value": "Jane Smith", "field_type": "name", "confidence": 0.95},
-        {"field_name": "sale_price", "field_value": "285000", "field_type": "currency", "confidence": 0.88},
-    ])
-    with patch("app.services.document_pipeline.detect_document_type", return_value="DEED"), \
-         patch("app.services.document_pipeline.extract_text", return_value="Grantor: Jane Smith"), \
-         patch("app.services.document_pipeline.generate_standardized_name", return_value="deed.pdf"), \
-         patch("app.services.claude_client.get_client", return_value=mock_client):
-
+    _mock_claude_extraction(
+        mock_client,
+        [
+            {
+                "field_name": "grantor_name",
+                "field_value": "Jane Smith",
+                "field_type": "name",
+                "confidence": 0.95,
+            },
+            {
+                "field_name": "sale_price",
+                "field_value": "285000",
+                "field_type": "currency",
+                "confidence": 0.88,
+            },
+        ],
+    )
+    with (
+        patch("app.services.document_pipeline.detect_document_type", return_value="DEED"),
+        patch("app.services.document_pipeline.extract_text", return_value="Grantor: Jane Smith"),
+        patch("app.services.document_pipeline.generate_standardized_name", return_value="deed.pdf"),
+        patch("app.services.claude_client.get_client", return_value=mock_client),
+    ):
         _run_pipeline(
-            pending_doc.id, b"%PDF-1.4 content", "test.pdf",
-            workspace.id, user.id, db,
+            pending_doc.id,
+            b"%PDF-1.4 content",
+            "test.pdf",
+            workspace.id,
+            user.id,
+            db,
         )
 
     db.refresh(pending_doc)
     assert pending_doc.extraction_status == "complete"
 
-    rows = db.query(DocumentExtraction).filter(
-        DocumentExtraction.document_id == pending_doc.id
-    ).all()
+    rows = (
+        db.query(DocumentExtraction).filter(DocumentExtraction.document_id == pending_doc.id).all()
+    )
     assert len(rows) == 2
     names = {r.field_name for r in rows}
     assert "grantor_name" in names
@@ -172,6 +221,7 @@ def test_pipeline_happy_path_marks_complete_with_extractions(
 
 
 # ── C2: false-complete on extraction failure ─────────────────────────────────
+
 
 def test_pipeline_marks_failed_when_all_claude_batches_raise(
     db, workspace, user, deed_schema, pending_doc
@@ -181,14 +231,19 @@ def test_pipeline_marks_failed_when_all_claude_batches_raise(
 
     mock_client = MagicMock()
     mock_client.messages.create.side_effect = Exception("Claude API is unavailable")
-    with patch("app.services.document_pipeline.detect_document_type", return_value="DEED"), \
-         patch("app.services.document_pipeline.extract_text", return_value="some deed text"), \
-         patch("app.services.document_pipeline.generate_standardized_name", return_value="deed.pdf"), \
-         patch("app.services.claude_client.get_client", return_value=mock_client):
-
+    with (
+        patch("app.services.document_pipeline.detect_document_type", return_value="DEED"),
+        patch("app.services.document_pipeline.extract_text", return_value="some deed text"),
+        patch("app.services.document_pipeline.generate_standardized_name", return_value="deed.pdf"),
+        patch("app.services.claude_client.get_client", return_value=mock_client),
+    ):
         _run_pipeline(
-            pending_doc.id, b"%PDF-1.4 content", "test.pdf",
-            workspace.id, user.id, db,
+            pending_doc.id,
+            b"%PDF-1.4 content",
+            "test.pdf",
+            workspace.id,
+            user.id,
+            db,
         )
 
     db.refresh(pending_doc)
@@ -198,15 +253,13 @@ def test_pipeline_marks_failed_when_all_claude_batches_raise(
     )
     assert pending_doc.extraction_error is not None
 
-    rows = db.query(DocumentExtraction).filter(
-        DocumentExtraction.document_id == pending_doc.id
-    ).all()
+    rows = (
+        db.query(DocumentExtraction).filter(DocumentExtraction.document_id == pending_doc.id).all()
+    )
     assert len(rows) == 0, "No extraction rows should exist when API failed"
 
 
-def test_pipeline_marks_complete_when_schema_has_no_fields(
-    db, workspace, user, tmp_path
-):
+def test_pipeline_marks_complete_when_schema_has_no_fields(db, workspace, user, tmp_path):
     """Edge case: zero-field claude schema → complete is correct (no batches run)."""
     from app.services.document_pipeline import _run_pipeline
 
@@ -239,11 +292,12 @@ def test_pipeline_marks_complete_when_schema_has_no_fields(
     db.add(doc)
     db.commit()
 
-    with patch("app.services.document_pipeline.detect_document_type", return_value="ZERO-FIELD"), \
-         patch("app.services.document_pipeline.extract_text", return_value="content"), \
-         patch("app.services.document_pipeline.generate_standardized_name", return_value="zf.pdf"), \
-         patch("app.services.claude_client.get_client", return_value=MagicMock()):  # no calls expected
-
+    with (
+        patch("app.services.document_pipeline.detect_document_type", return_value="ZERO-FIELD"),
+        patch("app.services.document_pipeline.extract_text", return_value="content"),
+        patch("app.services.document_pipeline.generate_standardized_name", return_value="zf.pdf"),
+        patch("app.services.claude_client.get_client", return_value=MagicMock()),
+    ):  # no calls expected
         _run_pipeline(doc.id, b"%PDF-1.4 x", "zf.pdf", workspace.id, user.id, db)
 
     db.refresh(doc)
@@ -251,6 +305,7 @@ def test_pipeline_marks_complete_when_schema_has_no_fields(
 
 
 # ── H5: 4000-char text cap ────────────────────────────────────────────────────
+
 
 def test_extraction_sends_full_text_beyond_4000_chars(db, deed_schema):
     """H5: Claude must receive OCR text that extends past the old 4000-char cap."""
@@ -288,6 +343,7 @@ def test_extraction_sends_full_text_beyond_4000_chars(db, deed_schema):
 
 # ── L3: orphaned file cleanup ─────────────────────────────────────────────────
 
+
 def test_pipeline_deletes_file_on_ocr_failure(db, workspace, user, deed_schema, tmp_path):
     """L3: a file written to disk before OCR must be deleted when the pipeline fails."""
     from app.services.document_pipeline import _run_pipeline
@@ -316,9 +372,7 @@ def test_pipeline_deletes_file_on_ocr_failure(db, workspace, user, deed_schema, 
 
     db.refresh(doc)
     assert doc.extraction_status == "failed"
-    assert not file_path.exists(), (
-        "L3: orphaned file still on disk after pipeline failure"
-    )
+    assert not file_path.exists(), "L3: orphaned file still on disk after pipeline failure"
 
 
 def test_pipeline_preserves_file_on_success(db, workspace, user, deed_schema, pending_doc):
@@ -329,14 +383,23 @@ def test_pipeline_preserves_file_on_success(db, workspace, user, deed_schema, pe
     assert file_path.exists()
 
     mock_client = MagicMock()
-    _mock_claude_extraction(mock_client, [
-        {"field_name": "grantor_name", "field_value": "Jane Smith", "field_type": "name", "confidence": 0.95},
-    ])
-    with patch("app.services.document_pipeline.detect_document_type", return_value="DEED"), \
-         patch("app.services.document_pipeline.extract_text", return_value="deed content"), \
-         patch("app.services.document_pipeline.generate_standardized_name", return_value="deed.pdf"), \
-         patch("app.services.claude_client.get_client", return_value=mock_client):
-
+    _mock_claude_extraction(
+        mock_client,
+        [
+            {
+                "field_name": "grantor_name",
+                "field_value": "Jane Smith",
+                "field_type": "name",
+                "confidence": 0.95,
+            },
+        ],
+    )
+    with (
+        patch("app.services.document_pipeline.detect_document_type", return_value="DEED"),
+        patch("app.services.document_pipeline.extract_text", return_value="deed content"),
+        patch("app.services.document_pipeline.generate_standardized_name", return_value="deed.pdf"),
+        patch("app.services.claude_client.get_client", return_value=mock_client),
+    ):
         _run_pipeline(pending_doc.id, b"%PDF-1.4 x", "test.pdf", workspace.id, user.id, db)
 
     db.refresh(pending_doc)
@@ -346,21 +409,27 @@ def test_pipeline_preserves_file_on_success(db, workspace, user, deed_schema, pe
 
 # ── Dual confidence ───────────────────────────────────────────────────────────
 
+
 def test_extract_batch_returns_ocr_confidence(db, deed_schema):
     """_extract_batch must include ocr_confidence in each returned dict."""
-    from app.services.extraction_engine import _extract_batch
     import json
 
+    from app.services.extraction_engine import _extract_batch
+
     mock_client = MagicMock()
-    payload = json.dumps({"extractions": [
+    payload = json.dumps(
         {
-            "field_name": "grantor_name",
-            "field_value": "Jane Smith",
-            "field_type": "name",
-            "confidence": 0.92,
-            "ocr_confidence": 0.85,
+            "extractions": [
+                {
+                    "field_name": "grantor_name",
+                    "field_value": "Jane Smith",
+                    "field_type": "name",
+                    "confidence": 0.92,
+                    "ocr_confidence": 0.85,
+                }
+            ]
         }
-    ]})
+    )
     mock_client.messages.create.return_value = MagicMock(
         content=[MagicMock(text=payload)],
         usage=MagicMock(input_tokens=100, output_tokens=50),
@@ -380,19 +449,24 @@ def test_extract_batch_returns_ocr_confidence(db, deed_schema):
 
 def test_extract_batch_falls_back_ocr_confidence_to_confidence(db, deed_schema):
     """If Claude omits ocr_confidence, it defaults to the ai confidence value."""
-    from app.services.extraction_engine import _extract_batch
     import json
 
+    from app.services.extraction_engine import _extract_batch
+
     mock_client = MagicMock()
-    payload = json.dumps({"extractions": [
+    payload = json.dumps(
         {
-            "field_name": "grantor_name",
-            "field_value": "Jane Smith",
-            "field_type": "name",
-            "confidence": 0.80,
-            # ocr_confidence intentionally absent
+            "extractions": [
+                {
+                    "field_name": "grantor_name",
+                    "field_value": "Jane Smith",
+                    "field_type": "name",
+                    "confidence": 0.80,
+                    # ocr_confidence intentionally absent
+                }
+            ]
         }
-    ]})
+    )
     mock_client.messages.create.return_value = MagicMock(
         content=[MagicMock(text=payload)],
         usage=MagicMock(input_tokens=100, output_tokens=50),
@@ -411,22 +485,37 @@ def test_extract_batch_falls_back_ocr_confidence_to_confidence(db, deed_schema):
 def test_evaluate_uses_per_field_ai_threshold_correct():
     """When a field has ai_threshold in schema_fields, use it instead of the default."""
     extractions = [
-        {"field_name": "ein", "field_value": "12-3456789", "confidence": 0.88, "ocr_confidence": 0.95},
-        {"field_name": "vendor_name", "field_value": "Acme Corp", "confidence": 0.80, "ocr_confidence": 0.90},
+        {
+            "field_name": "ein",
+            "field_value": "12-3456789",
+            "confidence": 0.88,
+            "ocr_confidence": 0.95,
+        },
+        {
+            "field_name": "vendor_name",
+            "field_value": "Acme Corp",
+            "confidence": 0.80,
+            "ocr_confidence": 0.90,
+        },
     ]
     result = evaluate(
         extractions,
         threshold=0.75,
         field_thresholds={"ein": 0.95},
     )
-    assert "ein" in result.low_confidence_fields       # 0.88 < 0.95 (field threshold)
+    assert "ein" in result.low_confidence_fields  # 0.88 < 0.95 (field threshold)
     assert "vendor_name" not in result.low_confidence_fields  # 0.80 >= 0.75 (default)
 
 
 def test_evaluate_flags_low_ocr_confidence():
     """Fields below the ocr_threshold are flagged even when ai confidence is high."""
     extractions = [
-        {"field_name": "sale_price", "field_value": "1250000.00", "confidence": 0.90, "ocr_confidence": 0.50},
+        {
+            "field_name": "sale_price",
+            "field_value": "1250000.00",
+            "confidence": 0.90,
+            "ocr_confidence": 0.50,
+        },
     ]
     result = evaluate(
         extractions,
@@ -451,9 +540,8 @@ def test_evaluate_passes_when_both_confidences_meet_thresholds():
 
 # ── needs_review persistence (guard test) ────────────────────────────────────
 
-def test_pipeline_marks_needs_review_when_required_field_missing(
-    db, workspace, user, tmp_path
-):
+
+def test_pipeline_marks_needs_review_when_required_field_missing(db, workspace, user, tmp_path):
     """Required field missing from extraction → doc must be needs_review after pipeline completes."""
     from app.services.document_pipeline import _run_pipeline
 
@@ -463,12 +551,14 @@ def test_pipeline_marks_needs_review_when_required_field_missing(
         document_type="REQUIRED-FIELD-TEST",
         display_name="Required Field Test",
         vertical="general",
-        schema_fields=[{
-            "name": "ein",
-            "type": "id_number",
-            "description": "EIN",
-            "validation": {"required": True}
-        }],
+        schema_fields=[
+            {
+                "name": "ein",
+                "type": "id_number",
+                "description": "EIN",
+                "validation": {"required": True},
+            }
+        ],
         extraction_prompt="Extract the EIN.",
         version=1,
         is_active=True,
@@ -497,20 +587,34 @@ def test_pipeline_marks_needs_review_when_required_field_missing(
     mock_client = MagicMock()
     # Claude returns a result but WITHOUT the required 'ein' field
     import json
-    payload = json.dumps({"extractions": [
-        {"field_name": "other_field", "field_value": "something", "field_type": "text",
-         "confidence": 0.90, "ocr_confidence": 0.90}
-    ]})
+
+    payload = json.dumps(
+        {
+            "extractions": [
+                {
+                    "field_name": "other_field",
+                    "field_value": "something",
+                    "field_type": "text",
+                    "confidence": 0.90,
+                    "ocr_confidence": 0.90,
+                }
+            ]
+        }
+    )
     mock_client.messages.create.return_value = MagicMock(
         content=[MagicMock(text=payload)],
         usage=MagicMock(input_tokens=100, output_tokens=50),
     )
 
-    with patch("app.services.document_pipeline.detect_document_type", return_value="REQUIRED-FIELD-TEST"), \
-         patch("app.services.document_pipeline.extract_text", return_value="no ein here"), \
-         patch("app.services.document_pipeline.generate_standardized_name", return_value="test.pdf"), \
-         patch("app.services.claude_client.get_client", return_value=mock_client):
-
+    with (
+        patch(
+            "app.services.document_pipeline.detect_document_type",
+            return_value="REQUIRED-FIELD-TEST",
+        ),
+        patch("app.services.document_pipeline.extract_text", return_value="no ein here"),
+        patch("app.services.document_pipeline.generate_standardized_name", return_value="test.pdf"),
+        patch("app.services.claude_client.get_client", return_value=mock_client),
+    ):
         _run_pipeline(doc.id, b"%PDF-1.4 no ein here", "test.pdf", workspace.id, user.id, db)
 
     db.refresh(doc)
@@ -523,10 +627,12 @@ def test_pipeline_marks_needs_review_when_required_field_missing(
 
 # ── Partial batch retry ───────────────────────────────────────────────────────
 
+
 def test_extract_fields_retries_partial_batch_failure(db, deed_schema):
     """When the first batch call fails transiently, the partial retry recovers it."""
-    from app.services.extraction_engine import extract_fields
     import json
+
+    from app.services.extraction_engine import extract_fields
 
     call_count = 0
 
@@ -536,12 +642,30 @@ def test_extract_fields_retries_partial_batch_failure(db, deed_schema):
         if call_count == 1:
             raise Exception("Transient API error")
         return MagicMock(
-            content=[MagicMock(text=json.dumps({"extractions": [
-                {"field_name": "grantor_name", "field_value": "Jane Smith",
-                 "field_type": "name", "confidence": 0.90, "ocr_confidence": 0.92},
-                {"field_name": "sale_price", "field_value": "285000",
-                 "field_type": "currency", "confidence": 0.88, "ocr_confidence": 0.90},
-            ]}))],
+            content=[
+                MagicMock(
+                    text=json.dumps(
+                        {
+                            "extractions": [
+                                {
+                                    "field_name": "grantor_name",
+                                    "field_value": "Jane Smith",
+                                    "field_type": "name",
+                                    "confidence": 0.90,
+                                    "ocr_confidence": 0.92,
+                                },
+                                {
+                                    "field_name": "sale_price",
+                                    "field_value": "285000",
+                                    "field_type": "currency",
+                                    "confidence": 0.88,
+                                    "ocr_confidence": 0.90,
+                                },
+                            ]
+                        }
+                    )
+                )
+            ],
             usage=MagicMock(input_tokens=100, output_tokens=50),
         )
 

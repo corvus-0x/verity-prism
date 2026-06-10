@@ -1,24 +1,47 @@
 from unittest.mock import MagicMock, patch
-import pytest
+
+
+def test_is_available_reads_settings_not_process_env(monkeypatch):
+    """Embedding config must flow through Settings like every other secret.
+
+    A raw OPENAI_API_KEY env var alone must not enable embeddings — config
+    that bypasses Settings skips validation and is invisible in config.py.
+    """
+    from app.config import settings
+
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-env-only")
+    monkeypatch.setattr(settings, "openai_api_key", None)
+    from app.services import embedding_service
+
+    assert embedding_service.is_available() is False
 
 
 def test_is_available_false_without_key(monkeypatch):
-    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "openai_api_key", None)
     from app.services import embedding_service
+
     embedding_service._openai_client = None
     assert embedding_service.is_available() is False
 
 
 def test_is_available_true_with_key(monkeypatch):
-    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "openai_api_key", "sk-test")
     from app.services import embedding_service
+
     assert embedding_service.is_available() is True
 
 
 def test_embed_document_no_op_without_key(monkeypatch, db):
-    """embed_document() does nothing when OPENAI_API_KEY is not set."""
-    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    """embed_document() does nothing when openai_api_key is not configured."""
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "openai_api_key", None)
     from app.services import embedding_service
+
     embedding_service._openai_client = None
     # Should return without error even with a fake document_id
     embedding_service.embed_document("fake-doc-id", "fake-workspace-id", db)
@@ -26,7 +49,9 @@ def test_embed_document_no_op_without_key(monkeypatch, db):
 
 def test_embed_document_stores_vector(monkeypatch, db, registered_user, auth_headers, client):
     """embed_document() stores a vector on the document when OpenAI is configured."""
-    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "openai_api_key", "sk-test")
 
     fake_embedding = [0.1] * 1536
 
@@ -35,9 +60,10 @@ def test_embed_document_stores_vector(monkeypatch, db, registered_user, auth_hea
         data=[MagicMock(embedding=fake_embedding)]
     )
 
+    import uuid
+
     from app.models.document import Document
     from app.models.user import User
-    import uuid
 
     # Look up the registered user's DB id
     user = db.query(User).filter(User.email == registered_user["email"]).first()
@@ -65,6 +91,7 @@ def test_embed_document_stores_vector(monkeypatch, db, registered_user, auth_hea
     db.commit()
 
     from app.services import embedding_service
+
     embedding_service._openai_client = None
 
     with patch("app.services.embedding_service._get_openai_client", return_value=mock_openai):
