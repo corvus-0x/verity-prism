@@ -138,6 +138,9 @@ Engine. Lazy singleton Anthropic client (Phase 5 L6). `get_client()` constructs 
 #### `metering.py` ✅
 Engine. `get_workspace_usage(workspace_id, billing_period_start, db)` — read-only aggregation over `claude_call_logs`: sums input/output tokens and counts distinct documents processed for a workspace since the period start. No table, no endpoint — the data layer Phase 4A tier enforcement + usage display build on (Phase 2F A3).
 
+#### `embedding_service.py` ✅
+Engine. Document-level vector embeddings for semantic search. `embed_document()` builds a text representation from extracted fields ("Type: DEED | grantor_name: ... | ..."), generates a 1536-dim vector via OpenAI `text-embedding-3-small`, stores it on `documents.embedding` (pgvector). Runs as pipeline step 8.5; never fails a document. Configured via `settings.openai_api_key` — optional, search degrades to keyword-only FTS when unset. `search_service.semantic_search()` queries by cosine distance; `run_search()` merges keyword + semantic results in `hybrid` mode (default), or runs either alone via `mode="keyword"` / `mode="semantic"`.
+
 #### `agent_tools.py` ✅
 Engine. Seven read-only tool functions callable by the Claude agent: `search_documents`, `get_entity`, `query_extractions`, `get_transactions`, `get_findings`, `get_leads`, `suggest_source`. All workspace-scoped — `workspace_id` is injected by `execute()`, never passed by Claude. `execute()` dispatches by tool name and returns `{"error": "..."}` on failure. Results are size-capped (≤10 docs, ≤50 rows) to prevent context overflow. `suggest_source` returns a structured dict (`action/connector_id/search_query/reason`) — read-only, never fetches. Extended per vertical via `agent_tools_<vertical>.py` pattern.
 
@@ -381,41 +384,47 @@ Applied via SQL in Task 2. GIN index on `documents.search_vector`. PostgreSQL tr
 
 ## Test Coverage
 
+Counts verified by `pytest --collect-only` on 2026-06-10 (evals/ excluded — require live API key).
+
 | Test file | Layer | Passing |
 |---|---|---|
-| `test_auth.py` | Engine | ✅ 10/10 (5 new: cookie/session/logout/me tests) |
-| `test_workspaces.py` | Engine | ✅ 7/7 (render_mode tests added) |
-| `test_entities.py` | Engine | ✅ 3/3 |
-| `test_findings.py` | Engine + Fraud cap | ✅ 3/3 |
-| `test_transactions.py` | Engine | ✅ 2/2 |
-| `test_leads.py` | Engine | ✅ 2/2 |
-| `test_notes.py` | Engine | ✅ 2/2 |
-| `test_documents.py` | Engine | ✅ 5/5 |
-| `test_extractions.py` | Engine | ✅ 11/11 |
-| `test_sanitize.py` | Engine | ✅ 2/2 |
-| `test_config.py` | Engine | ✅ 1/1 |
-| `test_agent_tools.py` | Engine | ✅ 29/29 (suggest_source added) |
-| `test_ai.py` | Engine | ✅ 9/9 (workspace-scoped history test) |
-| `test_export_service.py` | Engine | ✅ 7/7 |
-| `test_export.py` | Engine | ✅ 3/3 |
-| `test_audit_log.py` | Engine | ✅ 2/2 |
-| `test_audit_immutability.py` | Engine | ✅ 2/2 |
-| `test_deps.py` | Engine | ✅ 3/3 |
-| `test_claude_client.py` | Engine | ✅ 2/2 |
-| `test_search.py` | Engine | ✅ 7/7 (soft-delete + TSVECTOR tests) |
-| `test_pipeline.py` | Engine | ✅ 9/9 |
-| **Backend total** | | **123/123** |
-| `test_login.jsx` | Engine | ✅ 3/3 |
-| `test_workspaces_home.jsx` | Engine | ✅ 2/2 |
-| `test_documents.jsx` | Engine | ✅ 2/2 |
-| `test_search.jsx` | Engine | ✅ 1/1 |
-| `test_ai_chat.jsx` | Engine | ✅ 1/1 |
-| `test_ai_chat_errors.jsx` | Engine | ✅ 2/2 |
-| `test_extraction_stream.jsx` | Engine | ✅ 1/1 |
-| `test_sources.jsx` | Engine | ✅ 2/2 |
-| `test_digital_renderer.jsx` | Engine | ✅ 3/3 |
-| **Frontend total** | | **18/18** |
-| **Grand total** | | **222/222** |
+| `test_agent_tools.py` | Engine | ✅ 29 |
+| `test_ai.py` | Engine | ✅ 10 |
+| `test_audit.py` | Engine | ✅ 6 |
+| `test_audit_immutability.py` | Engine | ✅ 3 |
+| `test_auth.py` | Engine | ✅ 10 |
+| `test_claude_client.py` | Engine | ✅ 5 |
+| `test_config.py` | Engine | ✅ 4 |
+| `test_connector_base.py` | Engine | ✅ 2 |
+| `test_connector_irs_teos.py` | Engine | ✅ 4 |
+| `test_connector_registry.py` | Engine | ✅ 2 |
+| `test_connector_service.py` | Engine | ✅ 2 |
+| `test_connectors_api.py` | Engine | ✅ 3 |
+| `test_deps.py` | Engine | ✅ 3 |
+| `test_documents.py` | Engine | ✅ 16 |
+| `test_embedding_service.py` | Engine | ✅ 5 |
+| `test_entities.py` | Engine | ✅ 3 |
+| `test_export_service.py` | Engine | ✅ 7 |
+| `test_extraction_caching.py` | Engine | ✅ 3 |
+| `test_extraction_engine.py` | Engine | ✅ 2 |
+| `test_extractions.py` | Engine | ✅ 10 |
+| `test_field_validator.py` | Engine | ✅ 8 |
+| `test_findings.py` | Engine + Fraud cap | ✅ 3 |
+| `test_leads.py` | Engine | ✅ 2 |
+| `test_metering.py` | Engine | ✅ 2 |
+| `test_normalization.py` | Engine | ✅ 19 |
+| `test_notes.py` | Engine | ✅ 2 |
+| `test_observability.py` | Engine | ✅ 5 |
+| `test_pipeline.py` | Engine | ✅ 18 |
+| `test_review.py` | Engine | ✅ 4 |
+| `test_sanitize.py` | Engine | ✅ 7 |
+| `test_schema_review.py` | Engine | ✅ 6 |
+| `test_search.py` | Engine | ✅ 12 |
+| `test_transactions.py` | Engine | ✅ 2 |
+| `test_workspaces.py` | Engine | ✅ 7 |
+| **Backend total** | | **226/226** |
+| **Frontend total** (9 files) | | **18/18** |
+| **Grand total** | | **244/244** |
 
 ---
 
@@ -482,3 +491,4 @@ Investigation workflow + referral export
 | 2026-05-30 | Phase 4 code audit remediation (audit phases 4–6, PR #6 + #7). Phase 4: H1 — soft-delete filters in `run_search` and `query_extractions`; H2 — `search_vector` migrated TEXT→TSVECTOR + GIN index (migration `a1b2c3d4e5f6`); L1 — `get_conversation_history` workspace-scoped; L5 — `is_deleted`/`deleted_at` on Transaction, Finding, Lead, Note, Relationship. Phase 5: M5 — `get_workspace_or_404` moved to `app/deps.py`; export+SSE logic extracted to `export_service.py`; four `Anthropic()` module-level clients consolidated into `claude_client.py` lazy singleton. Phase 6: M6 — httpOnly cookie auth (`/login` sets cookie, `/logout`, `/me`; hybrid Bearer+cookie in `get_current_user`; frontend removes localStorage, adds `AuthInit`, `withCredentials: true`); M7 — `AIChat.handleSend` catch+rollback+toast, `WorkspaceContext` silent catch; L2 — SSE reader cancelled on unmount; L4 — 401 interceptor uses `NavigatorSetter` router navigation. 136/136 tests (123 backend + 13 frontend). All 2026-05-29 audit findings resolved. |
 | 2026-05-31 | Phase 2F Plan 1 — Commercial readiness (branch `feat/phase2f-commercial-readiness`). `EXTRACTION_MODEL`/`CHAT_MODEL` constants in `claude_client.py`; field extraction routed to Haiku 4.5, type detection + chat stay on Sonnet. Prompt caching: `_extract_batch` splits the prompt into a cacheable ephemeral static block + uncached document block (60-90% input-token cut). `metering.py` — `get_workspace_usage` query over `claude_call_logs` (Phase 4A billing data layer). 137 backend passed, 1 skipped. |
 | 2026-05-31 | Phase 2F Plan 3 complete — Sources UI + digital viewer + AI suggestion. Backend: `document_render_mode` on workspaces (migration 50f2b84a06aa); `suggest_source` as 7th agent tool (read-only, returns structured suggestion). Frontend: `connectors.js` API client; `Sources.jsx` (connector search → pick → filing list → pull + history); `DigitalDocumentRenderer.jsx` (schema-driven grouped renderer for sourced docs); `rendererRegistry.js` (plugin registry, cap-extendable); `SuggestSourceCard.jsx` (AI action card with deep-link); DocumentViewer left pane now pluggable (digital renderer for non-PDF sourced docs); DocumentList shows source badge. 18 frontend tests + 187 backend tests (186 pass, 1 pre-existing GIN index test). |
+| 2026-06-10 | Portfolio hardening (TDD, branch `feat/portfolio-hardening`). Search correctness: field-filter intersection now constrains the document query BEFORE the 50-doc window (was: limit-first silently dropped matches past the FTS scan window); `matched_fields` uses latest-attempt-per-field via `export_service.latest_extractions` (corrections supersede stale values). Extraction: `max_tokens` cap 4096→8192 (full 40-field batch needs 4200); explicit None-check fallback preserves legitimately-empty `''` values. Evaluator regression tests added for the null/empty-value skip (absent fields no longer flag needs_review). Config: `openai_api_key` moved into `Settings`; LangSmith key read from settings; hardcoded `claude-sonnet-4-6` strings in `detect_document_type`/`translate_query` replaced with `CHAT_MODEL` constant. Hygiene: ruff now lints `backend/tests` in CI (31 autofixes + E402 per-file-ignore); test fixtures use neutral identities. `embedding_service` documented in inventory. Test table re-verified by collect-only: 226 backend + 18 frontend = 244. |
