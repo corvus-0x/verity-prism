@@ -6,6 +6,22 @@ How it works:
 1. get_known_field_names() tells Claude which fields exist in this workspace
 2. translate_query() asks Claude to produce structured filters from the query
 3. run_search() executes FTS + field filters and returns matching documents
+
+WALKTHROUGH — the shape of this file:
+
+A user types "deeds over $100k in Madison County." That's not a database query,
+so the job is to TURN IT INTO one. The pipeline is: Claude translates the English
+into a structured plan (translate_query) -> we run that plan as real SQL
+(run_search). Claude never touches the database here — it only produces a filter
+spec; Python executes it. That separation is the whole design: the LLM does
+language, Postgres does data.
+
+run_search blends three retrieval strategies (mode='hybrid' by default):
+  - FTS         — keyword match on the document's search_vector
+  - field filters — exact/contains/numeric comparisons on extracted fields
+  - semantic    — vector similarity for meaning, not keywords
+Keyword-style results come first; semantic fills in documents that match by
+meaning but missed the keywords. Read on for why each guard in run_search exists.
 """
 
 import json
@@ -78,6 +94,11 @@ Respond with JSON only. Example:
         )
         return json.loads(strip_json_fences(response.content[0].text))
     except Exception as e:
+        # WALKTHROUGH: graceful degradation, not failure. If Claude is down or
+        # returns unparseable JSON, we DON'T error the user's search — we fall
+        # back to treating their raw text as a plain keyword (FTS) query with no
+        # field filters. A dumber search beats a 500. The user still gets results;
+        # they just lose the smart field-level filtering for that one query.
         logger.warning(f"Query translation failed: {e} — falling back to FTS only")
         return {"fts_query": natural_language_query, "field_filters": [], "doc_type_filter": None}
 
@@ -153,6 +174,18 @@ def run_search(
     # This constrains the document query BEFORE the 50-doc window is applied;
     # applying the limit first silently dropped filter matches that sat past
     # the FTS scan window in large workspaces.
+    #
+    # WALKTHROUGH: two subtle things here.
+    # (1) AND logic via set intersection. Each filter is run as its own query
+    #     returning a SET of matching document_ids. The first filter seeds the
+    #     set; every later filter does `&=` (intersection), so a document must
+    #     satisfy EVERY filter to survive. Union (OR) would be `|=` — the choice
+    #     of `&` is what makes multi-filter queries narrow, not widen.
+    # (2) Order matters with the 50-row limit. We narrow to the matching IDs
+    #     FIRST, then apply .limit(50) at the end. The comment above records a
+    #     real bug: limiting first meant "the 50 most recent docs, THEN filter,"
+    #     which hid valid matches sitting at row 51+. Filter the population, then
+    #     take a window of it — never the reverse.
     if field_filters:
         filtered_doc_ids: set[str] = set()
         first_filter = True
@@ -173,6 +206,14 @@ def run_search(
                     DocumentExtraction.field_value.ilike(f"%{val}%")
                 )
             elif op in ("gt", "lt"):
+                # WALKTHROUGH: a real SQL footgun lives here. field_value is a
+                # TEXT column — every extracted value is stored as a string. To
+                # compare "greater than 100000" we must CAST it to NUMERIC, but
+                # CAST('Madison County' AS NUMERIC) throws and aborts the whole
+                # query. The numeric_guard regex (`~ '^[0-9]+(\.[0-9]+)?$'`) runs
+                # FIRST and filters the rows down to ones that are actually
+                # numeric, so the CAST only ever sees castable values. Order of
+                # the two filters is load-bearing: guard, THEN cast.
                 # Guard against non-numeric field_value before CAST to avoid errors
                 numeric_guard = text("field_value ~ '^[0-9]+(\\.[0-9]+)?$'")
                 comparator = ">" if op == "gt" else "<"
@@ -194,8 +235,11 @@ def run_search(
 
     matching_docs = doc_query.limit(50).all()
 
-    # Build result objects — latest attempt per field, so corrected values
-    # (attempt=3) supersede the original extraction in search results
+    # WALKTHROUGH: "latest attempt per field" is a correctness detail. A field
+    # can be extracted (attempt=1), auto-retried (attempt=2), or human-corrected
+    # (attempt=3). latest_extractions() returns only the highest attempt per
+    # field, so a value a human fixed always wins over what Claude first guessed —
+    # search reflects the corrected truth, not the original error.
     results = []
     for doc in matching_docs:
         matched_fields = {e.field_name: e.field_value for e in latest_extractions(doc.id, db)}
@@ -224,6 +268,13 @@ def run_search(
     if mode == "semantic":
         return semantic_results
 
+    # WALKTHROUGH: the hybrid merge, and the ordering is a quality decision.
+    # Keyword/field results come FIRST because they're precise — they matched a
+    # literal term or a filter the user asked for. Semantic results are appended
+    # AFTER, and only the ones not already returned (the `not in seen_ids`
+    # dedup). So semantic search acts as a recall booster: it surfaces documents
+    # that mean the right thing but didn't contain the exact keywords, without
+    # ever pushing a fuzzy match above an exact one.
     # hybrid: keyword results first, then semantic-only matches (no duplicates)
     seen_ids = {r["document_id"] for r in results}
     return results + [r for r in semantic_results if r["document_id"] not in seen_ids]
