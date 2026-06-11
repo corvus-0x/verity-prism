@@ -399,6 +399,20 @@ Decisions made before any vertical work could start. These were flagged in princ
 
 ---
 
+## Portfolio Hardening — Merge Completion (2026-06-11, PR #6)
+
+> The session opened mid-air: a previous session had built the portfolio-hardening work (search correctness, RBAC enforcement, extraction fixes, chat prefix caching) but the machine crashed before the PR landed. PR #6 was open, mergeable, and red — two CI blockers stood between the branch and main. This session was about clearing them honestly, not forcing the merge past a failing gate.
+
+| Task | What It Builds | Why |
+|------|---------------|-----|
+| Ruff whitespace fixes | 9 `W291`/`W293` lints cleared in `deps.py` and `documents.py` via `ruff --fix` | Pure whitespace, the safest auto-fix category — it cannot change behavior. The crash had interrupted the lint cleanup mid-commit. Verified the diff was whitespace-only before pushing rather than trusting the fixer blindly |
+| Langsmith client test fix | `test_get_client_wraps_with_langsmith_when_key_set` patched to set `settings.langsmith_api_key` directly instead of `monkeypatch.setenv` | The real bug, and the one worth remembering. The test set the env var *after* import, but `get_client()` reads `settings.langsmith_api_key` — a Pydantic `BaseSettings` object that snapshots env vars once at construction. The patch never reached the code path, the wrap branch never ran, `wrap_anthropic` was called 0 times. The code was correct; the test was lying. Fixed by patching the attribute the code actually reads. Both langsmith tests aligned to the same pattern for consistency. **Standing lesson: never test settings-driven code by patching env vars — patch the settings attribute** |
+| Merge + local-main reconciliation | PR #6 squash-merged to main (`b683a9e`), branch deleted; diverged local main rebased onto the merged tip | `gh pr merge` reported a fast-forward error, but that was cosmetic — it only failed to update *local* main; the remote merge succeeded (`state: MERGED`). Local main carried two unpushed docs commits from the crashed session; rebasing onto the merged tip dropped both as already-upstream, after resolving one README post-count conflict (kept "13", the value the merged PR already corrected to). Net: nothing lost, local even with origin. **Lesson: a `gh pr merge` local fast-forward failure does not mean the PR failed — check `state`/`mergedAt` before re-running** |
+
+**Tests passing:** 227 backend (CI-verified on the merge commit)
+
+---
+
 ## Deferred & Relocated Work
 
 Things that were planned for one phase and moved, or explicitly punted. Captured here with the reasoning so when we reach that phase we're not starting from scratch.
