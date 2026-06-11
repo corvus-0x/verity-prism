@@ -117,7 +117,7 @@ def correct_extraction(
     Inserts a new row with attempt=3 and confidence=1.0 — the original rows are preserved.
     If all fields are now corrected, flips document status back to 'complete'.
     """
-    get_workspace_or_404(workspace_id, user, db)
+    get_workspace_or_404(workspace_id, user, db, required_roles={"owner", "analyst"}, require_active=True)
 
     # Verify the document belongs to this workspace
     doc = db.query(Document).filter(
@@ -231,7 +231,7 @@ def flag_document(
     Flag reason and note travel with the document through processing.
     Does not change extraction_status — use the correction endpoint to resolve fields.
     """
-    get_workspace_or_404(workspace_id, user, db)
+    get_workspace_or_404(workspace_id, user, db, required_roles={"owner", "analyst"}, require_active=True)
 
     doc = db.query(Document).filter(
         Document.id == document_id,
@@ -279,7 +279,7 @@ def create_extraction(
     Used by the review pane when an operator enters a value for a field the
     pipeline never extracted.
     """
-    get_workspace_or_404(workspace_id, user, db)
+    get_workspace_or_404(workspace_id, user, db, required_roles={"owner", "analyst"}, require_active=True)
 
     doc = db.query(Document).filter(
         Document.id == document_id,

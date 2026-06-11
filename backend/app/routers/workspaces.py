@@ -46,7 +46,7 @@ def update_workspace(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user)
 ):
-    workspace = get_workspace_or_404(workspace_id, user, db)
+    workspace = get_workspace_or_404(workspace_id, user, db, required_roles={"owner"})
     before = {"name": workspace.name, "status": workspace.status}
     for field, value in payload.model_dump(exclude_unset=True).items():
         setattr(workspace, field, value)

@@ -50,12 +50,12 @@ export default function WorkspaceSidebar() {
 
   return (
     <nav
-      className="bg-slate-900 flex flex-col gap-0.5 w-full h-full py-3 px-2 overflow-y-auto"
-      style={{ borderRight: '1px solid #1A2A3F' }}
+      className="bg-slate-900/40 backdrop-blur-md flex flex-col gap-1 w-full h-full py-4 px-3 overflow-y-auto"
+      style={{ borderRight: '1px solid rgba(255, 255, 255, 0.05)' }}
     >
       {/* Upload */}
       <label
-        className={`btn-primary w-full justify-center mb-3 text-xs ${uploading ? 'opacity-40 pointer-events-none' : ''}`}
+        className={`btn-primary w-full justify-center mb-4 text-sm font-semibold shadow-md shadow-red-900/20 ${uploading ? 'opacity-40 pointer-events-none' : ''}`}
         style={{ cursor: uploading ? 'not-allowed' : 'pointer' }}
       >
         <input
