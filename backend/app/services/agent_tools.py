@@ -1,3 +1,20 @@
+"""
+Agent tools — the functions Claude can call during a chat (see ai_engine.chat).
+
+WALKTHROUGH — this is the enforcement half of the security boundary that
+ai_engine.py only gestures at. Two patterns hold across every function here:
+
+  1. workspace_id is ALWAYS the first real parameter, and every query filters on
+     it. There is no tool that can read across workspaces — scoping is baked into
+     each function, not bolted on.
+  2. Tools READ; they don't write. Even suggest_source only proposes an action
+     for a human to approve. The agent can investigate the case, never alter it.
+
+execute() at the bottom is the dispatcher ai_engine calls. Read it last — it's
+where "Claude can't choose its own workspace_id" is actually enforced, and the
+mechanism is more airtight than the docstring there suggests.
+"""
+
 import logging
 
 from sqlalchemy import text as sql_text
@@ -13,9 +30,7 @@ from app.models.transaction import Transaction
 logger = logging.getLogger(__name__)
 
 
-def search_documents(
-    workspace_id: str, db: Session, query: str, doc_type: str = None
-) -> dict:
+def search_documents(workspace_id: str, db: Session, query: str, doc_type: str = None) -> dict:
     """Search workspace documents by keyword with optional doc_type filter.
 
     Returns up to 10 docs with up to 5 extracted fields each.
@@ -45,12 +60,14 @@ def search_documents(
             .limit(5)
             .all()
         )
-        results.append({
-            "id": doc.id,
-            "filename": doc.filename,
-            "doc_type": doc.detected_doc_type,
-            "matched_fields": {e.field_name: e.field_value for e in extractions},
-        })
+        results.append(
+            {
+                "id": doc.id,
+                "filename": doc.filename,
+                "doc_type": doc.detected_doc_type,
+                "matched_fields": {e.field_name: e.field_value for e in extractions},
+            }
+        )
     return {"documents": results, "count": len(results)}
 
 
@@ -83,8 +100,7 @@ def get_entity(workspace_id: str, db: Session, name: str) -> dict:
         }
     return {
         "entities": [
-            {"id": e.id, "name": e.name, "type": e.type, "status": e.status}
-            for e in matches
+            {"id": e.id, "name": e.name, "type": e.type, "status": e.status} for e in matches
         ]
     }
 
@@ -137,7 +153,13 @@ def query_extractions(
 
 
 _VALID_TRANSACTION_TYPES = {
-    "purchase", "transfer", "lien", "loan", "donation", "construction", "compensation"
+    "purchase",
+    "transfer",
+    "lien",
+    "loan",
+    "donation",
+    "construction",
+    "compensation",
 }
 
 
@@ -167,25 +189,30 @@ def get_transactions(
     results = []
     for t in rows:
         overpay_pct = None
-        if t.amount_paid is not None and t.appraised_value is not None and float(t.appraised_value) > 0:
+        if (
+            t.amount_paid is not None
+            and t.appraised_value is not None
+            and float(t.appraised_value) > 0
+        ):
             overpay_pct = round(
-                (
-                    (float(t.amount_paid) - float(t.appraised_value))
-                    / float(t.appraised_value)
-                )
+                ((float(t.amount_paid) - float(t.appraised_value)) / float(t.appraised_value))
                 * 100,
                 1,
             )
-        results.append({
-            "id": t.id,
-            "transaction_type": t.transaction_type,
-            "amount_paid": str(t.amount_paid) if t.amount_paid is not None else None,
-            "appraised_value": str(t.appraised_value) if t.appraised_value is not None else None,
-            "overpay_pct": overpay_pct,
-            "transaction_date": str(t.transaction_date) if t.transaction_date else None,
-            "instrument_number": t.instrument_number,
-            "notes": t.notes,
-        })
+        results.append(
+            {
+                "id": t.id,
+                "transaction_type": t.transaction_type,
+                "amount_paid": str(t.amount_paid) if t.amount_paid is not None else None,
+                "appraised_value": str(t.appraised_value)
+                if t.appraised_value is not None
+                else None,
+                "overpay_pct": overpay_pct,
+                "transaction_date": str(t.transaction_date) if t.transaction_date else None,
+                "instrument_number": t.instrument_number,
+                "notes": t.notes,
+            }
+        )
     return {"transactions": results, "count": len(results)}
 
 
@@ -265,7 +292,22 @@ def execute(tool_name: str, workspace_id: str, db: Session, params: dict) -> dic
     if fn is None:
         return {"error": f"Unknown tool: {tool_name}"}
     try:
+        # WALKTHROUGH: this single line is the enforcement, and Python's own rules
+        # make it airtight. workspace_id is passed as an EXPLICIT keyword (the
+        # trusted value from chat()); `**params` is Claude's chosen input, spread
+        # AFTER. Here's the airtight part: if Claude tried to smuggle its own
+        # workspace_id into params, Python raises TypeError ("got multiple values
+        # for keyword argument 'workspace_id'") — you can't pass the same keyword
+        # twice. That TypeError is caught just below and returned as a harmless
+        # {"error": ...}, NOT a cross-workspace read. So the attack doesn't just
+        # fail, it fails SAFE: the worst case is the tool errors, never that it
+        # runs against someone else's data. The model cannot override scope
+        # because the language itself forbids the duplicate argument.
         return fn(workspace_id=workspace_id, db=db, **params)
     except Exception as e:
+        # WALKTHROUGH: every tool failure becomes a soft {"error": ...} dict, not
+        # a raised exception. ai_engine flags it as is_error and feeds it back so
+        # Claude can adjust (try a different tool, rephrase) — one bad tool call
+        # never crashes the whole chat. Fail soft inside the loop, not hard.
         logger.warning("Tool %s failed: %s", tool_name, e)
         return {"error": str(e)}
