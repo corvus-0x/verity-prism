@@ -42,8 +42,10 @@ def test_model_constants_are_distinct():
 
 
 def test_get_client_without_langsmith_key_returns_plain_client(monkeypatch):
-    """When LANGSMITH_API_KEY is absent, client is a plain Anthropic instance."""
-    monkeypatch.delenv("LANGSMITH_API_KEY", raising=False)
+    """When langsmith_api_key is unset, client is a plain Anthropic instance."""
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "langsmith_api_key", None)
     import app.services.claude_client as cc
 
     cc._client = None
@@ -55,8 +57,10 @@ def test_get_client_without_langsmith_key_returns_plain_client(monkeypatch):
 
 
 def test_get_client_wraps_with_langsmith_when_key_set(monkeypatch):
-    """When LANGSMITH_API_KEY is set, wrap_anthropic is called."""
-    monkeypatch.setenv("LANGSMITH_API_KEY", "ls__test_key")
+    """When langsmith_api_key is set, wrap_anthropic is called."""
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "langsmith_api_key", "ls__test_key")
 
     import app.services.claude_client as cc
 
