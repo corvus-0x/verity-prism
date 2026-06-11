@@ -266,6 +266,16 @@ Required format:
     # Scale max_tokens to batch size: ~100 tokens per field + 200 overhead.
     # Cap must stay above a full batch's need (40 × 100 + 200 = 4200) or long
     # field values get the JSON truncated mid-response.
+    #
+    # WALKTHROUGH: this is the OUTPUT ceiling, and two things make it different
+    # from the chat engine's fixed 4096. (1) It SCALES — extraction output is a
+    # JSON list whose length grows with the field count, so the budget grows with
+    # the batch and only caps at 8192 (the model's hard output limit). (2) Raising
+    # it does NOT make extraction find more fields — max_tokens governs how much
+    # Claude can WRITE, not how much of the document it READS. Coverage is the
+    # input side: TEXT_LIMIT (how much OCR text we send). So a missed field is a
+    # TEXT_LIMIT/context question; truncated JSON is a max_tokens question. The
+    # 8192 here only prevents the second failure, never the first.
     max_tokens = min(len(fields_batch) * 100 + 200, 8192)
 
     start = time.time()

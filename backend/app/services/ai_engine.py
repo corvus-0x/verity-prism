@@ -157,6 +157,13 @@ def chat(
     while rounds < MAX_TOOL_ROUNDS:
         response = claude_client.get_client().messages.create(
             model=CHAT_MODEL,
+            # WALKTHROUGH: max_tokens is sized to the SHAPE of the output, not set
+            # high "to be safe." A chat answer is naturally bounded — a few
+            # paragraphs — so this is a FIXED 4096, regardless of workspace size.
+            # Contrast extraction_engine, where output grows with field count and
+            # the cap scales (up to 8192). It's also a cost/latency guard: we're
+            # billed per output token and this runs up to MAX_TOOL_ROUNDS times,
+            # so an over-generous ceiling would multiply across every round.
             max_tokens=4096,
             system=system,
             tools=tools,
