@@ -127,7 +127,7 @@ def get_document(
 ):
     get_workspace_or_404(workspace_id, user, db)
     doc = db.query(Document).filter(
-        Document.id == document_id, 
+        Document.id == document_id,
         Document.workspace_id == workspace_id,
         Document.is_deleted == False
     ).first()
@@ -152,7 +152,7 @@ def list_extractions(
     get_workspace_or_404(workspace_id, user, db)
 
     doc = db.query(Document).filter(
-        Document.id == document_id, 
+        Document.id == document_id,
         Document.workspace_id == workspace_id,
         Document.is_deleted == False
     ).first()
@@ -180,7 +180,7 @@ def download_extractions_csv(
     """Download extracted fields for one document as CSV (latest attempt per field)."""
     get_workspace_or_404(workspace_id, user, db)
     doc = db.query(Document).filter(
-        Document.id == document_id, 
+        Document.id == document_id,
         Document.workspace_id == workspace_id,
         Document.is_deleted == False
     ).first()
@@ -205,7 +205,7 @@ def download_extractions_json(
     """Download extracted fields for one document as JSON (latest attempt per field)."""
     get_workspace_or_404(workspace_id, user, db)
     doc = db.query(Document).filter(
-        Document.id == document_id, 
+        Document.id == document_id,
         Document.workspace_id == workspace_id,
         Document.is_deleted == False
     ).first()
