@@ -14,6 +14,22 @@ Gap fixes applied:
 - Gap 1: process_upload_background() runs after the HTTP response is sent.
 - Gap 2: each step fails fast with extraction_status='failed'/'no_schema' + error logged.
 - Gap 3: parse_strategy on the schema drives routing — 'xml_direct' uses direct XML parse, 'claude' uses Claude extraction.
+
+WALKTHROUGH — two ideas hold this file together:
+
+1. SYNC vs BACKGROUND split. Only steps 1–2 (hash + store) run while the user
+   waits for the HTTP response — they're fast and must succeed before we promise
+   the upload landed. Steps 3–9 (OCR, Claude, indexing) are slow and run AFTER
+   the response is sent, in process_upload_background(). That's why there are two
+   entry points and two DB sessions: the request's session is already closed by
+   the time the background work runs.
+
+2. FAIL-FAST, hash-first. The hash is computed before anything else (it's the
+   evidence lock — see create_pending_document). After that, every slow step is
+   wrapped in try/except that calls _fail() and returns. One broken step never
+   cascades; the document just stops with a recorded reason. The exception is
+   "non-fatal" steps (naming, embedding) that log a warning and continue — read
+   on for which is which and why.
 """
 
 import hashlib
@@ -44,13 +60,20 @@ from app.services.xml_parser import is_valid_xml_bytes, parse_xml_document
 logger = logging.getLogger(__name__)
 
 EXTENSION_TO_TYPE = {
-    ".pdf": "pdf", ".png": "image", ".jpg": "image", ".jpeg": "image",
-    ".tiff": "image", ".tif": "image", ".csv": "csv",
-    ".txt": "text", ".xml": "xml",
+    ".pdf": "pdf",
+    ".png": "image",
+    ".jpg": "image",
+    ".jpeg": "image",
+    ".tiff": "image",
+    ".tif": "image",
+    ".csv": "csv",
+    ".txt": "text",
+    ".xml": "xml",
 }
 
 
 # ── Status helpers ──────────────────────────────────────────────────────────
+
 
 def _fail(doc: Document, error: str, db: Session) -> None:
     """Mark a document as failed and clean up its stored file (L3)."""
@@ -112,6 +135,7 @@ def _no_schema(doc: Document, doc_type: str, workspace_id: str, db: Session) -> 
 
 # ── Step 1–2: hash + store (synchronous, runs before response is sent) ──────
 
+
 def find_existing_by_hash(workspace_id: str, sha256_hash: str, db: Session) -> Document | None:
     """Return a non-deleted document in this workspace with a matching hash, or None.
     The SHA-256 hash is the evidence lock — identical bytes are the same evidence."""
@@ -139,6 +163,12 @@ def create_pending_document(
     Compute the SHA-256 hash, store the file to disk, and create a pending
     Document record. Returns immediately — pipeline runs in the background.
     """
+    # WALKTHROUGH: the hash is the FIRST thing that happens to a file, before it
+    # touches disk, OCR, or Claude. Why first? It's the evidence lock — it
+    # fingerprints the exact bytes that arrived. If hashing came after any step
+    # that could alter the file, you could no longer prove what was uploaded.
+    # find_existing_by_hash() uses this same value for dedup: identical bytes
+    # are, by definition, the same piece of evidence.
     sha256_hash = hashlib.sha256(file_bytes).hexdigest()
 
     ext = Path(filename).suffix.lower()
@@ -152,7 +182,7 @@ def create_pending_document(
 
     doc = Document(
         workspace_id=workspace_id,
-        filename=filename,          # overwritten by standardized name in background
+        filename=filename,  # overwritten by standardized name in background
         original_filename=filename,
         file_path=str(file_path),
         file_type=file_type,
@@ -171,6 +201,7 @@ def create_pending_document(
 
 # ── Background entry point ───────────────────────────────────────────────────
 
+
 def process_upload_background(
     doc_id: str,
     file_bytes: bytes,
@@ -183,14 +214,20 @@ def process_upload_background(
     request session is closed before this runs (BackgroundTasks fire after
     the HTTP response is sent).
     """
+    # WALKTHROUGH: this is the seam between "the user is waiting" and "the user
+    # has their response and walked away." Everything below runs detached. Two
+    # consequences drive the design: (1) we open our own SessionLocal() because
+    # the request's session no longer exists; (2) there is no HTTP response left
+    # to return an error to — so failures can only be RECORDED (on the document
+    # row + audit log), never raised to a caller. The broad except below is the
+    # last safety net: if anything escapes _run_pipeline, mark the doc failed
+    # rather than let a background thread die silently.
     db = SessionLocal()
     try:
-        _run_pipeline(doc_id, file_bytes, original_filename,
-                      workspace_id, user_id, db)
+        _run_pipeline(doc_id, file_bytes, original_filename, workspace_id, user_id, db)
     except Exception as e:
         # Safety net — should not normally reach here
-        logger.exception(
-            f"Unhandled error in background pipeline for doc {doc_id}: {e}")
+        logger.exception(f"Unhandled error in background pipeline for doc {doc_id}: {e}")
         try:
             doc = db.query(Document).filter(Document.id == doc_id).first()
             if doc:
@@ -202,6 +239,7 @@ def process_upload_background(
 
 
 # ── Main pipeline ────────────────────────────────────────────────────────────
+
 
 def _run_pipeline(
     doc_id: str,
@@ -220,6 +258,12 @@ def _run_pipeline(
     file_type = EXTENSION_TO_TYPE.get(ext, "other")
 
     # ── Step 3: OCR ─────────────────────────────────────────────────────────
+    # WALKTHROUGH: this try/except/_fail()/return shape repeats for every slow
+    # step below. Read it once here: a step that can't complete marks the doc
+    # 'failed' with the reason, then RETURNS — it does not raise and does not
+    # fall through. That's the fail-fast spine. Each step assumes the previous
+    # ones succeeded, so stopping at the first failure keeps later steps from
+    # running on garbage (e.g. detecting a type from empty OCR text).
     try:
         ocr_text = extract_text(file_bytes, file_type)
     except Exception as e:
@@ -239,14 +283,19 @@ def _run_pipeline(
     # ── Step 5: Match schema ────────────────────────────────────────────────
     # Look up the workspace vertical so the schema registry can prefer
     # vertical-specific schemas over general ones when both exist.
-    workspace = db.query(Workspace).filter(
-        Workspace.id == workspace_id).first()
+    workspace = db.query(Workspace).filter(Workspace.id == workspace_id).first()
     workspace_vertical = workspace.vertical if workspace else "general"
 
-    schema: DocumentSchema | None = get_schema_for_type(
-        doc_type, db, workspace_vertical)
+    schema: DocumentSchema | None = get_schema_for_type(doc_type, db, workspace_vertical)
 
     if not schema:
+        # WALKTHROUGH: "no schema" is NOT a failure — it's a known-but-unhandled
+        # document type. So instead of _fail(), we take a softer branch: mark the
+        # doc 'no_schema', auto-create an investigation lead (see _no_schema) so a
+        # human is told to add the schema, and STILL index the raw OCR text so the
+        # document is searchable in the meantime. Then we return early — there are
+        # no fields to extract without a schema. Note it still writes an audit row:
+        # every terminal state, success or not, leaves a trail.
         _no_schema(doc, doc_type, workspace_id, db)
         # Still index the OCR text so the document is searchable
         _update_search_index(doc, ocr_text, [], db)
@@ -259,6 +308,15 @@ def _run_pipeline(
     # ── Step 6: Extract fields ──────────────────────────────────────────────
     # Both paths return list[dict] with field_name/field_value/field_type/confidence.
     # save_extractions() writes them to document_extractions for both paths.
+    #
+    # WALKTHROUGH: this is the routing fork (Gap 3). The SCHEMA decides how its
+    # own fields get extracted, not the pipeline. 'xml_direct' means the source
+    # is structured XML we can parse deterministically — no AI, confidence is a
+    # flat 1.0 because there's nothing to be uncertain about. Everything else
+    # goes through Claude. Both branches return the SAME shape, which is the
+    # whole point: save_extractions() and the indexer below don't care which
+    # path produced the rows. A new strategy = a new branch here, nothing
+    # downstream changes.
     raw_extractions: list[dict] = []
     try:
         if schema.parse_strategy == "xml_direct" and is_valid_xml_bytes(file_bytes):
@@ -266,8 +324,7 @@ def _run_pipeline(
             raw_extractions = parse_xml_document(file_bytes, schema)
         else:
             # Claude extraction
-            raw_extractions = extract_fields(
-                ocr_text, schema, doc.id, workspace_id)
+            raw_extractions = extract_fields(ocr_text, schema, doc.id, workspace_id)
 
         save_extractions(raw_extractions, doc.id, workspace_id, schema.id, db)
     except Exception as e:
@@ -278,19 +335,15 @@ def _run_pipeline(
     if schema.parse_strategy == "claude" and schema.schema_fields:
         try:
             from app.services.field_validator import validate_extractions
-            validation_errors = validate_extractions(
-                raw_extractions, schema.schema_fields)
+
+            validation_errors = validate_extractions(raw_extractions, schema.schema_fields)
             if validation_errors:
-                required_failures = [
-                    e for e in validation_errors if e.rule == "required"]
+                required_failures = [e for e in validation_errors if e.rule == "required"]
                 for err in validation_errors:
-                    logger.warning(
-                        f"Validation error in doc {doc.id}: {err.message}")
+                    logger.warning(f"Validation error in doc {doc.id}: {err.message}")
                 if required_failures:
                     doc.extraction_status = "needs_review"
-                    doc.extraction_error = "; ".join(
-                        e.message for e in required_failures[:3]
-                    )
+                    doc.extraction_error = "; ".join(e.message for e in required_failures[:3])
                     db.commit()
         except Exception as e:
             logger.warning(f"Field validation failed for doc {doc.id}: {e}")
@@ -298,19 +351,30 @@ def _run_pipeline(
     # C2 guard: a claude schema with defined fields that yielded zero rows is a failure,
     # not a silent complete. (extract_fields raises if all batches failed; this catches
     # the rare case where batches succeed but Claude returns no extractions.)
-    if (
-        schema.parse_strategy == "claude"
-        and schema.schema_fields
-        and not raw_extractions
-    ):
+    if schema.parse_strategy == "claude" and schema.schema_fields and not raw_extractions:
         _fail(doc, "Extraction returned zero fields — possible API outage or empty response", db)
         return
 
     # ── Step 6b: Evaluate confidence + retry low-confidence fields (claude only) ──
     # XML direct always produces confidence=1.0 — skip evaluator entirely.
+    #
+    # WALKTHROUGH: this is a self-correction loop, and it's the most subtle part
+    # of the file. Read it as: evaluate → maybe retry → re-evaluate.
+    #   1. evaluate() flags fields below their confidence threshold (per-field
+    #      thresholds override the schema default; AI confidence and OCR
+    #      confidence are checked separately).
+    #   2. If any are low, run_retry() re-asks Claude for ONLY those fields.
+    #   3. We evaluate AGAIN on the retry results. If fields are STILL low, the
+    #      doc is marked 'needs_review' — a human has to look. We don't loop
+    #      forever; one retry, then escalate to a person.
+    # The whole block is best-effort: wrapped in try/except that only logs, so a
+    # crash in the evaluator never fails an otherwise-good extraction. Contrast
+    # with Step 6 above, where a failure IS fatal — the difference is whether the
+    # step produces the core data (fatal) or just grades it (best-effort).
     if schema.parse_strategy == "claude":
         try:
             from app.services.extraction_evaluator import evaluate, run_retry
+
             _field_ai_thresholds = {
                 f["name"]: f["ai_threshold"]
                 for f in (schema.schema_fields or [])
@@ -360,10 +424,18 @@ def _run_pipeline(
                     doc.extraction_status = "needs_review"
                     db.commit()
         except Exception as e:
-            logger.warning(
-                f"Extraction evaluator failed for doc {doc.id}: {e}")
+            logger.warning(f"Extraction evaluator failed for doc {doc.id}: {e}")
 
     # ── Step 7: Standardized filename ───────────────────────────────────────
+    # WALKTHROUGH: here's the "non-fatal" pattern promised in the module docstring.
+    # Naming, FTS indexing (Step 8), and embedding (Step 8.5) all catch their own
+    # exceptions, log a warning, and CONTINUE — they never call _fail(). Why?
+    # Because by this point the evidence (hash) and the extracted data already
+    # exist and are saved. A document with its original filename and no embedding
+    # is still a complete, queryable record; losing a pretty filename is not worth
+    # discarding the extraction. The dividing line throughout this file: anything
+    # upstream of saved extractions fails the doc; anything that only enhances an
+    # already-saved doc degrades gracefully.
     try:
         standardized = generate_standardized_name(
             ocr_text, original_filename, ext.lstrip(".") or "pdf", db
@@ -371,8 +443,7 @@ def _run_pipeline(
         doc.filename = standardized
     except Exception as e:
         # Naming failure is non-fatal — keep original filename
-        logger.warning(
-            f"naming failed for doc {doc.id}: {e} — keeping original filename")
+        logger.warning(f"naming failed for doc {doc.id}: {e} — keeping original filename")
         pass
 
     # ── Step 8: Update FTS search index ─────────────────────────────────────
@@ -391,6 +462,7 @@ def _run_pipeline(
     # ── Step 8.5: Generate embedding for semantic search ─────────────────────
     try:
         from app.services import embedding_service
+
         embedding_service.embed_document(doc.id, workspace_id, db)
     except Exception:
         logger.warning("Embedding failed for document %s — continuing", doc.id)
@@ -419,8 +491,7 @@ def _update_search_index(
                 "UPDATE documents SET search_vector = to_tsvector('english', :content), "
                 "ocr_text = :ocr WHERE id = :doc_id"
             ),
-            {"content": combined[:1_000_000],
-                "ocr": ocr_text[:500_000], "doc_id": doc.id},
+            {"content": combined[:1_000_000], "ocr": ocr_text[:500_000], "doc_id": doc.id},
         )
         db.commit()
     except Exception as e:
