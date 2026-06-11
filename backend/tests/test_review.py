@@ -1,10 +1,11 @@
 """Review router tests — flag endpoint."""
 import uuid
+
 import pytest
+
 from app.models.document import Document
 from app.models.document_schema import DocumentSchema
 from app.models.user import User
-from app.models.workspace import Workspace
 
 
 @pytest.fixture
@@ -16,7 +17,7 @@ def workspace_id(client, auth_headers):
 @pytest.fixture
 def document_with_review_status(db, workspace_id, auth_headers):
     """A document already in needs_review state."""
-    user = db.query(User).filter(User.email == "tyler@example.com").first()
+    user = db.query(User).filter(User.email == "analyst@example.com").first()
     schema = DocumentSchema(
         id=str(uuid.uuid4()),
         document_type="DEED",

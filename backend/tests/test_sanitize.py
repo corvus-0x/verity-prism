@@ -1,4 +1,4 @@
-from app.utils.sanitize import escape_csv_cell, safe_header_filename, content_disposition
+from app.utils.sanitize import content_disposition, escape_csv_cell, safe_header_filename
 
 
 def test_escape_csv_cell_neutralizes_formula_triggers():

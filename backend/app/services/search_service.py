@@ -7,6 +7,7 @@ How it works:
 2. translate_query() asks Claude to produce structured filters from the query
 3. run_search() executes FTS + field filters and returns matching documents
 """
+
 import json
 import logging
 
@@ -16,6 +17,8 @@ from sqlalchemy.orm import Session
 from app.models.document import Document
 from app.models.document_extraction import DocumentExtraction
 from app.services import claude_client
+from app.services.claude_client import CHAT_MODEL
+from app.services.export_service import latest_extractions
 from app.utils.json_helpers import strip_json_fences
 
 logger = logging.getLogger(__name__)
@@ -69,9 +72,9 @@ Respond with JSON only. Example:
 
     try:
         response = claude_client.get_client().messages.create(
-            model="claude-sonnet-4-6",
+            model=CHAT_MODEL,
             max_tokens=300,
-            messages=[{"role": "user", "content": prompt}]
+            messages=[{"role": "user", "content": prompt}],
         )
         return json.loads(strip_json_fences(response.content[0].text))
     except Exception as e:
@@ -85,6 +88,7 @@ def semantic_search(query: str, workspace_id: str, db: Session, limit: int = 10)
     Returns [] without error if embeddings are not configured or no embeddings exist.
     """
     from app.services import embedding_service
+
     if not embedding_service.is_available():
         return []
 
@@ -116,7 +120,9 @@ def semantic_search(query: str, workspace_id: str, db: Session, limit: int = 10)
     ]
 
 
-def run_search(workspace_id: str, query_plan: dict, db: Session, mode: str = "hybrid") -> list[dict]:
+def run_search(
+    workspace_id: str, query_plan: dict, db: Session, mode: str = "hybrid"
+) -> list[dict]:
     """
     Execute the search against PostgreSQL.
     Combines FTS on documents.search_vector with field-level filters on
@@ -136,18 +142,17 @@ def run_search(workspace_id: str, query_plan: dict, db: Session, mode: str = "hy
     # Full-text search across OCR text and extracted field values
     if fts_query:
         doc_query = doc_query.filter(
-            text("search_vector @@ plainto_tsquery('english', :query)").bindparams(
-                query=fts_query
-            )
+            text("search_vector @@ plainto_tsquery('english', :query)").bindparams(query=fts_query)
         )
 
     # Document type filter
     if doc_type_filter:
         doc_query = doc_query.filter(Document.detected_doc_type == doc_type_filter)
 
-    matching_docs = doc_query.limit(50).all()
-
-    # Field-level filters — intersect doc IDs across all filters (AND logic)
+    # Field-level filters — intersect doc IDs across all filters (AND logic).
+    # This constrains the document query BEFORE the 50-doc window is applied;
+    # applying the limit first silently dropped filter matches that sat past
+    # the FTS scan window in large workspaces.
     if field_filters:
         filtered_doc_ids: set[str] = set()
         first_filter = True
@@ -162,18 +167,14 @@ def run_search(workspace_id: str, query_plan: dict, db: Session, mode: str = "hy
             val = f.get("value", "")
 
             if op == "eq":
-                extraction_query = extraction_query.filter(
-                    DocumentExtraction.field_value == val
-                )
+                extraction_query = extraction_query.filter(DocumentExtraction.field_value == val)
             elif op == "contains":
                 extraction_query = extraction_query.filter(
                     DocumentExtraction.field_value.ilike(f"%{val}%")
                 )
             elif op in ("gt", "lt"):
                 # Guard against non-numeric field_value before CAST to avoid errors
-                numeric_guard = text(
-                    "field_value ~ '^[0-9]+(\\.[0-9]+)?$'"
-                )
+                numeric_guard = text("field_value ~ '^[0-9]+(\\.[0-9]+)?$'")
                 comparator = ">" if op == "gt" else "<"
                 extraction_query = extraction_query.filter(
                     numeric_guard,
@@ -189,39 +190,27 @@ def run_search(workspace_id: str, query_plan: dict, db: Session, mode: str = "hy
             else:
                 filtered_doc_ids &= ids  # AND — must match all filters
 
-        # Filter or expand matching docs based on field filter results
-        matching_docs = [d for d in matching_docs if d.id in filtered_doc_ids]
-        if not matching_docs and filtered_doc_ids:
-            # FTS returned nothing but field filters matched — fetch those docs directly
-            matching_docs = (
-                db.query(Document)
-                .filter(
-                    Document.id.in_(filtered_doc_ids),
-                    Document.is_deleted == False,  # noqa: E712
-                )
-                .limit(50)
-                .all()
-            )
+        doc_query = doc_query.filter(Document.id.in_(filtered_doc_ids))
 
-    # Build result objects — include all extracted fields for context
+    matching_docs = doc_query.limit(50).all()
+
+    # Build result objects — latest attempt per field, so corrected values
+    # (attempt=3) supersede the original extraction in search results
     results = []
     for doc in matching_docs:
-        extractions = (
-            db.query(DocumentExtraction)
-            .filter(DocumentExtraction.document_id == doc.id)
-            .all()
-        )
-        matched_fields = {e.field_name: e.field_value for e in extractions}
+        matched_fields = {e.field_name: e.field_value for e in latest_extractions(doc.id, db)}
 
-        results.append({
-            "document_id": doc.id,
-            "filename": doc.filename,
-            "original_filename": doc.original_filename,
-            "detected_doc_type": doc.detected_doc_type,
-            "extraction_status": doc.extraction_status,
-            "uploaded_at": doc.uploaded_at.isoformat(),
-            "matched_fields": matched_fields,
-        })
+        results.append(
+            {
+                "document_id": doc.id,
+                "filename": doc.filename,
+                "original_filename": doc.original_filename,
+                "detected_doc_type": doc.detected_doc_type,
+                "extraction_status": doc.extraction_status,
+                "uploaded_at": doc.uploaded_at.isoformat(),
+                "matched_fields": matched_fields,
+            }
+        )
 
     if mode == "keyword":
         return results

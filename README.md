@@ -4,11 +4,21 @@
 
 An intelligent document processing platform that turns any document into structured, queryable data — and gives operators the tools to verify every extraction against the source.
 
-Fraud investigation is the proving ground. The same engine runs insurance, legal, and compliance verticals without modification. Most IDP tools require $5,000/year per person in certified training. This one should be operable by a new user in 20 minutes.
+Fraud investigation is the proving ground. The same engine runs insurance, legal, and compliance verticals without modification. This one should be operable by a new user in 20 minutes.
 
 ---
 
 ![Document review pane — extracted fields with confidence scores beside the source PDF](docs/assets/review-pane.png)
+
+---
+
+## Why It Exists
+
+Intelligent document processing is enterprise software priced like enterprise software. Hyland OnBase — the incumbent in records and case management — runs six-figure annual licenses, and the people who operate it pay $3,000 per certification to learn how. The cloud APIs meter the same work by the page: AWS Textract charges $50 per 1,000 pages to pull the fields off a form, $15 per 1,000 more for the tables on it, and Azure stacks extraction, add-ons, and query fields the same way.
+
+None of that was a path I had. No enterprise budget, no vendor relationship, no certification. So the constraint set the shape: it had to run on a laptop in Docker, cost nothing but an API key to stand up, and be learnable without a course. A new user should be productive in 20 minutes — not after a $5,000 certification track.
+
+The limit turned out to be the design. A document platform whose every extraction you can verify against the source — that you can read end to end and run yourself — is worth more to the people doing the work than one they need a certificate to touch.
 
 ---
 
@@ -18,7 +28,7 @@ Fraud investigation is the proving ground. The same engine runs insurance, legal
 
 **Review what the AI missed** — A schema-driven pane shows every field the schema defines alongside the PDF. Low-confidence fields are pre-filled and flagged. Fields the AI never extracted are empty and editable. Click any field and a highlight box appears on the PDF at that value's location. Corrections store a captured PDF region as evidence.
 
-**Search and investigate** — Plain-English queries hit a full-text + field-level search index. An agentic AI chat (native Anthropic tool-use) answers questions grounded in actual extracted data from the workspace — not hallucinated from training data.
+**Search and investigate** — Plain-English queries hit a hybrid index: full-text + field-level filters, plus pgvector semantic similarity when embeddings are configured. An agentic AI chat (native Anthropic tool-use) answers questions grounded in actual extracted data from the workspace — not hallucinated from training data.
 
 **Track everything** — Immutable audit log enforced at the PostgreSQL trigger level. Every upload, search, correction, and file access is a permanent, tamper-proof record.
 
@@ -53,15 +63,16 @@ cd backend && alembic upgrade head
 |---|---|
 | Frontend | React 18 + Vite + Tailwind CSS + Recharts |
 | Backend | Python 3.12 + FastAPI |
-| Database | PostgreSQL 16 |
+| Database | PostgreSQL 16 + pgvector |
 | ORM + Migrations | SQLAlchemy 2.0 + Alembic |
-| AI | Anthropic Claude API (claude-sonnet-4-6) |
+| AI | Anthropic Claude API (Sonnet 4.6 for reasoning, Haiku 4.5 for extraction) |
+| Semantic search | OpenAI embeddings + pgvector (optional — degrades to keyword FTS) |
 | OCR | PyMuPDF + pytesseract (300 DPI) |
 | Auth | JWT via httpOnly cookie + Bearer |
 | PDF rendering | react-pdf (pdf.js, text layer) |
 | Containers | Docker + docker-compose |
 
-**240 tests**: 222 backend, 18 frontend. All passing.
+**244 tests**: 226 backend, 18 frontend. All passing.
 
 ---
 
@@ -133,7 +144,7 @@ Documents → Ingestion Pipeline → Extraction Engine → Knowledge Base → Ve
 <summary>Platform</summary>
 
 - Immutable audit log (PostgreSQL trigger — UPDATE/DELETE raise an exception at the DB level)
-- Soft deletes everywhere — nothing permanently removed from an evidence platform
+- Soft deletes everywhere — nothing permanently removed from a document platform of record
 - Real-time extraction status via SSE — badge flips without a page refresh
 - Data export: per-document and workspace CSV/JSON with formula injection protection
 - Schema library at `/schemas` — browse all active document types and field definitions
@@ -144,7 +155,7 @@ Documents → Ingestion Pipeline → Extraction Engine → Knowledge Base → Ve
 
 ## Build Journal
 
-11 posts on the reasoning behind specific decisions — not feature announcements, but the thinking that shaped the architecture.
+13 posts on the reasoning behind specific decisions — not feature announcements, but the thinking that shaped the architecture.
 
 [From Case to Code](https://corvus-0x.hashnode.dev) on Hashnode.
 
@@ -155,6 +166,17 @@ Documents → Ingestion Pipeline → Extraction Engine → Knowledge Base → Ve
 - [`docs/roadmap.md`](docs/roadmap.md) — phase status and what's next
 - [`docs/build-tracker.md`](docs/build-tracker.md) — session log with the why behind each build decision
 - [`docs/superpowers/specs/`](docs/superpowers/specs/) — design specs written before each build
+
+---
+
+## Pricing sources
+
+The cost figures in *Why It Exists*, with their basis — strongest evidence first:
+
+- **AWS Textract** — [official pricing](https://aws.amazon.com/textract/pricing/), confirmed June 2026: $50 per 1,000 pages (Forms), $15 per 1,000 (Tables).
+- **Hyland OnBase certifications** — [Hyland University](https://university.hyland.com/pages/certifications), [University of Colorado OnBase training](https://www.cu.edu/uis/onbase-online-training-and-certifications): $3,000 per certification.
+- **Hyland OnBase licenses** — Hyland does not publish pricing. The six-figure enterprise figure is user-reported via [ITQlick](https://www.itqlick.com/onbase/pricing) and [TrustRadius](https://www.trustradius.com/products/onbase-by-hyland/pricing); smaller deployments run lower.
+- **Azure AI Document Intelligence** — [official pricing](https://azure.microsoft.com/en-us/pricing/details/document-intelligence/): per-page metered extraction plus add-ons and query fields.
 
 ---
 

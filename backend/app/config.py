@@ -23,6 +23,9 @@ class Settings(BaseSettings):
     cookie_secure: bool = False  # set True in production (HTTPS only)
     langsmith_api_key: str | None = None
     langsmith_project: str | None = None
+    # OpenAI embeddings for pgvector semantic search. Optional — semantic
+    # search degrades to keyword-only FTS when unset.
+    openai_api_key: str | None = None
 
     @field_validator("secret_key")
     @classmethod
@@ -34,17 +37,14 @@ class Settings(BaseSettings):
         """
         candidate = (v or "").strip()
         if not candidate:
-            raise ValueError(
-                "SECRET_KEY must be set (see backend/.env.example)")
+            raise ValueError("SECRET_KEY must be set (see backend/.env.example)")
         if candidate in _WEAK_SECRET_KEYS:
             raise ValueError(
                 "SECRET_KEY is a known placeholder. Generate a strong key: "
                 'python -c "import secrets; print(secrets.token_urlsafe(48))"'
             )
         if len(candidate) < _MIN_SECRET_KEY_LENGTH:
-            raise ValueError(
-                f"SECRET_KEY must be at least {_MIN_SECRET_KEY_LENGTH} characters"
-            )
+            raise ValueError(f"SECRET_KEY must be at least {_MIN_SECRET_KEY_LENGTH} characters")
         return v
 
 

@@ -22,10 +22,10 @@ export default function AppShell({ children }) {
      }`
 
   return (
-    <div className="min-h-screen bg-slate-900 flex flex-col">
+    <div className="min-h-screen bg-mesh flex flex-col">
       <header
-        className="bg-slate-800 px-5 py-0 flex items-center gap-4 shrink-0"
-        style={{ borderBottom: '1px solid #1A2A3F', height: '52px' }}
+        className="px-5 py-0 flex items-center gap-4 shrink-0 backdrop-blur-md bg-slate-900/60 z-10"
+        style={{ borderBottom: '1px solid rgba(255, 255, 255, 0.06)', height: '52px' }}
       >
         {/* Wordmark */}
         <span

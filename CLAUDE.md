@@ -46,7 +46,14 @@ uvicorn app.main:app --reload
 
 ### Run all tests (Docker — required for DB access)
 ```bash
-docker-compose run --rm -e TEST_DATABASE_URL=postgresql://catalyst:catalyst@db:5432/catalyst_test backend pytest tests/ -v
+docker-compose run --rm -e TEST_DATABASE_URL=postgresql://catalyst:catalyst@db:5432/catalyst_test backend pytest tests/ --ignore=tests/evals -v
+```
+`tests/evals` is excluded — those need a live Anthropic API key.
+
+**First run only** — the test database is not created automatically:
+```bash
+docker-compose exec db psql -U catalyst -d postgres -c "CREATE DATABASE catalyst_test;"
+docker-compose exec db psql -U catalyst -d catalyst_test -c "CREATE EXTENSION IF NOT EXISTS vector;"
 ```
 
 ### Run a single test file

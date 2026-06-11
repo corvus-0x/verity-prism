@@ -78,16 +78,33 @@
     box-shadow: 0 0 0 3px rgba(220,38,38,0.08);
   }
 
-  /* Document / workspace cards */
+  /* Document / workspace cards (Glassmorphism) */
   .surface-card {
-    @apply rounded-xl transition-all duration-200;
-    background: #0C1424;
-    border: 1px solid #1A2A3F;
+    @apply rounded-xl transition-all duration-300 backdrop-blur-md;
+    background: rgba(12, 20, 36, 0.65);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    box-shadow: 0 4px 24px rgba(0,0,0,0.2);
   }
   .surface-card:hover {
-    border-color: #243650;
-    transform: translateY(-1px);
-    box-shadow: 0 4px 20px rgba(0,0,0,0.4), 0 0 0 1px rgba(232,160,0,0.04);
+    border-color: rgba(220, 38, 38, 0.2);
+    transform: translateY(-2px);
+    background: rgba(12, 20, 36, 0.8);
+    box-shadow: 0 12px 32px rgba(0,0,0,0.4), 0 0 16px rgba(220, 38, 38, 0.08);
+  }
+
+  /* Gradient text */
+  .text-gradient {
+    background: linear-gradient(to right, #E4F0FC, #8BA8C4);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  
+  .text-gradient-crimson {
+    background: linear-gradient(135deg, #FCA5A5, #DC2626);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
   }
 
   /* Sidebar nav — inactive */
@@ -153,4 +170,15 @@
     linear-gradient(rgba(220,38,38,0.025) 1px, transparent 1px),
     linear-gradient(90deg, rgba(220,38,38,0.025) 1px, transparent 1px);
   background-size: 48px 48px;
+}
+
+/* Premium gradient mesh background */
+.bg-mesh {
+  background-color: #020509;
+  background-image: 
+    radial-gradient(at 0% 0%, rgba(26, 42, 63, 0.5) 0px, transparent 50%),
+    radial-gradient(at 100% 0%, rgba(153, 27, 27, 0.15) 0px, transparent 50%),
+    radial-gradient(at 100% 100%, rgba(12, 20, 36, 0.9) 0px, transparent 50%),
+    radial-gradient(at 0% 100%, rgba(2, 5, 9, 1) 0px, transparent 50%);
+  background-attachment: fixed;
 }

@@ -1,5 +1,5 @@
 """Field validator — pure function tests, no DB required."""
-from app.services.field_validator import validate_extractions, ValidationError
+from app.services.field_validator import validate_extractions
 
 
 def test_required_field_missing_raises_error():

@@ -17,7 +17,7 @@ test('renders email and password fields', () => {
 test('stores user in auth store on successful login', async () => {
   renderLogin()
   fireEvent.change(screen.getByLabelText(/email/i), {
-    target: { value: 'tyler@example.com' },
+    target: { value: 'analyst@example.com' },
   })
   fireEvent.change(screen.getByLabelText(/password/i), {
     target: { value: 'correctpass' },
@@ -27,7 +27,7 @@ test('stores user in auth store on successful login', async () => {
   await waitFor(() => {
     const { user } = useAuthStore.getState()
     expect(user).not.toBeNull()
-    expect(user.email).toBe('tyler@example.com')
+    expect(user.email).toBe('analyst@example.com')
   })
 })
 

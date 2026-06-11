@@ -46,7 +46,11 @@ def upload_document(
       failed    — a pipeline step failed; check extraction_error for details
       no_schema — document type has no schema; an investigation lead was created
     """
-    get_workspace_or_404(workspace_id, user, db)
+    get_workspace_or_404(workspace_id, user, db, required_roles={"owner", "analyst"}, require_active=True)
+
+    # Fast-fail before loading into memory if size is available
+    if getattr(file, "size", 0) and file.size > settings.max_upload_bytes:
+        raise HTTPException(status_code=413, detail=f"File too large. Maximum size is {settings.max_upload_bytes // 1_048_576} MB.")
 
     # Read file bytes NOW — UploadFile is not available after the response is sent
     file_bytes = file.file.read()
@@ -123,7 +127,9 @@ def get_document(
 ):
     get_workspace_or_404(workspace_id, user, db)
     doc = db.query(Document).filter(
-        Document.id == document_id, Document.workspace_id == workspace_id
+        Document.id == document_id,
+        Document.workspace_id == workspace_id,
+        Document.is_deleted == False
     ).first()
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
@@ -144,6 +150,14 @@ def list_extractions(
     ?include_history=true: all rows for all attempts, ordered by field_name then attempt.
     """
     get_workspace_or_404(workspace_id, user, db)
+
+    doc = db.query(Document).filter(
+        Document.id == document_id,
+        Document.workspace_id == workspace_id,
+        Document.is_deleted == False
+    ).first()
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
 
     if include_history:
         return (
@@ -166,7 +180,9 @@ def download_extractions_csv(
     """Download extracted fields for one document as CSV (latest attempt per field)."""
     get_workspace_or_404(workspace_id, user, db)
     doc = db.query(Document).filter(
-        Document.id == document_id, Document.workspace_id == workspace_id
+        Document.id == document_id,
+        Document.workspace_id == workspace_id,
+        Document.is_deleted == False
     ).first()
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
@@ -189,7 +205,9 @@ def download_extractions_json(
     """Download extracted fields for one document as JSON (latest attempt per field)."""
     get_workspace_or_404(workspace_id, user, db)
     doc = db.query(Document).filter(
-        Document.id == document_id, Document.workspace_id == workspace_id
+        Document.id == document_id,
+        Document.workspace_id == workspace_id,
+        Document.is_deleted == False
     ).first()
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")

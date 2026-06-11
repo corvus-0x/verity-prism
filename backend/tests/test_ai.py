@@ -1,5 +1,6 @@
+from unittest.mock import MagicMock, patch
+
 import pytest
-from unittest.mock import patch, MagicMock
 
 
 @pytest.fixture
@@ -23,17 +24,13 @@ def _mock_end_turn(text: str) -> MagicMock:
 
 
 def test_create_conversation(client, auth_headers, workspace_id):
-    response = client.post(
-        f"/workspaces/{workspace_id}/conversations", headers=auth_headers
-    )
+    response = client.post(f"/workspaces/{workspace_id}/conversations", headers=auth_headers)
     assert response.status_code == 201
     assert response.json()["workspace_id"] == workspace_id
 
 
 def test_send_message_returns_assistant_response(client, auth_headers, workspace_id):
-    conv = client.post(
-        f"/workspaces/{workspace_id}/conversations", headers=auth_headers
-    ).json()
+    conv = client.post(f"/workspaces/{workspace_id}/conversations", headers=auth_headers).json()
 
     mock_client = MagicMock()
     mock_client.messages.create.return_value = _mock_end_turn(
@@ -53,9 +50,7 @@ def test_send_message_returns_assistant_response(client, auth_headers, workspace
 
 
 def test_conversation_title_set_from_first_message(client, auth_headers, workspace_id):
-    conv = client.post(
-        f"/workspaces/{workspace_id}/conversations", headers=auth_headers
-    ).json()
+    conv = client.post(f"/workspaces/{workspace_id}/conversations", headers=auth_headers).json()
     assert conv["title"] is None
 
     mock_client = MagicMock()
@@ -67,17 +62,13 @@ def test_conversation_title_set_from_first_message(client, auth_headers, workspa
             headers=auth_headers,
         )
 
-    updated = client.get(
-        f"/workspaces/{workspace_id}/conversations", headers=auth_headers
-    ).json()
+    updated = client.get(f"/workspaces/{workspace_id}/conversations", headers=auth_headers).json()
     conv_updated = next(c for c in updated if c["id"] == conv["id"])
     assert conv_updated["title"] is not None
 
 
 def test_multi_turn_conversation_no_duplicate_user_message(client, auth_headers, workspace_id):
-    conv = client.post(
-        f"/workspaces/{workspace_id}/conversations", headers=auth_headers
-    ).json()
+    conv = client.post(f"/workspaces/{workspace_id}/conversations", headers=auth_headers).json()
 
     mock_client = MagicMock()
     mock_client.messages.create.return_value = _mock_end_turn("First answer.")
@@ -121,16 +112,19 @@ def test_multi_turn_conversation_no_duplicate_user_message(client, auth_headers,
 # ---------------------------------------------------------------------------
 # Agentic loop mechanic tests
 # ---------------------------------------------------------------------------
-from app.services.ai_engine import chat, _synthesis_pass, _extract_text
-from app.models.workspace import Workspace
-from app.models.ai import AIConversation
 import uuid
+
+from app.models.ai import AIConversation
+from app.models.workspace import Workspace
+from app.services.ai_engine import _extract_text, chat
 
 
 @pytest.fixture
 def ws_and_conv(db):
-    from app.models.user import User
     import hashlib
+
+    from app.models.user import User
+
     user = User(
         id=str(uuid.uuid4()),
         email="loop_test@example.com",
@@ -240,14 +234,20 @@ def test_extract_text_fallback_when_no_text_block():
 
 def test_get_conversation_history_workspace_scoped(db):
     """L1: history lookup must filter by workspace_id, not conversation_id alone."""
-    import uuid, hashlib
+    import hashlib
+    import uuid
+
+    from app.models.ai import AIConversation, AIMessage
     from app.models.user import User
     from app.models.workspace import Workspace
-    from app.models.ai import AIConversation, AIMessage
     from app.services.ai_engine import get_conversation_history
 
-    user = User(id=str(uuid.uuid4()), email=f"l1_{uuid.uuid4().hex[:6]}@test.com",
-                password_hash=hashlib.sha256(b"x").hexdigest(), full_name="L1 User")
+    user = User(
+        id=str(uuid.uuid4()),
+        email=f"l1_{uuid.uuid4().hex[:6]}@test.com",
+        password_hash=hashlib.sha256(b"x").hexdigest(),
+        full_name="L1 User",
+    )
     db.add(user)
     db.commit()
 
@@ -260,7 +260,9 @@ def test_get_conversation_history_workspace_scoped(db):
     db.add(conv)
     db.commit()
 
-    msg = AIMessage(id=str(uuid.uuid4()), conversation_id=conv.id, role="user", content="secret message")
+    msg = AIMessage(
+        id=str(uuid.uuid4()), conversation_id=conv.id, role="user", content="secret message"
+    )
     db.add(msg)
     db.commit()
 
@@ -286,3 +288,35 @@ def test_chat_uses_chat_model(db, ws_and_conv):
 
     _, kwargs = mock_client.messages.create.call_args
     assert kwargs["model"] == CHAT_MODEL
+
+
+def test_chat_marks_system_prompt_as_cacheable(db, ws_and_conv):
+    """The agentic loop re-sends system + tools every round (up to MAX_TOOL_ROUNDS).
+    The static instruction prefix must be a cacheable block so rounds 2..N — and
+    repeated calls within the TTL — read it at ~0.1x instead of full input price.
+
+    Mirrors the extraction caching convention (test_extraction_caching.py):
+    exactly one ephemeral block, and the per-workspace context lives in a LATER,
+    uncached block so the cached prefix is shared across every workspace.
+    """
+    ws, conv = ws_and_conv
+    mock_client = MagicMock()
+    mock_client.messages.create.return_value = _mock_end_turn("answer")
+    with patch("app.services.claude_client.get_client", return_value=mock_client):
+        chat(ws.id, conv.id, "hi", db)
+
+    _, kwargs = mock_client.messages.create.call_args
+    system = kwargs["system"]
+
+    assert isinstance(system, list)  # blocks, not a bare string
+
+    cached = [b for b in system if b.get("cache_control")]
+    assert len(cached) == 1
+    assert cached[0]["cache_control"] == {"type": "ephemeral"}
+
+    # Per-workspace context (the workspace name) must sit AFTER the cached block
+    # and carry no cache_control, so the static prefix is workspace-independent.
+    cached_index = system.index(cached[0])
+    ws_block = next(b for b in system if ws.name in b.get("text", ""))
+    assert system.index(ws_block) > cached_index
+    assert "cache_control" not in ws_block

@@ -1,6 +1,9 @@
 """Observability dashboard endpoint tests."""
+
 import uuid
+
 import pytest
+
 from app.models.document import Document
 from app.models.document_schema import DocumentSchema
 from app.models.user import User
@@ -10,26 +13,35 @@ from app.models.workspace import Workspace
 @pytest.fixture
 def ws_and_docs(db, auth_headers, client):
     """Seed one workspace with 3 docs: 1 complete, 1 needs_review, 1 failed."""
-    user = db.query(User).filter(User.email == "tyler@example.com").first()
-    ws = Workspace(
-        id=str(uuid.uuid4()), name="Obs WS", vertical="general", created_by=user.id
-    )
+    user = db.query(User).filter(User.email == "analyst@example.com").first()
+    ws = Workspace(id=str(uuid.uuid4()), name="Obs WS", vertical="general", created_by=user.id)
     db.add(ws)
     schema = DocumentSchema(
-        id=str(uuid.uuid4()), document_type="DEED", display_name="Deed",
-        vertical="general", schema_fields=[], version=1, is_active=True,
-        parse_strategy="claude", default_confidence_threshold=0.75,
+        id=str(uuid.uuid4()),
+        document_type="DEED",
+        display_name="Deed",
+        vertical="general",
+        schema_fields=[],
+        version=1,
+        is_active=True,
+        parse_strategy="claude",
+        default_confidence_threshold=0.75,
     )
     db.add(schema)
     db.flush()
 
     for status in ("complete", "needs_review", "failed"):
         doc = Document(
-            id=str(uuid.uuid4()), workspace_id=ws.id,
-            filename=f"{status}.pdf", original_filename=f"{status}.pdf",
-            file_path=f"/tmp/{status}.pdf", file_type="pdf",
-            sha256_hash=f"hash_{status}", uploaded_by=user.id,
-            extraction_status=status, schema_id=schema.id,
+            id=str(uuid.uuid4()),
+            workspace_id=ws.id,
+            filename=f"{status}.pdf",
+            original_filename=f"{status}.pdf",
+            file_path=f"/tmp/{status}.pdf",
+            file_type="pdf",
+            sha256_hash=f"hash_{status}",
+            uploaded_by=user.id,
+            extraction_status=status,
+            schema_id=schema.id,
         )
         db.add(doc)
     db.commit()
@@ -79,7 +91,6 @@ def test_current_processing_returns_counts(client, auth_headers, ws_and_docs):
 
 def test_automation_rate_excludes_other_users_workspaces(db, client, auth_headers, ws_and_docs):
     """Documents in a workspace owned by another user must not appear in the caller's metrics."""
-    user = db.query(User).filter(User.email == "tyler@example.com").first()
     _, schema = ws_and_docs
 
     # Baseline: caller's 3 docs are visible
@@ -96,19 +107,28 @@ def test_automation_rate_excludes_other_users_workspaces(db, client, auth_header
     )
     db.add(other_user)
     other_ws = Workspace(
-        id=str(uuid.uuid4()), name="Other WS", vertical="general",
+        id=str(uuid.uuid4()),
+        name="Other WS",
+        vertical="general",
         created_by=other_user.id,
     )
     db.add(other_ws)
     db.flush()
     for i in range(2):
-        db.add(Document(
-            id=str(uuid.uuid4()), workspace_id=other_ws.id,
-            filename=f"other_{i}.pdf", original_filename=f"other_{i}.pdf",
-            file_path=f"/tmp/other_{i}.pdf", file_type="pdf",
-            sha256_hash=f"other_hash_{i}", uploaded_by=other_user.id,
-            extraction_status="complete", schema_id=schema.id,
-        ))
+        db.add(
+            Document(
+                id=str(uuid.uuid4()),
+                workspace_id=other_ws.id,
+                filename=f"other_{i}.pdf",
+                original_filename=f"other_{i}.pdf",
+                file_path=f"/tmp/other_{i}.pdf",
+                file_type="pdf",
+                sha256_hash=f"other_hash_{i}",
+                uploaded_by=other_user.id,
+                extraction_status="complete",
+                schema_id=schema.id,
+            )
+        )
     db.commit()
 
     # Caller's total must not have increased

@@ -130,12 +130,17 @@ export default function WorkspacesHome() {
 
   return (
     <AppShell>
-      <div className="flex-1 p-8 max-w-4xl mx-auto w-full">
-        <div className="flex items-center justify-between mb-6">
-          <h1 className="font-display text-slate-100 font-semibold text-lg tracking-wide">
-            Workspaces
-          </h1>
-          <button onClick={() => setShowModal(true)} className="btn-primary">
+      <div className="flex-1 p-8 max-w-5xl mx-auto w-full">
+        <div className="flex items-center justify-between mb-10 pt-4 border-b border-white/5 pb-6">
+          <div>
+            <h1 className="font-display text-gradient text-3xl font-bold tracking-tight mb-2">
+              Your Workspaces
+            </h1>
+            <p className="text-slate-400 text-sm">
+              Manage your document processing environments and vertical-specific applications.
+            </p>
+          </div>
+          <button onClick={() => setShowModal(true)} className="btn-primary shadow-lg shadow-red-900/20">
             + New Workspace
           </button>
         </div>
@@ -148,20 +153,26 @@ export default function WorkspacesHome() {
               <Link
                 key={ws.id}
                 to={`/workspaces/${ws.id}`}
-                className="block surface-card p-5 animate-fade-up"
+                className="block surface-card p-6 animate-fade-up group relative overflow-hidden"
                 style={{ animationDelay: `${i * 40}ms` }}
               >
+                <div className="absolute top-0 left-0 w-1 h-full bg-red-900/0 group-hover:bg-red-500/80 transition-all duration-300"></div>
                 <div className="flex items-center justify-between">
                   <div>
-                    <h2 className="text-slate-100 font-medium">{ws.name}</h2>
-                    {ws.subject_name && (
-                      <p className="text-slate-400 text-sm mt-0.5">Subject: {ws.subject_name}</p>
-                    )}
-                    {ws.jurisdiction && (
-                      <p className="text-slate-400 text-xs mt-0.5">{ws.jurisdiction}</p>
-                    )}
+                    <h2 className="text-slate-100 font-semibold text-lg mb-1 group-hover:text-white transition-colors">{ws.name}</h2>
+                    <div className="flex items-center gap-4 mt-2">
+                      {ws.subject_name && (
+                        <p className="text-slate-400 text-sm">Subject: <span className="text-slate-300">{ws.subject_name}</span></p>
+                      )}
+                      {ws.jurisdiction && (
+                        <p className="text-slate-400 text-xs px-2 py-0.5 rounded-full bg-slate-800 border border-slate-700">{ws.jurisdiction}</p>
+                      )}
+                    </div>
                   </div>
-                  <Badge label={ws.status} />
+                  <div className="flex flex-col items-end gap-2">
+                    <Badge label={ws.status} />
+                    <span className="text-xs text-slate-500 capitalize tracking-widest">{ws.vertical}</span>
+                  </div>
                 </div>
               </Link>
             ))}

@@ -5,10 +5,12 @@ Embeddings enable semantic similarity search alongside FTS in the hybrid
 search layer. One embedding per document, generated after extraction
 completes. Disabled gracefully when OPENAI_API_KEY is not configured.
 """
+
 import logging
-import os
 
 from sqlalchemy.orm import Session
+
+from app.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -19,13 +21,14 @@ def _get_openai_client():
     global _openai_client
     if _openai_client is None:
         from openai import OpenAI
-        _openai_client = OpenAI(api_key=os.environ["OPENAI_API_KEY"])
+
+        _openai_client = OpenAI(api_key=settings.openai_api_key)
     return _openai_client
 
 
 def is_available() -> bool:
-    """Return True if embedding generation is configured."""
-    return bool(os.getenv("OPENAI_API_KEY"))
+    """Return True if embedding generation is configured (settings.openai_api_key)."""
+    return bool(settings.openai_api_key)
 
 
 def build_text_representation(document_id: str, db: Session) -> str:
@@ -38,9 +41,7 @@ def build_text_representation(document_id: str, db: Session) -> str:
 
     doc = db.query(Document).filter(Document.id == document_id).first()
     extractions = (
-        db.query(DocumentExtraction)
-        .filter(DocumentExtraction.document_id == document_id)
-        .all()
+        db.query(DocumentExtraction).filter(DocumentExtraction.document_id == document_id).all()
     )
 
     parts = []

@@ -1,7 +1,11 @@
 import pytest
 
 from app.services.connectors.base import (
-    ConnectorBase, SearchCandidate, FetchableItem, FetchItemResult, FetchResult,
+    ConnectorBase,
+    FetchableItem,
+    FetchItemResult,
+    FetchResult,
+    SearchCandidate,
 )
 
 

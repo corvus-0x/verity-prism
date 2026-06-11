@@ -1,6 +1,4 @@
-import pytest
 from app.services.extraction_engine import _normalize_field_value
-
 
 # ── Currency ─────────────────────────────────────────────────────────────────
 

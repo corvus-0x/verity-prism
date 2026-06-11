@@ -1,8 +1,7 @@
 from unittest.mock import patch
 
+from app.services.connectors.base import FetchableItem, SearchCandidate
 from app.services.connectors.irs_teos import IrsTeosConnector
-from app.services.connectors.base import SearchCandidate, FetchableItem
-
 
 _FAKE_INDEX = [
     {"ein": "123456789", "name": "Bright Future Ministries Inc", "location": "Marysville, OH",

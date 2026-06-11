@@ -548,7 +548,7 @@ def main():
         sys.exit(1)
 
     # Auth
-    email = args.email or input("Email [tyler@example.com]: ").strip() or "tyler@example.com"
+    email = args.email or input("Email [analyst@example.com]: ").strip() or "analyst@example.com"
     password = args.password or getpass.getpass("Password: ")
     print(f"Authenticating as {email}...")
     token = login(email, password)

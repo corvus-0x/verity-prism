@@ -16,7 +16,6 @@ from app.models.workspace import Workspace
 from app.services import connector_service
 from app.services.connectors.base import FetchItemResult
 
-
 # ── Local fixtures (mirror test_pipeline.py) ──────────────────────────────────
 
 @pytest.fixture

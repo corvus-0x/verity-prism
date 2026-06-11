@@ -19,7 +19,9 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/*" = ["F811"]  # allow fixture redefinition in tests
+# F811: allow fixture redefinition in tests.
+# E402: test files group imports beside the test sections they serve.
+"tests/*" = ["F811", "E402"]
 
 [tool.ruff.format]
 quote-style = "double"
