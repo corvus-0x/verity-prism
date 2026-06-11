@@ -69,6 +69,15 @@ def embed_document(document_id: str, workspace_id: str, db: Session) -> None:
     No-op if OPENAI_API_KEY is not configured. Never raises — embedding
     failure must not fail a document.
     """
+    # WALKTHROUGH: this is OPTIONAL enrichment, and two design choices say so.
+    # (1) Graceful degradation: no OpenAI key -> this returns immediately and the
+    #     document simply has no embedding. Hybrid search notices the missing
+    #     embedding and falls back to keyword-only FTS (see search_service). The
+    #     feature degrades, the product doesn't break.
+    # (2) Never-raise contract: the pipeline calls this in a non-fatal step, so a
+    #     failure here must not fail an already-extracted document. The embedding
+    #     is a nice-to-have layered on top of saved data — losing it costs some
+    #     semantic recall, never the document itself.
     if not is_available():
         return
 

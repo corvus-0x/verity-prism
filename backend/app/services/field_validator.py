@@ -4,6 +4,7 @@ Field validator — applies per-field validation rules defined in schema_fields 
 validate_extractions() is a pure function: no DB access, no side effects.
 Called in the pipeline after extraction and before confidence evaluation.
 """
+
 import logging
 import re
 from dataclasses import dataclass
@@ -14,7 +15,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class ValidationError:
     field_name: str
-    rule: str        # "required" | "min_length" | "max_length" | "pattern"
+    rule: str  # "required" | "min_length" | "max_length" | "pattern"
     message: str
 
 
@@ -34,6 +35,13 @@ def validate_extractions(
     Fields without a "validation" key are skipped.
     Returns a list of ValidationErrors (empty = all passed).
     """
+    # WALKTHROUGH: this function is deliberately PURE — no DB, no I/O, no mutation
+    # of its inputs. That's a testability choice: validation logic is the kind of
+    # branchy code that's easy to get subtly wrong, and a pure function can be
+    # exhaustively unit-tested with plain dicts (see test_field_validator). The
+    # loop below collapses the extraction list to one value per field; if a field
+    # appears more than once, the LAST occurrence wins, matching how the rest of
+    # the system treats later attempts as authoritative.
     latest: dict[str, str | None] = {}
     for e in extractions:
         name = e.get("field_name")
@@ -50,39 +58,53 @@ def validate_extractions(
 
         value = latest.get(name)
 
+        # WALKTHROUGH: order of these two guards matters. First: if a field is
+        # required and empty, that's an error AND we `continue` — no point
+        # checking length/pattern on a value that isn't there. Second: if a field
+        # is optional and empty, just skip it silently. So the only values that
+        # reach the length/pattern checks below are present, non-empty ones. This
+        # is why "" never trips a min_length error on an optional field.
         if rules.get("required") and not value:
-            errors.append(ValidationError(
-                field_name=name,
-                rule="required",
-                message=f"'{name}' is required but was not extracted",
-            ))
+            errors.append(
+                ValidationError(
+                    field_name=name,
+                    rule="required",
+                    message=f"'{name}' is required but was not extracted",
+                )
+            )
             continue
 
         if not value:
             continue
 
         if "min_length" in rules and len(value) < rules["min_length"]:
-            errors.append(ValidationError(
-                field_name=name,
-                rule="min_length",
-                message=f"'{name}' must be at least {rules['min_length']} characters (got {len(value)})",
-            ))
+            errors.append(
+                ValidationError(
+                    field_name=name,
+                    rule="min_length",
+                    message=f"'{name}' must be at least {rules['min_length']} characters (got {len(value)})",
+                )
+            )
 
         if "max_length" in rules and len(value) > rules["max_length"]:
-            errors.append(ValidationError(
-                field_name=name,
-                rule="max_length",
-                message=f"'{name}' must be at most {rules['max_length']} characters (got {len(value)})",
-            ))
+            errors.append(
+                ValidationError(
+                    field_name=name,
+                    rule="max_length",
+                    message=f"'{name}' must be at most {rules['max_length']} characters (got {len(value)})",
+                )
+            )
 
         if "pattern" in rules:
             try:
                 if not re.fullmatch(rules["pattern"], value):
-                    errors.append(ValidationError(
-                        field_name=name,
-                        rule="pattern",
-                        message=f"'{name}' value '{value}' does not match required pattern",
-                    ))
+                    errors.append(
+                        ValidationError(
+                            field_name=name,
+                            rule="pattern",
+                            message=f"'{name}' value '{value}' does not match required pattern",
+                        )
+                    )
             except re.error as exc:
                 logger.warning(f"Invalid regex pattern for field '{name}': {exc}")
 
