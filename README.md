@@ -89,6 +89,19 @@ The division of labor is deliberate. Architecture, the data model, and what coun
 
 ---
 
+## Reading the Code
+
+The service layer is annotated inline. Every non-obvious decision carries a `# WALKTHROUGH:` block that explains *why* it works the way it does — not what it does. `grep -rn WALKTHROUGH backend/app` reads as a guided tour of the backend, from a document arriving to a chat answer leaving.
+
+A few of the decisions those comments cover:
+
+- **The AI cannot escape its workspace.** The chat agent calls tools to pull data, but `workspace_id` is injected by the dispatcher — never read from the model's input. If a prompt-injected document tricked Claude into supplying its own `workspace_id`, Python's duplicate-keyword `TypeError` rejects the call: the attack fails as an error, never a cross-workspace read. The boundary is enforced by the language, not by a check that can be forgotten.
+- **The evidence trail is immutable below the application.** The audit log's UPDATE/DELETE block is a PostgreSQL trigger, not app code. A bug, a rogue admin, or a compromised service still cannot alter a record — even raw SQL is refused.
+- **Failure is sorted into fatal and non-fatal.** Anything upstream of saved extractions fails the document; anything that only enhances an already-saved one — filename, embedding, search index — degrades quietly. A missing standardized filename never discards a completed extraction.
+- **The hash comes first.** The SHA-256 fingerprint is computed before the file touches disk, OCR, or AI, so what's stored is provably the bytes that arrived.
+
+---
+
 ## Architecture
 
 ```

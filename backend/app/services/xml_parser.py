@@ -3,6 +3,7 @@ Direct XML parser for structured document types (IRS 990, etc.).
 Bypasses OCR and Claude extraction when the source is already structured XML.
 Field paths in the schema description are used to locate values in the XML tree.
 """
+
 import logging
 import re
 import xml.etree.ElementTree as ET
@@ -25,6 +26,13 @@ def _find_by_path(root: ET.Element, dotted_path: str) -> str | None:
     Tries both with and without the IRS namespace prefix.
     Returns the text of the first matching element, or None.
     """
+    # WALKTHROUGH: real-world XML is messy about namespaces — the same IRS 990
+    # field might appear as {irs.gov}TaxYr or bare TaxYr depending on the filer's
+    # software. Rather than demand one form, each step tries four locators in
+    # order of specificity: (1) direct child WITH the IRS namespace, (2) direct
+    # child WITHOUT it, (3) anywhere in the subtree with namespace, (4) anywhere
+    # without. First hit wins. This tolerance is why the parser survives format
+    # drift across thousands of differently-generated filings.
     parts = dotted_path.split(".")
     current = [root]
     for part in parts:
@@ -81,6 +89,14 @@ def parse_xml_document(
 
     Confidence is always 1.0 — direct parse has no interpretation uncertainty.
     """
+    # WALKTHROUGH: this is the "no AI needed" extraction path. When a document is
+    # already structured (an IRS 990 e-file is XML), reading a field is a tree
+    # lookup, not an act of interpretation — so confidence is a flat 1.0 and no
+    # Claude call happens. Crucially, it returns the SAME list[dict] shape that
+    # extract_fields() (the Claude path) returns, so document_pipeline can call
+    # save_extractions() identically for both. The cleverness is invisible to the
+    # caller: deterministic vs AI extraction is a schema decision, not a code fork
+    # downstream. (See the parse_strategy fork in document_pipeline.)
     try:
         root = ET.fromstring(file_bytes)
     except ET.ParseError as e:
@@ -101,17 +117,18 @@ def parse_xml_document(
         if value is None:
             continue
 
-        extractions.append({
-            "field_name": field_name,
-            "field_value": value,
-            "field_type": field_type,
-            "confidence": 1.0,
-            "ocr_confidence": 1.0,
-        })
+        extractions.append(
+            {
+                "field_name": field_name,
+                "field_value": value,
+                "field_type": field_type,
+                "confidence": 1.0,
+                "ocr_confidence": 1.0,
+            }
+        )
 
     logger.info(
-        f"XML direct parse: {len(extractions)} fields extracted "
-        f"using schema {schema.document_type}"
+        f"XML direct parse: {len(extractions)} fields extracted using schema {schema.document_type}"
     )
     return extractions
 
