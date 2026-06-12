@@ -413,6 +413,23 @@ Decisions made before any vertical work could start. These were flagged in princ
 
 ---
 
+## Inline Code Walkthroughs (2026-06-11, PR #7)
+
+> This one started as a learning conversation, not a build task. The question was "how do I study my own code more easily?" — Jupyter notebooks had never clicked. The answer that did: annotate the code in place. The session became a documentation pass over the whole service layer, plus a README section that surfaces the engineering the annotations reveal.
+
+| Task | What It Builds | Why |
+|------|---------------|-----|
+| Format decision: inline `# WALKTHROUGH:` comments | Chose inline source comments over companion docs or richer docstrings, knowing it overrides the repo's terse-docstring convention and may draw CodeRabbit | Tyler learns by pulling a file up and talking through it; in-file narration means code and explanation are never out of sync on screen. He saw all three options (companion doc / inline / docstring) before choosing. The override is deliberate — his instruction wins over the convention for a study aid. Notebooks were ruled out: they suit "feed input, watch output" code (extraction prompts, transforms), not control-flow code (RBAC, routing) where reading + tests teach better |
+| Walkthroughs across 12 service files | `# WALKTHROUGH:` teaching blocks on the conceptual spine: `document_pipeline`, `extraction_engine`, `ai_engine`, `agent_tools`, `deps`, `search_service`, `audit` + helpers `ocr`, `naming`, `xml_parser`, `field_validator`, `embedding_service` | Blocks explain *why*, not *what*, at each real decision point and cross-reference each other into one map. The `workspace_id` security boundary is now documented on both sides — the caller (`ai_engine`) and the enforcer (`agent_tools`). Density tracks conceptual weight: the spine got 4–8 blocks, the mechanical helpers 1–2. Comments-only, so behavior is provably unchanged — verified per file with `py_compile` + `ruff`, no test run needed |
+| Verified a teaching claim at runtime | The `agent_tools.execute()` block claims a smuggled `workspace_id` raises Python's duplicate-keyword `TypeError`; proved it with a 6-line script before committing | A teaching comment that asserts behavior has to be true, not plausible. The runtime check returned the exact error string quoted in the comment. **Discipline: when a comment makes a factual claim about behavior, verify it — don't reason it** |
+| max_tokens / TEXT_LIMIT correction | Captured the output-ceiling-vs-coverage distinction as WALKTHROUGH blocks in `ai_engine` (fixed 4096) and `extraction_engine` (scaled 8192) | Surfaced from a misconception Tyler raised — he thought a prior session had Fable bump max_tokens to 8000 "to cover extraction better." No such change existed (grep noise was the API port). The reasoning was misattributed: `max_tokens` is an output ceiling (anti-truncation), not a coverage lever. Coverage is `TEXT_LIMIT` on the input side (raised 4000→200k earlier, the real "cover it better" change). **Symptom map now in-code: misses → input window; cut-off JSON → max_tokens** |
+| "Reading the Code" README section | New section advertising `grep -rn WALKTHROUGH backend/app` plus four showcased decisions (workspace_id injection, DB-trigger immutability, fatal-vs-non-fatal failure, hash-first) | Written in the README's understated voice despite Tyler's "amazing engineering" reaction — and he confirmed that was the right call. A recruiter trusts a verifiable mechanism (the `TypeError`) more than an adjective. Placed on the PR branch, not committed to main directly, so the section and the comments it describes merge together and main stays coherent at every commit |
+| Throwaway lab-bench notebook (not committed) | `backend/notebooks/prototype_extraction_prompt.ipynb` — runnable demo of the bench workflow against the real `claude_client` / `strip_json_fences`, left untracked | Built to teach the notebook's actual fit: a workbench for prompt tuning, deleted after. Left untracked on purpose — the repo keeps zero committed notebooks, and the notebook's own closing section says so. Verified by JSON-validation + compiling every code cell; deliberately NOT executed (a live billed Claude call is Tyler's call to make) |
+
+**Tests passing:** unchanged — comments/docs-only, so no behavior to test. Each file verified with `py_compile` + `ruff`; CI green on the merge commit (`ced8b49`).
+
+---
+
 ## Deferred & Relocated Work
 
 Things that were planned for one phase and moved, or explicitly punted. Captured here with the reasoning so when we reach that phase we're not starting from scratch.
