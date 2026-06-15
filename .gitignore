@@ -120,3 +120,6 @@ Thumbs.db
 
 *storybook.log
 storybook-static
+
+# Eval run outputs (vary per run; sample lives in tests/evals/README.md)
+backend/tests/evals/results/
