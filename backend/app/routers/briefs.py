@@ -1,9 +1,12 @@
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.deps import get_workspace_or_404
 from app.models.brief import Brief
+from app.models.document import Document
+from app.models.document_extraction import DocumentExtraction
 from app.models.user import User
 from app.services import audit
 from app.services.auth import get_current_user
@@ -24,6 +27,39 @@ def _serialize(row: Brief) -> dict:
         "input_tokens": row.input_tokens,
         "output_tokens": row.output_tokens,
         "generated_at": row.generated_at.isoformat() if row.generated_at else None,
+    }
+
+
+class CitationBatchRequest(BaseModel):
+    extraction_ids: list[str]
+
+
+def _resolve_citation(workspace_id: str, extraction_id: str, db: Session) -> dict | None:
+    """Resolve one extraction id to its source detail, scoped to the workspace.
+    Returns None if the id is not an extraction in this workspace.
+    """
+    row = (
+        db.query(DocumentExtraction, Document.filename, Document.detected_doc_type)
+        .join(Document, Document.id == DocumentExtraction.document_id)
+        .filter(
+            DocumentExtraction.id == extraction_id,
+            DocumentExtraction.workspace_id == workspace_id,
+            Document.is_deleted == False,  # noqa: E712
+        )
+        .first()
+    )
+    if not row:
+        return None
+    ext = row.DocumentExtraction
+    return {
+        "extraction_id": ext.id,
+        "document_id": ext.document_id,
+        "filename": row.filename,
+        "doc_type": row.detected_doc_type,
+        "field_name": ext.field_name,
+        "field_value": ext.field_value,
+        "confidence": ext.confidence,
+        "evidence": ext.evidence,  # base64 PNG region capture JSON, or None
     }
 
 
@@ -84,3 +120,33 @@ def brief_history(
         .all()
     )
     return {"briefs": [_serialize(r) for r in rows], "count": len(rows)}
+
+
+@router.get("/brief/citations/{extraction_id}")
+def resolve_citation(
+    workspace_id: str,
+    extraction_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    get_workspace_or_404(workspace_id, user, db)
+    resolved = _resolve_citation(workspace_id, extraction_id, db)
+    if not resolved:
+        raise HTTPException(status_code=404, detail="Citation not found in this workspace")
+    return resolved
+
+
+@router.post("/brief/citations")
+def resolve_citations(
+    workspace_id: str,
+    payload: CitationBatchRequest,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    get_workspace_or_404(workspace_id, user, db)
+    resolved = {}
+    for eid in payload.extraction_ids:
+        r = _resolve_citation(workspace_id, eid, db)
+        if r:
+            resolved[eid] = r
+    return {"resolved": resolved, "count": len(resolved)}
