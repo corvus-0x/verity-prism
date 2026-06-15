@@ -106,3 +106,19 @@ def test_clean_set_produces_no_saliences():
     evidence = [_ev("e1", "d1", "grantor_name", "Solo Party", "name")]
     out = compute_saliences(evidence, [], {})
     assert out == []
+
+
+def test_signal_registry_round_trip():
+    from app.services import signal_registry
+    from app.services.saliences import Salience
+
+    def detector(evidence, documents):
+        return [Salience("below_appraisal", "fired", [], [])]
+
+    signal_registry.register("fraud", detector)
+    try:
+        assert signal_registry.get_detectors("fraud") == [detector]
+        assert signal_registry.get_detectors("insurance") == []
+        assert signal_registry.get_detectors(None) == []
+    finally:
+        signal_registry._registry["fraud"].clear()
