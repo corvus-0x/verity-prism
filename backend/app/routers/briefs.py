@@ -43,7 +43,11 @@ def generate_brief(
         workspace_id=workspace_id,
         entity_type="brief",
         entity_id=row.id,
-        after_state={"version": row.version, "claim_count": len(row.claims)},
+        after_state={
+            "version": row.version,
+            "claim_count": len(row.claims),
+            "claims_dropped": brief.get("claims_dropped", 0),
+        },
     )
     return _serialize(row)
 

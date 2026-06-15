@@ -67,7 +67,22 @@ def test_grounding_confidence_is_min_of_cited_rows():
 
 def test_validate_handles_missing_keys_gracefully():
     out = _validate_and_annotate({}, [])
-    assert out == {"summary": "", "claims": []}
+    assert out == {"summary": "", "claims": [], "claims_dropped": 0}
+
+
+def test_validate_counts_dropped_claims():
+    evidence = [_ev("e1")]
+    raw = {
+        "summary": "s",
+        "claims": [
+            {"text": "valid", "sources": ["e1"], "signal_type": "general"},
+            {"text": "fabricated", "sources": ["ghost"], "signal_type": "general"},
+            {"text": "uncited", "sources": [], "signal_type": "general"},
+        ],
+    }
+    out = _validate_and_annotate(raw, evidence)
+    assert [c["text"] for c in out["claims"]] == ["valid"]
+    assert out["claims_dropped"] == 2
 
 
 def _fake_response(payload: dict):

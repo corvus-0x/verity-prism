@@ -3,6 +3,7 @@ import uuid
 from types import SimpleNamespace
 from unittest.mock import patch
 
+from app.models.audit import AuditLog
 from app.models.document import Document
 from app.models.document_extraction import DocumentExtraction
 from app.models.workspace import Workspace, WorkspaceMember
@@ -110,3 +111,29 @@ def test_brief_requires_membership(client, auth_headers, db):
     db.commit()
     resp = client.post(f"/workspaces/{ws.id}/brief", headers=auth_headers)
     assert resp.status_code == 404
+
+
+@patch("app.services.claude_client.get_client")
+def test_generate_brief_audits_dropped_claims(mock_client, client, auth_headers, db):
+    mock_client.return_value.messages.create.return_value = _fake_response(
+        {
+            "summary": "ok",
+            "claims": [
+                {"text": "real", "sources": ["x1"], "signal_type": "outlier"},
+                {"text": "hallucinated", "sources": ["ghost"], "signal_type": "general"},
+            ],
+        }
+    )
+    ws = _seed(db, _user_id(client, auth_headers))
+
+    resp = client.post(f"/workspaces/{ws.id}/brief", headers=auth_headers)
+    assert resp.status_code == 200
+
+    row = (
+        db.query(AuditLog)
+        .filter(AuditLog.workspace_id == ws.id, AuditLog.action == "brief_generated")
+        .first()
+    )
+    assert row is not None
+    assert row.after_state["claims_dropped"] == 1
+    assert row.after_state["claim_count"] == 1

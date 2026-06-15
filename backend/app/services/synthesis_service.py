@@ -44,19 +44,28 @@ _SYNTHESIS_SYSTEM = (
 
 def _validate_and_annotate(brief: dict, evidence: list[Evidence]) -> dict:
     """Drop claims that cite no valid evidence id, strip unknown ids from the
-    rest, and annotate each surviving claim with grounding_confidence = the
-    minimum confidence of its cited rows (so the brief can hedge weak claims).
+    rest, annotate each surviving claim with grounding_confidence = the minimum
+    confidence of its cited rows, and report how many claims were dropped (an
+    invalid-citation / hallucination signal).
     """
     by_id = {e.id: e for e in evidence}
     claims = []
+    dropped = 0
     for claim in brief.get("claims", []) or []:
         sources = [s for s in (claim.get("sources") or []) if s in by_id]
         if not sources:
-            continue  # unfalsifiable — a claim with no real citation is dropped
+            dropped += 1  # unfalsifiable — a claim with no real citation is dropped
+            continue
         claim["sources"] = sources
         claim["grounding_confidence"] = round(min(by_id[s].confidence for s in sources), 4)
         claims.append(claim)
-    return {"summary": brief.get("summary", "") or "", "claims": claims}
+    if dropped:
+        logger.warning("Brief synthesis dropped %d claim(s) with invalid citations", dropped)
+    return {
+        "summary": brief.get("summary", "") or "",
+        "claims": claims,
+        "claims_dropped": dropped,
+    }
 
 
 def _required_fields_by_doc(docs: list[Document], db: Session) -> dict[str, set]:
