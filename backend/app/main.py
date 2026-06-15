@@ -6,6 +6,7 @@ from app.routers import (
     ai,
     audit,
     auth,
+    briefs,
     connectors,
     documents,
     entities,
@@ -23,7 +24,7 @@ from app.routers import (
 app = FastAPI(
     title="Verity Prism IDP Platform",
     description="Intelligent Document Processing Platform",
-    version="1.0.0"
+    version="1.0.0",
 )
 
 app.add_middleware(
@@ -49,6 +50,8 @@ app.include_router(review.router)
 app.include_router(observability.router)
 app.include_router(audit.router)
 app.include_router(connectors.router)
+app.include_router(briefs.router)
+
 
 @app.get("/health")
 def health():
