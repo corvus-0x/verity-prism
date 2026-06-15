@@ -63,7 +63,7 @@ Four new units, each independently testable. Routers stay thin; logic lives in t
 Public: `generate_brief(workspace_id, db) -> Brief`. Three internal steps:
 
 - `_assemble_evidence(workspace_id, db) -> list[Evidence]` — pure DB read of `document_extractions` (joined to `documents` for filename/type) for the workspace. Each evidence item: `{id, document_id, filename, doc_type, field_name, field_value}`. **Only the universal IDP table** — no transactions/entities/findings (those are cap-flavored). Also computes the **universal saliences** (Section 5) over the evidence set.
-- `_synthesize(evidence, saliences) -> dict` — one structured Claude call (reuses `claude_client` + per-call latency/token logging). Returns `{summary, claims:[{text, sources:[evidence_id…], signal_type}]}`. System prompt instructs: cite only provided IDs; do not assert anything not supported by the evidence.
+- `_synthesize(evidence, saliences) -> dict` — one structured Claude call (reuses `claude_client` + per-call latency/token logging). Returns `{summary, claims:[{text, sources:[evidence_id…], signal_type, grounding_confidence}]}`. `grounding_confidence` is derived from the cited extraction rows' own confidence scores, so the brief can hedge claims that rest on shaky extractions — this is where the synthesis layer connects back to the per-field confidence layer it sits above. System prompt instructs: cite only provided IDs; do not assert anything not supported by the evidence.
 - `_validate_citations(brief, evidence) -> brief` — deterministic guard: drop or flag any claim whose `sources` reference an ID absent from the evidence set, before persistence.
 
 ### `backend/app/models/brief.py`
@@ -94,8 +94,12 @@ Computed deterministically over the evidence set in `_assemble_evidence`. These 
 - **Missing required field** — a document missing a field its schema marks required (reuses the existing `not-extracted` state)
 - **Contradiction** — same `field_name` with differing `field_value` across two documents
 - **Coverage span** — the date range the document set spans
+- **Chronology / event sequence** — documents ordered by their date fields into a timeline; surfaces *sequence* ("first X, then Y, then Z"), not just the span. Turning extractions into an ordered narrative is core synthesis value and fully domain-agnostic.
+- **Duplicate / near-duplicate documents** — documents sharing a SHA-256 hash (already computed first in the pipeline) or near-identical key field values; e.g. "docs 3 and 7 are the same instrument." A pure extractor never surfaces this.
 
-Saliences are passed to `_synthesize` as candidate facts the brief should surface, and are the basis for the completeness eval. They make **no vertical assumptions**.
+**Definition.** A *salience* is a notable cross-document fact the engine computes deterministically — the middle layer between raw data and judgment. Not "field X = 1250000" (data) and not "this is fraud" (cap judgment), but "this value is an outlier / these two documents disagree / this entity recurs."
+
+Saliences are passed to `_synthesize` as candidate facts the brief should surface, and are the ground-truth checklist for the completeness eval. They make **no vertical assumptions** — the test for membership is: *can it be computed without knowing the vertical?* Outlier, contradiction, chronology, duplicate all pass; "below-appraisal" fails (only the fraud cap knows appraisal matters) and is therefore a cap detector, not a salience.
 
 ---
 
@@ -109,7 +113,7 @@ One new table, `briefs`, following versioned / observability / soft-delete conve
 | `workspace_id` | uuid FK | scoped, indexed |
 | `version` | int | increments per regeneration; prior rows retained |
 | `summary` | text | human-readable lede |
-| `claims` | jsonb | `[{text, sources:[extraction_id…], signal_type}]` |
+| `claims` | jsonb | `[{text, sources:[extraction_id…], signal_type, grounding_confidence}]` — `grounding_confidence` derived from the cited rows' extraction confidence, letting the brief hedge claims built on low-confidence data |
 | `model` | text | e.g. `claude-sonnet-4-6` — reproducibility |
 | `latency_ms` | int | per-call observability (mirrors Claude call logging) |
 | `input_tokens` | int | |
