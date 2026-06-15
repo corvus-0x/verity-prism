@@ -42,6 +42,44 @@ _SYNTHESIS_SYSTEM = (
 )
 
 
+def _log_synthesis_call(
+    workspace_id: str,
+    latency_ms: int,
+    prompt_chars: int,
+    response=None,
+    error_message: str | None = None,
+) -> None:
+    """Write one brief_synthesis row to claude_call_logs. Opens its own session so
+    logging never corrupts the request transaction; swallows all exceptions.
+    """
+    try:
+        from app.database import SessionLocal
+        from app.models.claude_call_log import ClaudeCallLog
+
+        db = SessionLocal()
+        try:
+            usage = getattr(response, "usage", None)
+            content = getattr(response, "content", None)
+            row = ClaudeCallLog(
+                call_type="brief_synthesis",
+                workspace_id=workspace_id,
+                model=CHAT_MODEL,
+                success=response is not None,
+                latency_ms=latency_ms,
+                input_tokens=getattr(usage, "input_tokens", None),
+                output_tokens=getattr(usage, "output_tokens", None),
+                prompt_chars=prompt_chars,
+                response_chars=len(content[0].text) if content else None,
+                error_message=error_message,
+            )
+            db.add(row)
+            db.commit()
+        finally:
+            db.close()
+    except Exception as e:
+        logger.warning(f"claude_call_log write failed: {e}")
+
+
 def _validate_and_annotate(brief: dict, evidence: list[Evidence]) -> dict:
     """Drop claims that cite no valid evidence id, strip unknown ids from the
     rest, annotate each surviving claim with grounding_confidence = the minimum
@@ -131,9 +169,12 @@ def _assemble_evidence(workspace_id: str, db: Session):
     return evidence, documents, _required_fields_by_doc(docs, db)
 
 
-def _synthesize(evidence: list[Evidence], saliences: list[Salience]) -> tuple[dict, dict]:
-    """One constrained Claude call. Returns (parsed_brief, meta). Degrades to an
-    empty brief (never raises) if Claude returns unparseable JSON.
+def _synthesize(
+    evidence: list[Evidence], saliences: list[Salience], workspace_id: str
+) -> tuple[dict, dict]:
+    """One constrained Claude call. Logs a brief_synthesis row, returns
+    (parsed_brief, meta) with latency_ms. Degrades to an empty brief (never
+    raises) only on unparseable JSON; a transport error is logged and re-raised.
     """
     payload = {
         "evidence": [
@@ -148,17 +189,30 @@ def _synthesize(evidence: list[Evidence], saliences: list[Salience]) -> tuple[di
         ],
         "saliences": [{"type": s.type, "fact": s.description} for s in saliences],
     }
-    response = claude_client.get_client().messages.create(
-        model=CHAT_MODEL,
-        max_tokens=2048,
-        system=_SYNTHESIS_SYSTEM,
-        messages=[{"role": "user", "content": json.dumps(payload)}],
-    )
+    user_content = json.dumps(payload)
+    prompt_chars = len(_SYNTHESIS_SYSTEM) + len(user_content)
+
+    start = time.perf_counter()
+    try:
+        response = claude_client.get_client().messages.create(
+            model=CHAT_MODEL,
+            max_tokens=2048,
+            system=_SYNTHESIS_SYSTEM,
+            messages=[{"role": "user", "content": user_content}],
+        )
+    except Exception as e:
+        latency_ms = int((time.perf_counter() - start) * 1000)
+        _log_synthesis_call(workspace_id, latency_ms, prompt_chars, error_message=str(e))
+        raise
+    latency_ms = int((time.perf_counter() - start) * 1000)
+    _log_synthesis_call(workspace_id, latency_ms, prompt_chars, response=response)
+
     usage = getattr(response, "usage", None)
     meta = {
         "model": CHAT_MODEL,
         "input_tokens": getattr(usage, "input_tokens", None),
         "output_tokens": getattr(usage, "output_tokens", None),
+        "latency_ms": latency_ms,
     }
     try:
         parsed = json.loads(strip_json_fences(response.content[0].text))
@@ -180,9 +234,7 @@ def synthesize_brief(workspace_id: str, db: Session) -> dict:
         evidence, documents, required_by_doc, signal_registry.get_detectors(vertical)
     )
 
-    start = time.perf_counter()
-    raw, meta = _synthesize(evidence, saliences)
-    meta["latency_ms"] = int((time.perf_counter() - start) * 1000)
+    raw, meta = _synthesize(evidence, saliences, workspace_id)
 
     brief = _validate_and_annotate(raw, evidence)
     brief.update(meta)
