@@ -55,5 +55,9 @@ def completeness(
     engine_score = sum(1 for f in engine_flags if f) / len(must_surface)
 
     brief_flags = judge_coverage([m["fact"] for m in must_surface], brief.get("claims", []))
+    if len(brief_flags) != len(must_surface):
+        raise ValueError(
+            f"judge_coverage returned {len(brief_flags)} flags, expected {len(must_surface)}"
+        )
     brief_score = (sum(1 for f in brief_flags if f) / len(brief_flags)) if brief_flags else 0.0
     return engine_score, brief_score, {"engine": engine_flags, "brief": brief_flags}

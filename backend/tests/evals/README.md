@@ -21,7 +21,7 @@ Real Claude (synthesis + temp-0 judge); excluded from CI. Writes a scorecard to
 - **Measured (loose floors):** faithfulness >= 0.70, completeness >= 0.60.
 
 ## Sample scorecard
-```
+```text
 ── outlier_dupe_contradiction ──
   claims=5  faithfulness=1.00  completeness(brief)=0.80  completeness(engine)=1.00
 ── chronology_missing_field ──

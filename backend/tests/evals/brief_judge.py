@@ -42,7 +42,10 @@ def _call(system: str, payload: dict, expected: int) -> list:
     parsed = json.loads(strip_json_fences(response.content[0].text))
     if "results" not in parsed:
         raise ValueError(f"Judge response missing 'results' key; got: {parsed!r}")
-    results = [bool(x) for x in parsed["results"]]
+    raw_results = parsed["results"]
+    if not isinstance(raw_results, list) or any(type(x) is not bool for x in raw_results):
+        raise ValueError(f"Judge 'results' must be a JSON boolean array; got: {raw_results!r}")
+    results = raw_results
     if len(results) != expected:
         raise ValueError(f"Judge returned {len(results)} results, expected {expected}")
     return results

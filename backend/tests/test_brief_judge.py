@@ -70,3 +70,11 @@ def test_judge_coverage_raises_on_missing_results_key(mock_client):
     mock_client.return_value.messages.create.return_value = _resp('{"summary": "nope"}')
     with pytest.raises(ValueError, match="missing 'results' key"):
         judge_coverage(["a fact"], [{"text": "a claim"}])
+
+
+@patch("app.services.claude_client.get_client")
+def test_judge_coverage_raises_on_string_booleans(mock_client):
+    # bool("false") is True — string booleans must fail loudly, not coerce.
+    mock_client.return_value.messages.create.return_value = _resp('{"results": ["false"]}')
+    with pytest.raises(ValueError, match="must be a JSON boolean array"):
+        judge_coverage(["a fact"], [{"text": "a claim"}])
