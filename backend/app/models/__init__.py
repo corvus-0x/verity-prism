@@ -1,5 +1,6 @@
 from app.models.ai import AIConversation, AIMessage
 from app.models.audit import AuditLog
+from app.models.brief import Brief
 from app.models.claude_call_log import ClaudeCallLog
 from app.models.connector_run import ConnectorRun
 from app.models.document import Document
@@ -14,12 +15,24 @@ from app.models.user import User
 from app.models.workspace import Workspace, WorkspaceMember
 
 __all__ = [
-    "User", "Workspace", "WorkspaceMember",
-    "DocumentSchema", "Document", "DocumentExtraction",
-    "Entity", "Relationship", "Transaction",
-    "SignalType", "Finding", "FindingEvidence",
-    "InvestigationLead", "Note",
-    "AIConversation", "AIMessage", "AuditLog",
+    "User",
+    "Workspace",
+    "WorkspaceMember",
+    "DocumentSchema",
+    "Document",
+    "DocumentExtraction",
+    "Entity",
+    "Relationship",
+    "Transaction",
+    "SignalType",
+    "Finding",
+    "FindingEvidence",
+    "InvestigationLead",
+    "Note",
+    "AIConversation",
+    "AIMessage",
+    "AuditLog",
     "ClaudeCallLog",
     "ConnectorRun",
+    "Brief",
 ]
