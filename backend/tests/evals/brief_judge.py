@@ -31,7 +31,7 @@ _COVERAGE_SYSTEM = (
 )
 
 
-def _call(system: str, payload: dict) -> list:
+def _call(system: str, payload: dict, expected: int) -> list:
     response = claude_client.get_client().messages.create(
         model=CHAT_MODEL,
         max_tokens=1024,
@@ -40,7 +40,12 @@ def _call(system: str, payload: dict) -> list:
         messages=[{"role": "user", "content": json.dumps(payload)}],
     )
     parsed = json.loads(strip_json_fences(response.content[0].text))
-    return [bool(x) for x in parsed["results"]]
+    if "results" not in parsed:
+        raise ValueError(f"Judge response missing 'results' key; got: {parsed!r}")
+    results = [bool(x) for x in parsed["results"]]
+    if len(results) != expected:
+        raise ValueError(f"Judge returned {len(results)} results, expected {expected}")
+    return results
 
 
 def judge_support(claims: list[dict], evidence_by_id: dict) -> list[bool]:
@@ -54,11 +59,11 @@ def judge_support(claims: list[dict], evidence_by_id: dict) -> list[bool]:
             if s in evidence_by_id
         ]
         items.append({"claim": c.get("text", ""), "evidence": cited})
-    return _call(_SUPPORT_SYSTEM, {"claims": items})
+    return _call(_SUPPORT_SYSTEM, {"claims": items}, expected=len(claims))
 
 
 def judge_coverage(facts: list[str], claims: list[dict]) -> list[bool]:
     if not facts:
         return []
     payload = {"facts": facts, "claims": [c.get("text", "") for c in claims]}
-    return _call(_COVERAGE_SYSTEM, payload)
+    return _call(_COVERAGE_SYSTEM, payload, expected=len(facts))
