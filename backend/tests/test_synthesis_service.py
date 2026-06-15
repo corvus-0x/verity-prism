@@ -1,5 +1,15 @@
+import json
+import uuid
+from types import SimpleNamespace
+from unittest.mock import patch
+
+from app.models.brief import Brief
+from app.models.document import Document
+from app.models.document_extraction import DocumentExtraction
+from app.models.user import User
+from app.models.workspace import Workspace
 from app.services.saliences import Evidence
-from app.services.synthesis_service import _validate_and_annotate
+from app.services.synthesis_service import _validate_and_annotate, store_brief, synthesize_brief
 
 
 def _ev(id, conf=1.0):
@@ -58,19 +68,6 @@ def test_grounding_confidence_is_min_of_cited_rows():
 def test_validate_handles_missing_keys_gracefully():
     out = _validate_and_annotate({}, [])
     assert out == {"summary": "", "claims": []}
-
-
-import json
-import uuid
-from types import SimpleNamespace
-from unittest.mock import patch
-
-from app.models.brief import Brief
-from app.models.document import Document
-from app.models.document_extraction import DocumentExtraction
-from app.models.user import User
-from app.models.workspace import Workspace
-from app.services.synthesis_service import store_brief, synthesize_brief
 
 
 def _fake_response(payload: dict):
@@ -149,3 +146,31 @@ def test_store_brief_versions_increment(mock_get_client, db):
     b2 = store_brief(ws.id, {"summary": "v2", "claims": []}, db)
     assert b1.version == 1 and b2.version == 2
     assert db.query(Brief).filter(Brief.workspace_id == ws.id).count() == 2
+
+
+@patch("app.services.claude_client.get_client")
+def test_assemble_uses_latest_attempt_only(mock_get_client, db):
+    ws, doc, ext = _seed_workspace(db)
+    # A human correction (higher attempt) supersedes the seeded sale_amount.
+    db.add(
+        DocumentExtraction(
+            id="ext-1b",
+            document_id=doc.id,
+            workspace_id=ws.id,
+            field_name="sale_amount",
+            field_value="999999",
+            field_type="currency",
+            confidence=0.99,
+            attempt=2,
+        )
+    )
+    db.commit()
+    mock_get_client.return_value.messages.create.return_value = _fake_response(
+        {"summary": "s", "claims": []}
+    )
+
+    synthesize_brief(ws.id, db)
+
+    sent = mock_get_client.return_value.messages.create.call_args.kwargs["messages"][0]["content"]
+    assert "999999" in sent  # latest attempt is sent to Claude
+    assert "1250000" not in sent  # superseded attempt is excluded

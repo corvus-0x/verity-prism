@@ -19,11 +19,11 @@ from sqlalchemy.orm import Session
 
 from app.models.brief import Brief
 from app.models.document import Document
-from app.models.document_extraction import DocumentExtraction
 from app.models.document_schema import DocumentSchema
 from app.models.workspace import Workspace
 from app.services import claude_client, signal_registry
 from app.services.claude_client import CHAT_MODEL
+from app.services.export_service import latest_extractions
 from app.services.saliences import DocumentMeta, Evidence, Salience, compute_saliences
 from app.utils.json_helpers import strip_json_fences
 
@@ -82,9 +82,10 @@ def _required_fields_by_doc(docs: list[Document], db: Session) -> dict[str, set]
 
 
 def _assemble_evidence(workspace_id: str, db: Session):
-    """Read the workspace's non-deleted documents and their extraction rows into
-    the citable evidence set + document metadata + required-field map. Reads only
-    the universal IDP table (document_extractions) plus document/schema metadata —
+    """Read the workspace's non-deleted documents and their LATEST-attempt
+    extraction rows into the citable evidence set + document metadata +
+    required-field map. Reads only the universal IDP table (document_extractions,
+    deduped to the highest attempt per field) plus document/schema metadata —
     no transactions/entities/findings, which are cap-flavored.
     """
     docs = (
@@ -92,7 +93,6 @@ def _assemble_evidence(workspace_id: str, db: Session):
         .filter(Document.workspace_id == workspace_id, Document.is_deleted == False)  # noqa: E712
         .all()
     )
-    doc_by_id = {d.id: d for d in docs}
     documents = [
         DocumentMeta(
             id=d.id,
@@ -103,24 +103,22 @@ def _assemble_evidence(workspace_id: str, db: Session):
         )
         for d in docs
     ]
-    rows = (
-        db.query(DocumentExtraction).filter(DocumentExtraction.workspace_id == workspace_id).all()
-    )
-    evidence = [
-        Evidence(
-            id=r.id,
-            document_id=r.document_id,
-            filename=doc_by_id[r.document_id].filename,
-            doc_type=doc_by_id[r.document_id].detected_doc_type,
-            field_name=r.field_name,
-            field_value=r.field_value,
-            field_type=r.field_type or "text",
-            confidence=r.confidence,
-            ocr_confidence=r.ocr_confidence,
-        )
-        for r in rows
-        if r.document_id in doc_by_id  # skip rows whose document is soft-deleted
-    ]
+    evidence = []
+    for d in docs:
+        for r in latest_extractions(d.id, db):
+            evidence.append(
+                Evidence(
+                    id=r.id,
+                    document_id=r.document_id,
+                    filename=d.filename,
+                    doc_type=d.detected_doc_type,
+                    field_name=r.field_name,
+                    field_value=r.field_value,
+                    field_type=r.field_type or "text",
+                    confidence=r.confidence,
+                    ocr_confidence=r.ocr_confidence,
+                )
+            )
     return evidence, documents, _required_fields_by_doc(docs, db)
 
 
