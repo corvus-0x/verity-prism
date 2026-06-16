@@ -3,6 +3,7 @@ import uuid
 from types import SimpleNamespace
 from unittest.mock import patch
 
+from app.models.audit import AuditLog
 from app.models.document import Document
 from app.models.document_extraction import DocumentExtraction
 from app.models.workspace import Workspace, WorkspaceMember
@@ -15,7 +16,7 @@ def _fake_response(payload):
     )
 
 
-def _seed(db, owner_user_id):
+def _seed(db, owner_user_id, ext_id="x1"):
     ws = Workspace(id=str(uuid.uuid4()), name="Case", vertical="fraud", created_by=owner_user_id)
     db.add(ws)
     db.flush()
@@ -35,7 +36,7 @@ def _seed(db, owner_user_id):
     db.flush()
     db.add(
         DocumentExtraction(
-            id="x1",
+            id=ext_id,
             document_id=doc.id,
             workspace_id=ws.id,
             field_name="sale_amount",
@@ -109,4 +110,69 @@ def test_brief_requires_membership(client, auth_headers, db):
     db.add(ws)
     db.commit()
     resp = client.post(f"/workspaces/{ws.id}/brief", headers=auth_headers)
+    assert resp.status_code == 404
+
+
+@patch("app.services.claude_client.get_client")
+def test_generate_brief_audits_dropped_claims(mock_client, client, auth_headers, db):
+    mock_client.return_value.messages.create.return_value = _fake_response(
+        {
+            "summary": "ok",
+            "claims": [
+                {"text": "real", "sources": ["x1"], "signal_type": "outlier"},
+                {"text": "hallucinated", "sources": ["ghost"], "signal_type": "general"},
+            ],
+        }
+    )
+    ws = _seed(db, _user_id(client, auth_headers))
+
+    resp = client.post(f"/workspaces/{ws.id}/brief", headers=auth_headers)
+    assert resp.status_code == 200
+
+    row = (
+        db.query(AuditLog)
+        .filter(AuditLog.workspace_id == ws.id, AuditLog.action == "brief_generated")
+        .first()
+    )
+    assert row is not None
+    assert row.after_state["claims_dropped"] == 1
+    assert row.after_state["claim_count"] == 1
+
+
+def test_resolve_citation_returns_source(client, auth_headers, db):
+    ws = _seed(db, _user_id(client, auth_headers))  # seeds extraction id "x1"
+    resp = client.get(f"/workspaces/{ws.id}/brief/citations/x1", headers=auth_headers)
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["extraction_id"] == "x1"
+    assert body["field_name"] == "sale_amount"
+    assert body["field_value"] == "500000"
+    assert "evidence" in body  # region capture (None when not set)
+
+
+def test_resolve_citation_404_for_unknown(client, auth_headers, db):
+    ws = _seed(db, _user_id(client, auth_headers))
+    resp = client.get(f"/workspaces/{ws.id}/brief/citations/nope", headers=auth_headers)
+    assert resp.status_code == 404
+
+
+def test_resolve_citations_batch(client, auth_headers, db):
+    ws = _seed(db, _user_id(client, auth_headers))
+    resp = client.post(
+        f"/workspaces/{ws.id}/brief/citations",
+        headers=auth_headers,
+        json={"extraction_ids": ["x1", "ghost"]},
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["count"] == 1
+    assert "x1" in body["resolved"] and "ghost" not in body["resolved"]
+
+
+def test_resolve_citation_is_workspace_scoped(client, auth_headers, db):
+    # x1 belongs to workspace A; resolving it through workspace B must 404.
+    ws_a = _seed(db, _user_id(client, auth_headers))  # owns extraction "x1"
+    ws_b = _seed(db, _user_id(client, auth_headers), ext_id="x2")  # member, different ext id
+    assert ws_a.id != ws_b.id
+    resp = client.get(f"/workspaces/{ws_b.id}/brief/citations/x1", headers=auth_headers)
     assert resp.status_code == 404

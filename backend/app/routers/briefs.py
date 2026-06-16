@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -7,7 +8,7 @@ from app.models.brief import Brief
 from app.models.user import User
 from app.services import audit
 from app.services.auth import get_current_user
-from app.services.synthesis_service import store_brief, synthesize_brief
+from app.services.synthesis_service import resolve_citation, store_brief, synthesize_brief
 
 router = APIRouter(prefix="/workspaces/{workspace_id}", tags=["briefs"])
 
@@ -27,6 +28,10 @@ def _serialize(row: Brief) -> dict:
     }
 
 
+class CitationBatchRequest(BaseModel):
+    extraction_ids: list[str]
+
+
 @router.post("/brief")
 def generate_brief(
     workspace_id: str,
@@ -43,7 +48,11 @@ def generate_brief(
         workspace_id=workspace_id,
         entity_type="brief",
         entity_id=row.id,
-        after_state={"version": row.version, "claim_count": len(row.claims)},
+        after_state={
+            "version": row.version,
+            "claim_count": len(row.claims),
+            "claims_dropped": brief.get("claims_dropped", 0),
+        },
     )
     return _serialize(row)
 
@@ -80,3 +89,33 @@ def brief_history(
         .all()
     )
     return {"briefs": [_serialize(r) for r in rows], "count": len(rows)}
+
+
+@router.get("/brief/citations/{extraction_id}")
+def get_citation(
+    workspace_id: str,
+    extraction_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    get_workspace_or_404(workspace_id, user, db)
+    resolved = resolve_citation(workspace_id, extraction_id, db)
+    if not resolved:
+        raise HTTPException(status_code=404, detail="Citation not found in this workspace")
+    return resolved
+
+
+@router.post("/brief/citations")
+def resolve_citations(
+    workspace_id: str,
+    payload: CitationBatchRequest,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    get_workspace_or_404(workspace_id, user, db)
+    resolved = {}
+    for eid in payload.extraction_ids:
+        r = resolve_citation(workspace_id, eid, db)
+        if r:
+            resolved[eid] = r
+    return {"resolved": resolved, "count": len(resolved)}

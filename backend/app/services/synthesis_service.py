@@ -42,21 +42,68 @@ _SYNTHESIS_SYSTEM = (
 )
 
 
+def _log_synthesis_call(
+    workspace_id: str,
+    latency_ms: int,
+    prompt_chars: int,
+    response=None,
+    error_message: str | None = None,
+) -> None:
+    """Write one brief_synthesis row to claude_call_logs. Opens its own session so
+    logging never corrupts the request transaction; swallows all exceptions.
+    """
+    try:
+        from app.database import SessionLocal
+        from app.models.claude_call_log import ClaudeCallLog
+
+        db = SessionLocal()
+        try:
+            usage = getattr(response, "usage", None)
+            content = getattr(response, "content", None)
+            row = ClaudeCallLog(
+                call_type="brief_synthesis",
+                workspace_id=workspace_id,
+                model=CHAT_MODEL,
+                success=response is not None,
+                latency_ms=latency_ms,
+                input_tokens=getattr(usage, "input_tokens", None),
+                output_tokens=getattr(usage, "output_tokens", None),
+                prompt_chars=prompt_chars,
+                response_chars=len(content[0].text) if content else None,
+                error_message=error_message,
+            )
+            db.add(row)
+            db.commit()
+        finally:
+            db.close()
+    except Exception as e:
+        logger.warning(f"claude_call_log write failed: {e}")
+
+
 def _validate_and_annotate(brief: dict, evidence: list[Evidence]) -> dict:
     """Drop claims that cite no valid evidence id, strip unknown ids from the
-    rest, and annotate each surviving claim with grounding_confidence = the
-    minimum confidence of its cited rows (so the brief can hedge weak claims).
+    rest, annotate each surviving claim with grounding_confidence = the minimum
+    confidence of its cited rows, and report how many claims were dropped (an
+    invalid-citation / hallucination signal).
     """
     by_id = {e.id: e for e in evidence}
     claims = []
+    dropped = 0
     for claim in brief.get("claims", []) or []:
         sources = [s for s in (claim.get("sources") or []) if s in by_id]
         if not sources:
-            continue  # unfalsifiable — a claim with no real citation is dropped
+            dropped += 1  # unfalsifiable — a claim with no real citation is dropped
+            continue
         claim["sources"] = sources
         claim["grounding_confidence"] = round(min(by_id[s].confidence for s in sources), 4)
         claims.append(claim)
-    return {"summary": brief.get("summary", "") or "", "claims": claims}
+    if dropped:
+        logger.warning("Brief synthesis dropped %d claim(s) with invalid citations", dropped)
+    return {
+        "summary": brief.get("summary", "") or "",
+        "claims": claims,
+        "claims_dropped": dropped,
+    }
 
 
 def _required_fields_by_doc(docs: list[Document], db: Session) -> dict[str, set]:
@@ -122,9 +169,12 @@ def _assemble_evidence(workspace_id: str, db: Session):
     return evidence, documents, _required_fields_by_doc(docs, db)
 
 
-def _synthesize(evidence: list[Evidence], saliences: list[Salience]) -> tuple[dict, dict]:
-    """One constrained Claude call. Returns (parsed_brief, meta). Degrades to an
-    empty brief (never raises) if Claude returns unparseable JSON.
+def _synthesize(
+    evidence: list[Evidence], saliences: list[Salience], workspace_id: str
+) -> tuple[dict, dict]:
+    """One constrained Claude call. Logs a brief_synthesis row, returns
+    (parsed_brief, meta) with latency_ms. Degrades to an empty brief (never
+    raises) only on unparseable JSON; a transport error is logged and re-raised.
     """
     payload = {
         "evidence": [
@@ -139,17 +189,30 @@ def _synthesize(evidence: list[Evidence], saliences: list[Salience]) -> tuple[di
         ],
         "saliences": [{"type": s.type, "fact": s.description} for s in saliences],
     }
-    response = claude_client.get_client().messages.create(
-        model=CHAT_MODEL,
-        max_tokens=2048,
-        system=_SYNTHESIS_SYSTEM,
-        messages=[{"role": "user", "content": json.dumps(payload)}],
-    )
+    user_content = json.dumps(payload)
+    prompt_chars = len(_SYNTHESIS_SYSTEM) + len(user_content)
+
+    start = time.perf_counter()
+    try:
+        response = claude_client.get_client().messages.create(
+            model=CHAT_MODEL,
+            max_tokens=2048,
+            system=_SYNTHESIS_SYSTEM,
+            messages=[{"role": "user", "content": user_content}],
+        )
+    except Exception as e:
+        latency_ms = int((time.perf_counter() - start) * 1000)
+        _log_synthesis_call(workspace_id, latency_ms, prompt_chars, error_message=str(e))
+        raise
+    latency_ms = int((time.perf_counter() - start) * 1000)
+    _log_synthesis_call(workspace_id, latency_ms, prompt_chars, response=response)
+
     usage = getattr(response, "usage", None)
     meta = {
         "model": CHAT_MODEL,
         "input_tokens": getattr(usage, "input_tokens", None),
         "output_tokens": getattr(usage, "output_tokens", None),
+        "latency_ms": latency_ms,
     }
     try:
         parsed = json.loads(strip_json_fences(response.content[0].text))
@@ -171,13 +234,44 @@ def synthesize_brief(workspace_id: str, db: Session) -> dict:
         evidence, documents, required_by_doc, signal_registry.get_detectors(vertical)
     )
 
-    start = time.perf_counter()
-    raw, meta = _synthesize(evidence, saliences)
-    meta["latency_ms"] = int((time.perf_counter() - start) * 1000)
+    raw, meta = _synthesize(evidence, saliences, workspace_id)
 
     brief = _validate_and_annotate(raw, evidence)
     brief.update(meta)
     return brief
+
+
+def resolve_citation(workspace_id: str, extraction_id: str, db: Session) -> dict | None:
+    """Resolve one citation (extraction id) to its source detail, scoped to the
+    workspace. Returns None if the id is not an extraction in this workspace.
+    Reads only document_extractions + document metadata.
+    """
+    from app.models.document_extraction import DocumentExtraction
+
+    row = (
+        db.query(DocumentExtraction, Document.filename, Document.detected_doc_type)
+        .join(Document, Document.id == DocumentExtraction.document_id)
+        .filter(
+            DocumentExtraction.id == extraction_id,
+            DocumentExtraction.workspace_id == workspace_id,
+            Document.workspace_id == workspace_id,
+            Document.is_deleted == False,  # noqa: E712
+        )
+        .first()
+    )
+    if not row:
+        return None
+    ext = row.DocumentExtraction
+    return {
+        "extraction_id": ext.id,
+        "document_id": ext.document_id,
+        "filename": row.filename,
+        "doc_type": row.detected_doc_type,
+        "field_name": ext.field_name,
+        "field_value": ext.field_value,
+        "confidence": ext.confidence,
+        "evidence": ext.evidence,
+    }
 
 
 def store_brief(workspace_id: str, brief: dict, db: Session) -> Brief:

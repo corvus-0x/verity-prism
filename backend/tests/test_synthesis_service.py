@@ -67,7 +67,22 @@ def test_grounding_confidence_is_min_of_cited_rows():
 
 def test_validate_handles_missing_keys_gracefully():
     out = _validate_and_annotate({}, [])
-    assert out == {"summary": "", "claims": []}
+    assert out == {"summary": "", "claims": [], "claims_dropped": 0}
+
+
+def test_validate_counts_dropped_claims():
+    evidence = [_ev("e1")]
+    raw = {
+        "summary": "s",
+        "claims": [
+            {"text": "valid", "sources": ["e1"], "signal_type": "general"},
+            {"text": "fabricated", "sources": ["ghost"], "signal_type": "general"},
+            {"text": "uncited", "sources": [], "signal_type": "general"},
+        ],
+    }
+    out = _validate_and_annotate(raw, evidence)
+    assert [c["text"] for c in out["claims"]] == ["valid"]
+    assert out["claims_dropped"] == 2
 
 
 def _fake_response(payload: dict):
@@ -174,3 +189,40 @@ def test_assemble_uses_latest_attempt_only(mock_get_client, db):
     sent = mock_get_client.return_value.messages.create.call_args.kwargs["messages"][0]["content"]
     assert "999999" in sent  # latest attempt is sent to Claude
     assert "1250000" not in sent  # superseded attempt is excluded
+
+
+from unittest.mock import MagicMock
+
+
+@patch("app.database.SessionLocal")
+def test_log_synthesis_call_writes_brief_synthesis_row(mock_sessionlocal):
+    from app.services.synthesis_service import _log_synthesis_call
+
+    mock_db = MagicMock()
+    mock_sessionlocal.return_value = mock_db
+    resp = SimpleNamespace(
+        usage=SimpleNamespace(input_tokens=3, output_tokens=4),
+        content=[SimpleNamespace(text="abc")],
+    )
+    _log_synthesis_call("ws1", 120, 500, response=resp)
+
+    added = mock_db.add.call_args.args[0]
+    assert added.call_type == "brief_synthesis"
+    assert added.workspace_id == "ws1"
+    assert added.input_tokens == 3 and added.output_tokens == 4
+    assert added.prompt_chars == 500
+    assert added.success is True
+    mock_db.commit.assert_called_once()
+
+
+@patch("app.services.synthesis_service._log_synthesis_call")
+@patch("app.services.claude_client.get_client")
+def test_synthesize_brief_logs_synthesis_call(mock_get_client, mock_log, db):
+    ws, _, _ = _seed_workspace(db)
+    mock_get_client.return_value.messages.create.return_value = _fake_response(
+        {"summary": "s", "claims": []}
+    )
+    synthesize_brief(ws.id, db)
+
+    assert mock_log.called
+    assert mock_log.call_args.args[0] == ws.id  # workspace_id is first arg
