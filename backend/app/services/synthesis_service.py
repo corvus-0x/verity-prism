@@ -241,6 +241,39 @@ def synthesize_brief(workspace_id: str, db: Session) -> dict:
     return brief
 
 
+def resolve_citation(workspace_id: str, extraction_id: str, db: Session) -> dict | None:
+    """Resolve one citation (extraction id) to its source detail, scoped to the
+    workspace. Returns None if the id is not an extraction in this workspace.
+    Reads only document_extractions + document metadata.
+    """
+    from app.models.document_extraction import DocumentExtraction
+
+    row = (
+        db.query(DocumentExtraction, Document.filename, Document.detected_doc_type)
+        .join(Document, Document.id == DocumentExtraction.document_id)
+        .filter(
+            DocumentExtraction.id == extraction_id,
+            DocumentExtraction.workspace_id == workspace_id,
+            Document.workspace_id == workspace_id,
+            Document.is_deleted == False,  # noqa: E712
+        )
+        .first()
+    )
+    if not row:
+        return None
+    ext = row.DocumentExtraction
+    return {
+        "extraction_id": ext.id,
+        "document_id": ext.document_id,
+        "filename": row.filename,
+        "doc_type": row.detected_doc_type,
+        "field_name": ext.field_name,
+        "field_value": ext.field_value,
+        "confidence": ext.confidence,
+        "evidence": ext.evidence,
+    }
+
+
 def store_brief(workspace_id: str, brief: dict, db: Session) -> Brief:
     """Persist a brief as the next version for the workspace; prior versions are
     retained. Returns the stored row.
