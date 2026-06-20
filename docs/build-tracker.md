@@ -430,6 +430,19 @@ Decisions made before any vertical work could start. These were flagged in princ
 
 ---
 
+## Field-Level Linking Completion (2026-06-19)
+
+| Task | What It Builds | Why |
+|------|---------------|-----|
+| Cross-page field linking | Clicking a field now links the viewer to its source location across the whole PDF, not just the page already on screen. `DocumentViewer` caches pdf.js text by page, searches the current page first, then the rest of the document, and jumps to the first match before drawing the overlay. | The earlier highlight pass proved the UI pattern, but it still made the operator do the expensive part by hand: flipping pages until the value happened to appear. A deed field on page 7 is not "linked" if the viewer only searches page 1. |
+| Evidence-first replay | If a field already has human-review evidence (`page` + `region`), the viewer reuses that exact capture instead of approximating from text search. | Once a reviewer has anchored a correction to a specific rectangle, the machine should stop guessing. Replaying the saved evidence makes the corrected field behave like a citation, not a best-effort search. |
+| Non-review viewer parity | `ExtractionTable` rows now forward focus metadata too, and the PDF overlay is no longer gated behind `?review=1`. Field linking works in the standard document viewer as well as the review queue. | The trust-building surface is the everyday viewer, not just the correction workflow. If linking only exists in review mode, the feature disappears precisely when a new user is trying to understand why the extraction can be trusted. |
+| Targeted frontend tests | `test_field_linking.jsx` covers page-search order, PDF-coordinate conversion, cross-page match discovery, and row-click focus payloads. | This behavior lives in UI plumbing and async pdf.js state, where regressions are easy to reintroduce quietly. A few focused tests are cheaper than rediscovering broken linking by hand during a demo. |
+
+**Tests passing:** `frontend/src/tests/test_field_linking.jsx` — 4/4
+
+---
+
 ## Deferred & Relocated Work
 
 Things that were planned for one phase and moved, or explicitly punted. Captured here with the reasoning so when we reach that phase we're not starting from scratch.
@@ -478,13 +491,13 @@ A single unified path. No special cases per failure type.
 
 ---
 
-### Field-Level PDF Linking — deferred from Phase 2A (2026-05-28)
+### Field-Level PDF Linking — completed 2026-06-19 (originally deferred from Phase 2A)
 
 **What it is:** Clicking an extracted field in the fields panel highlights its location in the PDF viewer.
 
-**Why deferred:** Requires text layer extraction from react-pdf to get character-level bounding boxes. The split-pane viewer delivers the core value (see source + extracted data side by side) without it. Deferred until extraction quality is stable — no point highlighting positions if the extraction is wrong.
+**Why it was deferred:** The first viewer pass needed to ship before text-layer linking and evidence replay were stable enough to trust. The split-pane viewer delivered the core side-by-side experience; linking had to wait until the review pane, text layer, and evidence model all existed together.
 
-**What it needs when we pick it up:** react-pdf's `onGetTextSuccess` callback returns a text layer with position data. Match extracted field values against text layer tokens to get bounding boxes, then draw highlight overlays on the PDF canvas.
+**What shipped:** The viewer now uses two paths. Verified fields reuse their saved `evidence.page` + `evidence.region` directly. Unverified fields fall back to cached pdf.js text-layer search across the current page first, then the remaining pages, and jump to the first match before drawing the highlight overlay.
 
 ---
 

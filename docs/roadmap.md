@@ -1,6 +1,6 @@
 # Verity Prism — Product Roadmap
 
-**Last updated:** 2026-05-31  
+**Last updated:** 2026-06-19  
 **Core principle:** Verity Prism is an Intelligent Document Processing platform first. Verticals are plug-and-play caps that tell the platform what to care about. The engine ships to every customer. The cap ships only to the relevant vertical.
 
 ---
@@ -137,7 +137,9 @@ Replaced static context dump with native Anthropic tool-use loop. Claude calls 6
 **Document viewer** ✅ DONE (2026-05-28):  
 Split-pane view: PDF rendered in-browser (react-pdf, pdf.js bundled — no plugin required) on the left, extracted fields on the right. 65/35 split. Route-based navigation — each document has its own URL at `.../documents/:id`. Document list stays visible with selected doc highlighted. Status-aware fields panel: surfaces `extraction_error` text on failure, informative messages for pending/no_schema. File served from `GET /documents/{id}/file` behind JWT auth. Blob URL lifecycle managed to prevent memory leaks on navigation.  
 *Spec:* `docs/superpowers/specs/2026-05-28-document-viewer-design.md`  
-**Field-level linking deferred** — clicking a field to highlight its location in the PDF is the next pass after the extraction evaluator ships (requires text layer, built on existing react-pdf foundation).
+
+**Field-to-location linking** ✅ DONE (2026-06-19):  
+Clicking a field now links the viewer to its source location. If the field has saved human-review evidence, the viewer jumps directly to the captured page/region. If it does not, the viewer searches the cached pdf.js text layer across all pages, moves to the first matching page, and draws the highlight there. The same interaction works in both the normal document viewer and review mode.
 
 **Extraction evaluation loop** ✅ DONE (2026-05-28):  
 `extraction_evaluator.py` — pure `evaluate()` checks confidence against `schema.default_confidence_threshold`. `run_retry()` builds a mini-batch of only failing fields, calls Claude once more as `attempt=2`. If still below threshold after retry, document is flagged `needs_review`. XML-direct path skipped (always 1.0 confidence). Pipeline insertion: between `save_extractions()` and filename generation, gated on `schema.parse_strategy == "claude"`.
@@ -236,7 +238,6 @@ When a reviewer flags a document (not just corrects fields), they select a justi
 **Deferred from this phase — can wait:**
 - *NL schema creation* — guided schema setup via plain English. Valuable for zero-training UX but not a quality prerequisite.
 - *Extraction feedback loop* — feed human corrections back into future extraction prompts. Worth building once correction volume gives it signal.
-- *Field-to-location highlighting* — click a field, highlight its position in the PDF. Already deferred from 2A; confirmed as standard by Hyland. Build when table extraction ships (requires text layer coordinates).
 - *Parent/child schema inheritance* — e.g., DEED as parent class with WARRANTY_DEED, QUITCLAIM_DEED, SHERIFF_DEED as children inheriting base fields. Cleans up the schema registry. Phase 3 candidate when fraud cap schemas are packaged.
 - *Field redaction* — overlay or burned redaction for PII fields (SSN, etc.). Phase 4 compliance feature.
 
