@@ -14,7 +14,7 @@ import { correctExtraction, createExtraction } from '../../api/documents'
  *   extractions: list of ExtractionOut rows (latest attempt per field)
  *   workspaceId: string
  *   documentId: string
- *   onFieldFocus: (fieldName, fieldValue) => void — parent updates PDF highlight
+ *   onFieldFocus: (fieldName, fieldValue, evidence) => void — parent updates PDF highlight
  *   onSaveComplete: () => void — called after save to refresh extractions list
  */
 export default function SchemaReviewPane({
@@ -47,7 +47,7 @@ export default function SchemaReviewPane({
     setActiveField(fieldName)
     const extraction = extractionByName[fieldName]
     const fieldValue = pendingChanges[fieldName]?.value ?? extraction?.field_value ?? ''
-    onFieldFocus(fieldName, fieldValue)
+    onFieldFocus(fieldName, fieldValue, extraction?.evidence || null)
   }, [extractionByName, pendingChanges, onFieldFocus])
 
   const handleFieldChange = useCallback((fieldName, value, note) => {

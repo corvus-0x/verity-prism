@@ -3,7 +3,14 @@ import { correctExtraction } from '../../api/documents'
 
 const COL_TEMPLATE = 'minmax(0,5fr) minmax(0,7fr) minmax(0,4fr)'
 
-export default function ExtractionTable({ extractions, editable = false, workspaceId, documentId, onUpdate }) {
+export default function ExtractionTable({
+  extractions,
+  editable = false,
+  workspaceId,
+  documentId,
+  onUpdate,
+  onFieldFocus,
+}) {
   if (!extractions?.length) return <p className="text-slate-500 text-sm">No extractions yet.</p>
 
   return (
@@ -28,6 +35,7 @@ export default function ExtractionTable({ extractions, editable = false, workspa
             workspaceId={workspaceId}
             documentId={documentId}
             onUpdate={onUpdate}
+            onFieldFocus={onFieldFocus}
           />
         ))}
       </div>
@@ -46,7 +54,7 @@ function ConfidencePill({ label, value }) {
   )
 }
 
-function ExtractionRow({ extraction: e, editable, workspaceId, documentId, onUpdate }) {
+function ExtractionRow({ extraction: e, editable, workspaceId, documentId, onUpdate, onFieldFocus }) {
   const [editing, setEditing] = useState(false)
   const [inputValue, setInputValue] = useState(e.field_value || '')
   const [saving, setSaving] = useState(false)
@@ -73,8 +81,9 @@ function ExtractionRow({ extraction: e, editable, workspaceId, documentId, onUpd
 
   return (
     <div
-      className={`grid gap-x-3 py-2 ${rowBg}`}
+      className={`grid gap-x-3 py-2 ${rowBg} ${onFieldFocus ? 'cursor-pointer' : ''}`}
       style={{ gridTemplateColumns: COL_TEMPLATE }}
+      onClick={() => onFieldFocus?.(e.field_name, e.field_value || '', e.evidence || null)}
     >
       {/* Field name — breaks on underscores when narrow */}
       <span className="text-slate-400 break-all leading-snug pt-0.5 min-w-0">
@@ -83,14 +92,15 @@ function ExtractionRow({ extraction: e, editable, workspaceId, documentId, onUpd
 
       {/* Value — wraps, never overflows */}
       <span className="text-slate-100 break-words leading-snug min-w-0">
-        {editable && !isHumanCorrected && editing ? (
-          <input
-            className="field-input text-xs py-1"
-            value={inputValue}
-            onChange={(ev) => setInputValue(ev.target.value)}
-            autoFocus
-          />
-        ) : (
+          {editable && !isHumanCorrected && editing ? (
+            <input
+              className="field-input text-xs py-1"
+              value={inputValue}
+              onChange={(ev) => setInputValue(ev.target.value)}
+              onClick={(ev) => ev.stopPropagation()}
+              autoFocus
+            />
+          ) : (
           e.field_value || <span className="text-slate-600">—</span>
         )}
       </span>
@@ -109,7 +119,10 @@ function ExtractionRow({ extraction: e, editable, workspaceId, documentId, onUpd
               {editing ? (
                 <>
                   <button
-                    onClick={handleAccept}
+                    onClick={(ev) => {
+                      ev.stopPropagation()
+                      handleAccept()
+                    }}
                     disabled={saving}
                     className="text-xs px-2 py-0.5 rounded text-white disabled:opacity-50 transition-colors"
                     style={{ background: '#991B1B' }}
@@ -117,7 +130,11 @@ function ExtractionRow({ extraction: e, editable, workspaceId, documentId, onUpd
                     {saving ? '…' : 'Accept'}
                   </button>
                   <button
-                    onClick={() => { setEditing(false); setInputValue(e.field_value || '') }}
+                    onClick={(ev) => {
+                      ev.stopPropagation()
+                      setEditing(false)
+                      setInputValue(e.field_value || '')
+                    }}
                     className="text-xs px-2 py-0.5 bg-slate-700 hover:bg-slate-600 text-slate-300 rounded transition-colors"
                   >
                     Cancel
@@ -125,7 +142,10 @@ function ExtractionRow({ extraction: e, editable, workspaceId, documentId, onUpd
                 </>
               ) : (
                 <button
-                  onClick={() => setEditing(true)}
+                  onClick={(ev) => {
+                    ev.stopPropagation()
+                    setEditing(true)
+                  }}
                   className="text-xs px-2 py-0.5 bg-slate-700 hover:bg-slate-600 text-slate-300 rounded transition-colors"
                 >
                   Edit

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useParams, useSearchParams, Link } from 'react-router-dom'
 import { listDocuments, getDocument, getExtractions, getDocumentFile } from '../../api/documents'
 import DocumentList from '../../components/documents/DocumentList'
@@ -16,6 +16,11 @@ import { useRegionCapture } from '../../hooks/useRegionCapture'
 import { getSchema } from '../../api/schemas'
 import { getRenderer } from '../../components/documents/rendererRegistry'
 import { useWorkspace } from '../../context/WorkspaceContext'
+import {
+  findFirstMatchingPage,
+  getCachedPageText,
+  pdfRegionToScreenMatch,
+} from '../../components/documents/pdfFieldLinking'
 
 pdfjs.GlobalWorkerOptions.workerSrc = new URL(
   'pdfjs-dist/build/pdf.worker.min.mjs',
@@ -46,7 +51,10 @@ export default function DocumentViewer() {
   const [pageViewport, setPageViewport] = useState(null)
   const [activeFieldName, setActiveFieldName] = useState('')
   const [activeFieldValue, setActiveFieldValue] = useState('')
+  const [activeFieldEvidence, setActiveFieldEvidence] = useState(null)
   const pageContainerRef = useRef(null)
+  const textCacheRef = useRef(new Map())
+  const focusRequestRef = useRef(0)
 
   // Preserve list scroll position across document navigation
   useEffect(() => {
@@ -68,6 +76,14 @@ export default function DocumentViewer() {
     setFileError(false)
     setCurrentPage(1)
     setTotalPages(0)
+    setSchema(null)
+    setPdfProxy(null)
+    setTextItems([])
+    setPageViewport(null)
+    setActiveFieldName('')
+    setActiveFieldValue('')
+    setActiveFieldEvidence(null)
+    textCacheRef.current = new Map()
 
     // Revoke previous blob URL to free memory
     if (fileUrlRef.current) {
@@ -119,12 +135,9 @@ export default function DocumentViewer() {
 
   useEffect(() => {
     if (!pdfProxy || !currentPage) return
-    pdfProxy.getPage(currentPage).then((page) => {
-      const viewport = page.getViewport({ scale: 1.0 })
+    getCachedPageText(pdfProxy, currentPage, textCacheRef.current).then(({ viewport, items }) => {
       setPageViewport(viewport)
-      page.getTextContent().then((content) => {
-        setTextItems(content.items)
-      })
+      setTextItems(items)
     })
   }, [pdfProxy, currentPage])
 
@@ -132,26 +145,63 @@ export default function DocumentViewer() {
     activeFieldValue, textItems, pageViewport
   )
 
+  const evidenceMatch = useMemo(() => {
+    if (!activeFieldEvidence?.region || !pageViewport) return null
+    if (Number(activeFieldEvidence.page) !== currentPage) return null
+    return pdfRegionToScreenMatch(activeFieldEvidence.region, pageViewport)
+  }, [activeFieldEvidence, pageViewport, currentPage])
+
+  const isEvidenceLinked = Boolean(activeFieldEvidence?.page)
+  const visibleMatch = isEvidenceLinked ? evidenceMatch : activeMatch
+
   const { capture } = useRegionCapture(pageContainerRef)
 
   const captureCurrentHighlight = useCallback((fieldName) => {
-    if (!activeMatch || !pageViewport || activeFieldName !== fieldName) return null
+    const highlightedMatch = activeFieldEvidence?.page ? evidenceMatch : activeMatch
+    if (!highlightedMatch || !pageViewport || activeFieldName !== fieldName) return null
     // activeMatch.y is in canvas space (top-left origin) from useFieldHighlight.
     // useRegionCapture.capture() expects PDF space (bottom-left origin) — invert y.
-    const pdfY = pageViewport.height - activeMatch.y - activeMatch.height
-    const pdfRegion = { x: activeMatch.x, y: pdfY, width: activeMatch.width, height: activeMatch.height }
+    const pdfY = pageViewport.height - highlightedMatch.y - highlightedMatch.height
+    const pdfRegion = {
+      x: highlightedMatch.x,
+      y: pdfY,
+      width: highlightedMatch.width,
+      height: highlightedMatch.height,
+    }
     const image_b64 = capture(pdfRegion, pageViewport.height, 1.0)
     return {
       page: currentPage,
       region: pdfRegion,
       image_b64,
     }
-  }, [activeMatch, pageViewport, currentPage, capture, activeFieldName])
+  }, [activeMatch, activeFieldEvidence, evidenceMatch, pageViewport, currentPage, capture, activeFieldName])
 
-  const handleFieldFocus = useCallback((fieldName, fieldValue) => {
+  const handleFieldFocus = useCallback(async (fieldName, fieldValue, evidence = null) => {
+    const requestId = ++focusRequestRef.current
     setActiveFieldName(fieldName)
     setActiveFieldValue(fieldValue || '')
-  }, [])
+    setActiveFieldEvidence(evidence || null)
+
+    if (evidence?.page) {
+      setCurrentPage(Number(evidence.page))
+      return
+    }
+
+    if (!pdfProxy || !fieldValue) return
+
+    const firstMatch = await findFirstMatchingPage({
+      pdfProxy,
+      fieldValue,
+      currentPage,
+      cache: textCacheRef.current,
+    })
+
+    if (focusRequestRef.current !== requestId || !firstMatch) return
+
+    if (firstMatch.pageNumber !== currentPage) {
+      setCurrentPage(firstMatch.pageNumber)
+    }
+  }, [pdfProxy, currentPage])
 
   if (loading) return <LoadingSpinner />
 
@@ -248,16 +298,14 @@ export default function DocumentViewer() {
                     renderAnnotationLayer={false}
                     className="shadow-2xl"
                   />
-                  {reviewMode && (
                     <PDFHighlightOverlay
-                      activeMatch={activeMatch}
+                      activeMatch={visibleMatch}
                       activeFieldName={activeFieldName}
-                      matchCount={matches.length}
-                      matchIndex={activeIndex}
-                      onNext={next}
-                      onPrev={prev}
+                      matchCount={isEvidenceLinked ? 1 : matches.length}
+                      matchIndex={isEvidenceLinked ? 0 : activeIndex}
+                      onNext={isEvidenceLinked ? (() => {}) : next}
+                      onPrev={isEvidenceLinked ? (() => {}) : prev}
                     />
-                  )}
                 </div>
               </Document>
             ) : (
@@ -322,6 +370,7 @@ export default function DocumentViewer() {
                       prev.map((e) => (e.field_name === corrected.field_name ? corrected : e))
                     )
                   }
+                  onFieldFocus={handleFieldFocus}
                 />
               </div>
             )}
@@ -332,7 +381,7 @@ export default function DocumentViewer() {
   )
 }
 
-function FieldsPane({ doc, extractions, editable, workspaceId, documentId, onUpdate }) {
+function FieldsPane({ doc, extractions, editable, workspaceId, documentId, onUpdate, onFieldFocus }) {
   if (doc.extraction_status === 'pending') {
     return <p className="text-slate-400 text-sm">Extraction in progress…</p>
   }
@@ -369,6 +418,7 @@ function FieldsPane({ doc, extractions, editable, workspaceId, documentId, onUpd
         workspaceId={workspaceId}
         documentId={documentId}
         onUpdate={onUpdate}
+        onFieldFocus={onFieldFocus}
       />
     </div>
   )
