@@ -20,6 +20,29 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
+    # Heal existing data first: a non-clean DB may already hold duplicate active
+    # api_pull documents for the same (workspace_id, sha256_hash), which would make
+    # CREATE UNIQUE INDEX fail and block the upgrade. Soft-delete all but the
+    # earliest of each duplicate group so the partial unique index can be created.
+    op.execute(
+        sa.text(
+            """
+            WITH ranked AS (
+                SELECT id,
+                       ROW_NUMBER() OVER (
+                           PARTITION BY workspace_id, sha256_hash ORDER BY uploaded_at, id
+                       ) AS rn
+                FROM documents
+                WHERE is_deleted = false AND source_type = 'api_pull'
+            )
+            UPDATE documents d
+            SET is_deleted = true, deleted_at = now()
+            FROM ranked r
+            WHERE d.id = r.id AND r.rn > 1
+            """
+        )
+    )
+
     # Atomic dedup for CONNECTOR-sourced documents: at most one active
     # (non-deleted) api_pull document per (workspace_id, sha256_hash). Scoped to
     # source_type='api_pull' because manual uploads intentionally allow the same
