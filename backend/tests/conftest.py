@@ -11,8 +11,7 @@ from app.database import Base, get_db
 from app.main import app
 
 TEST_DATABASE_URL = os.environ.get(
-    "TEST_DATABASE_URL",
-    "postgresql://catalyst:catalyst@localhost:5432/catalyst_test"
+    "TEST_DATABASE_URL", "postgresql://catalyst:catalyst@localhost:5432/catalyst_test"
 )
 os.environ["TEST_DATABASE_URL"] = TEST_DATABASE_URL  # ensure env.py picks up the resolved value
 
@@ -42,9 +41,10 @@ def setup_db():
     faster (no DDL round-trip) and preserves migration-only schema objects
     (triggers, enum values, indexes).
     """
+    # signal_types is reference data seeded by an Alembic migration, not per-test
+    # data — keep it across truncations so list_signal_types stays a plain read.
     table_names = ", ".join(
-        f'"{t.name}"'
-        for t in reversed(Base.metadata.sorted_tables)
+        f'"{t.name}"' for t in reversed(Base.metadata.sorted_tables) if t.name != "signal_types"
     )
     with engine.begin() as conn:
         conn.execute(text(f"TRUNCATE {table_names} RESTART IDENTITY CASCADE"))
@@ -73,6 +73,7 @@ def client(db):
             yield db
         finally:
             pass
+
     app.dependency_overrides[get_db] = override_get_db
     with TestClient(app) as c:
         yield c
@@ -81,11 +82,14 @@ def client(db):
 
 @pytest.fixture
 def registered_user(client):
-    client.post("/auth/register", json={
-        "email": "analyst@example.com",
-        "password": "TestPass123!",
-        "full_name": "Test Analyst"
-    })
+    client.post(
+        "/auth/register",
+        json={
+            "email": "analyst@example.com",
+            "password": "TestPass123!",
+            "full_name": "Test Analyst",
+        },
+    )
     return {"email": "analyst@example.com", "password": "TestPass123!"}
 
 

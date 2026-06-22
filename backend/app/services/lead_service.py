@@ -13,7 +13,7 @@ def create_lead(
     """Create an investigation lead and write an audit entry."""
     lead = InvestigationLead(**payload.model_dump(), workspace_id=workspace_id)
     db.add(lead)
-    db.commit()
+    db.flush()
     db.refresh(lead)
     audit.log(
         db,
@@ -58,7 +58,7 @@ def update_lead(
         setattr(lead, field, value)
     if payload.status in ("complete", "dead_end"):
         lead.completed_at = datetime.now(UTC)
-    db.commit()
+    db.flush()
     db.refresh(lead)
     audit.log(
         db,

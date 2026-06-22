@@ -3,6 +3,7 @@ import logging
 from datetime import UTC, datetime
 from uuid import uuid4
 
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.database import SessionLocal
@@ -36,14 +37,28 @@ def ingest_bytes(
             reason="already in workspace",
         )
 
-    doc = document_pipeline.create_pending_document(
-        filename=filename,
-        file_bytes=file_bytes,
-        workspace_id=workspace_id,
-        user_id=user_id,
-        db=db,
-        source_type="api_pull",
-    )
+    try:
+        doc = document_pipeline.create_pending_document(
+            filename=filename,
+            file_bytes=file_bytes,
+            workspace_id=workspace_id,
+            user_id=user_id,
+            db=db,
+            source_type="api_pull",
+        )
+    except IntegrityError:
+        # Lost a concurrent dedup race — the (workspace_id, sha256_hash) unique
+        # index rejected the duplicate. Fall back to the doc the winner inserted.
+        db.rollback()
+        existing = document_pipeline.find_existing_by_hash(workspace_id, sha256_hash, db)
+        if existing is not None:
+            return FetchItemResult(
+                item_ref=item_ref,
+                status="skipped",
+                document_id=existing.id,
+                reason="already in workspace",
+            )
+        raise
     document_pipeline.process_upload_background(
         doc.id,
         file_bytes,

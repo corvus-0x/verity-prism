@@ -71,7 +71,10 @@ def create_relationship(
     user: User = Depends(get_current_user),
 ):
     get_workspace_or_404(workspace_id, user, db)
-    return entity_service.create_relationship(db, workspace_id, user.id, payload)
+    rel = entity_service.create_relationship(db, workspace_id, user.id, payload)
+    if rel is None:
+        raise HTTPException(status_code=404, detail="Related entity not found in this workspace")
+    return rel
 
 
 @router.get("/relationships", response_model=list[RelationshipOut])

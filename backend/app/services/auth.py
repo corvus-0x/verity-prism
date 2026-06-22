@@ -38,10 +38,15 @@ def get_user_by_email(db: Session, email: str) -> User | None:
 
 
 def create_user(db: Session, email: str, password: str, full_name: str) -> User:
-    """Create a user with a hashed password and return the persisted row."""
+    """Create a user with a hashed password and flush it, returning the row.
+
+    Flushes rather than commits so the caller (the register endpoint) can write
+    the 'registered' audit entry in the same transaction — the user and its audit
+    record commit together, so a user can never exist without a registration event.
+    """
     user = User(email=email, password_hash=hash_password(password), full_name=full_name)
     db.add(user)
-    db.commit()
+    db.flush()
     db.refresh(user)
     return user
 

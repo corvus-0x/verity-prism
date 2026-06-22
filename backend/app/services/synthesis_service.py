@@ -288,9 +288,12 @@ def resolve_citation(workspace_id: str, extraction_id: str, db: Session) -> dict
     }
 
 
-def store_brief(workspace_id: str, brief: dict, db: Session) -> Brief:
+def store_brief(workspace_id: str, brief: dict, db: Session, commit: bool = True) -> Brief:
     """Persist a brief as the next version for the workspace; prior versions are
     retained. Returns the stored row.
+
+    Pass commit=False to flush only, so the caller can commit the brief together
+    with its audit entry in one transaction (see generate_brief).
     """
     last = (
         db.query(Brief)
@@ -309,7 +312,9 @@ def store_brief(workspace_id: str, brief: dict, db: Session) -> Brief:
         output_tokens=brief.get("output_tokens"),
     )
     db.add(row)
-    db.commit()
+    db.flush()
+    if commit:
+        db.commit()
     db.refresh(row)
     return row
 
@@ -318,7 +323,7 @@ def generate_brief(workspace_id: str, user_id: str, db: Session) -> Brief:
     """Synthesize a brief, persist it as the next version, and audit it.
     Returns the stored row."""
     brief = synthesize_brief(workspace_id, db)
-    row = store_brief(workspace_id, brief, db)
+    row = store_brief(workspace_id, brief, db, commit=False)
     audit.log(
         db,
         action="brief_generated",

@@ -179,7 +179,7 @@ def correct_extraction(
 
     _mark_complete_if_resolved(db, doc)
 
-    db.commit()
+    db.flush()
     db.refresh(correction)
 
     audit.log(
@@ -216,7 +216,7 @@ def flag_document(
     before_state = {"flag_reason": doc.flag_reason, "flag_note": doc.flag_note}
     doc.flag_reason = flag_reason
     doc.flag_note = flag_note
-    db.commit()
+    db.flush()
     db.refresh(doc)
 
     audit.log(
@@ -241,8 +241,25 @@ def create_extraction(
     if not doc:
         raise ReviewError(404, "Document not found")
 
-    if doc.schema_id and body.schema_id != doc.schema_id:
+    if not doc.schema_id:
+        raise ReviewError(400, "Document has no schema; cannot create a schema-bound extraction")
+    if body.schema_id != doc.schema_id:
         raise ReviewError(400, "schema_id does not match document schema")
+
+    # This endpoint is for fields the pipeline never extracted; an existing field
+    # must go through the correction endpoint so attempts aren't duplicated.
+    prior = (
+        db.query(DocumentExtraction.id)
+        .filter(
+            DocumentExtraction.document_id == document_id,
+            DocumentExtraction.field_name == body.field_name,
+        )
+        .first()
+    )
+    if prior:
+        raise ReviewError(
+            409, f"field '{body.field_name}' already has an extraction; use the correction endpoint"
+        )
 
     schema_for_validation = (
         db.query(DocumentSchema).filter(DocumentSchema.id == doc.schema_id).first()
@@ -271,7 +288,7 @@ def create_extraction(
 
     _mark_complete_if_resolved(db, doc)
 
-    db.commit()
+    db.flush()
     db.refresh(row)
 
     audit.log(

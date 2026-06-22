@@ -65,15 +65,15 @@ def test_audit_log_scoped_to_workspace(client, auth_headers, workspace_id, db):
     assert "uploaded" in actions
 
 
-def test_audit_log_swallows_commit_failure_and_rolls_back():
-    """A failing audit write must not break the business op that already committed.
-    audit.log catches the failure, rolls back the audit insert, and logs a warning."""
+def test_audit_log_propagates_commit_failure():
+    """Atomic audit: a failed audit commit must propagate, not be swallowed, so the
+    caller's transaction rolls back instead of being left as an un-audited change."""
     from unittest.mock import MagicMock
 
     db = MagicMock()
     db.commit.side_effect = Exception("audit table unavailable")
-    audit_service.log(db, action="test_action", user_id="u1")  # must not raise
-    db.rollback.assert_called_once()
+    with pytest.raises(Exception, match="audit table unavailable"):
+        audit_service.log(db, action="test_action", user_id="u1")
 
 
 # ── M4a: pipeline failure audit ─────────────────────────────────────────────

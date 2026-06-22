@@ -175,7 +175,10 @@ def get_transactions(
     Invalid transaction_type values return an empty result rather than raising a DB error,
     because PostgreSQL enums reject unknown values at query time.
     """
-    q = db.query(Transaction).filter(Transaction.workspace_id == workspace_id)
+    q = db.query(Transaction).filter(
+        Transaction.workspace_id == workspace_id,
+        Transaction.is_deleted == False,  # noqa: E712
+    )
     if transaction_type:
         if transaction_type not in _VALID_TRANSACTION_TYPES:
             return {"transactions": [], "count": 0}
@@ -218,7 +221,14 @@ def get_transactions(
 
 def get_findings(workspace_id: str, db: Session) -> dict:
     """List all findings in the workspace with title, severity, status, and description."""
-    findings = db.query(Finding).filter(Finding.workspace_id == workspace_id).all()
+    findings = (
+        db.query(Finding)
+        .filter(
+            Finding.workspace_id == workspace_id,
+            Finding.is_deleted == False,  # noqa: E712
+        )
+        .all()
+    )
     return {
         "findings": [
             {
@@ -236,7 +246,10 @@ def get_findings(workspace_id: str, db: Session) -> dict:
 
 def get_leads(workspace_id: str, db: Session, status: str = "pending") -> dict:
     """List investigation leads filtered by status (pending, in_progress, or all)."""
-    q = db.query(InvestigationLead).filter(InvestigationLead.workspace_id == workspace_id)
+    q = db.query(InvestigationLead).filter(
+        InvestigationLead.workspace_id == workspace_id,
+        InvestigationLead.is_deleted == False,  # noqa: E712
+    )
     if status != "all":
         q = q.filter(InvestigationLead.status == status)
     leads = q.all()

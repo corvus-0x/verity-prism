@@ -11,7 +11,7 @@ def create_entity(db: Session, workspace_id: str, user_id: str, payload: EntityC
     """Create an entity and write an audit entry."""
     entity = Entity(**payload.model_dump(), workspace_id=workspace_id, created_by=user_id)
     db.add(entity)
-    db.commit()
+    db.flush()
     db.refresh(entity)
     audit.log(
         db,
@@ -55,7 +55,7 @@ def update_entity(
     before = {"name": entity.name, "status": entity.status}
     for field, value in payload.model_dump(exclude_unset=True).items():
         setattr(entity, field, value)
-    db.commit()
+    db.flush()
     db.refresh(entity)
     audit.log(
         db,
@@ -84,7 +84,7 @@ def delete_entity(db: Session, workspace_id: str, entity_id: str, user_id: str) 
         return False
     entity.is_deleted = True
     entity.deleted_at = datetime.now(UTC)
-    db.commit()
+    db.flush()
     audit.log(
         db,
         action="deleted",
@@ -98,11 +98,24 @@ def delete_entity(db: Session, workspace_id: str, entity_id: str, user_id: str) 
 
 def create_relationship(
     db: Session, workspace_id: str, user_id: str, payload: RelationshipCreate
-) -> Relationship:
-    """Create a relationship between entities and write an audit entry."""
+) -> Relationship | None:
+    """Create a relationship between two entities and write an audit entry.
+    Returns None if either endpoint is not an active entity in this workspace, so
+    a relationship can't reference a deleted or cross-workspace entity."""
+    endpoint_ids = {payload.entity_a_id, payload.entity_b_id}
+    active_ids = {
+        row.id
+        for row in db.query(Entity.id).filter(
+            Entity.id.in_(endpoint_ids),
+            Entity.workspace_id == workspace_id,
+            Entity.is_deleted == False,  # noqa: E712
+        )
+    }
+    if active_ids != endpoint_ids:
+        return None
     rel = Relationship(**payload.model_dump(), workspace_id=workspace_id, created_by=user_id)
     db.add(rel)
-    db.commit()
+    db.flush()
     db.refresh(rel)
     audit.log(
         db,

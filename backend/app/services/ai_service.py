@@ -78,7 +78,7 @@ def send_message(
         content=response_text,
     )
     db.add(assistant_msg)
-    db.commit()
+    db.flush()
     db.refresh(assistant_msg)
 
     audit.log(

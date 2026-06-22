@@ -4,7 +4,7 @@ All queries are scoped to the workspaces the caller owns and exclude soft-delete
 documents. Pure reads over existing tables; no writes.
 """
 
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -48,7 +48,7 @@ def automation_rate(db: Session, user_id: str) -> AutomationRateOut:
 
 def volume(db: Session, user_id: str, days: int) -> VolumeOut:
     """Daily inbound and completed document counts for the last N days."""
-    today = date.today()
+    today = datetime.now(UTC).date()  # UTC to match the UTC cutoff and uploaded_at storage
     day_list = [today - timedelta(days=i) for i in range(days - 1, -1, -1)]
     cutoff = datetime(today.year, today.month, today.day, tzinfo=UTC) - timedelta(days=days - 1)
 

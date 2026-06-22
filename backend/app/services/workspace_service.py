@@ -11,7 +11,7 @@ def create_workspace(db: Session, user_id: str, payload: WorkspaceCreate) -> Wor
     db.add(workspace)
     db.flush()
     db.add(WorkspaceMember(workspace_id=workspace.id, user_id=user_id, role="owner"))
-    db.commit()
+    db.flush()
     db.refresh(workspace)
     audit.log(
         db,
@@ -41,7 +41,7 @@ def apply_update(
     before = {"name": workspace.name, "status": workspace.status}
     for field, value in payload.model_dump(exclude_unset=True).items():
         setattr(workspace, field, value)
-    db.commit()
+    db.flush()
     db.refresh(workspace)
     audit.log(
         db,

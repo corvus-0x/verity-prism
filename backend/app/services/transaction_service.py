@@ -11,7 +11,7 @@ def create_transaction(
     """Create a transaction and write an audit entry."""
     tx = Transaction(**payload.model_dump(), workspace_id=workspace_id, created_by=user_id)
     db.add(tx)
-    db.commit()
+    db.flush()
     db.refresh(tx)
     audit.log(
         db,

@@ -25,10 +25,9 @@ def register(payload: UserRegister, db: Session = Depends(get_db)):
     if get_user_by_email(db, payload.email):
         raise HTTPException(status_code=400, detail="Email already registered")
     user = create_user(db, payload.email, payload.password, payload.full_name)
-    try:
-        audit.log(db, action="registered", user_id=user.id)
-    except Exception as e:
-        logger.warning(f"Audit log failed for register user {user.id}: {e}")
+    # create_user flushed but did not commit — this audit.log commits the user and
+    # its registration record together (atomic; no user without a 'registered' event).
+    audit.log(db, action="registered", user_id=user.id)
     return user
 
 
