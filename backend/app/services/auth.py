@@ -20,8 +20,16 @@ def hash_password(password: str) -> str:
 
 
 def verify_password(plain: str, hashed: str) -> bool:
-    """Return True if plain matches the stored bcrypt hash."""
-    return pwd_context.verify(plain, hashed)
+    """Return True if plain matches the stored bcrypt hash.
+
+    A malformed or non-bcrypt stored hash makes passlib raise (UnknownHashError,
+    a ValueError) rather than return False. Treat that as a failed match so a
+    corrupt/placeholder password_hash yields a clean 401 instead of a 500.
+    """
+    try:
+        return pwd_context.verify(plain, hashed)
+    except ValueError:
+        return False
 
 
 def get_user_by_email(db: Session, email: str) -> User | None:
