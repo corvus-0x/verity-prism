@@ -1,13 +1,11 @@
-import math
-
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.deps import get_workspace_or_404
-from app.models.audit import AuditLog
 from app.models.user import User
 from app.schemas.audit_log import AuditLogPage
+from app.services import audit
 from app.services.auth import get_current_user
 
 router = APIRouter(prefix="/workspaces/{workspace_id}", tags=["audit"])
@@ -23,19 +21,4 @@ def get_audit_log(
 ):
     """Return paginated audit log entries for this workspace, newest first."""
     get_workspace_or_404(workspace_id, user, db)
-
-    base = db.query(AuditLog).filter(AuditLog.workspace_id == workspace_id)
-    total = base.count()
-    entries = (
-        base.order_by(AuditLog.timestamp.desc())
-        .offset((page - 1) * limit)
-        .limit(limit)
-        .all()
-    )
-
-    return AuditLogPage(
-        entries=entries,
-        total=total,
-        page=page,
-        pages=max(1, math.ceil(total / limit)),
-    )
+    return audit.get_page(db, workspace_id, page, limit)

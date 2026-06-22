@@ -1,6 +1,9 @@
+import math
+
 from sqlalchemy.orm import Session
 
 from app.models.audit import AuditLog
+from app.schemas.audit_log import AuditLogPage
 
 
 def log(
@@ -47,3 +50,16 @@ def log(
     )
     db.add(entry)
     db.commit()
+
+
+def get_page(db: Session, workspace_id: str, page: int, limit: int) -> AuditLogPage:
+    """Return a page of audit entries for a workspace, newest first."""
+    base = db.query(AuditLog).filter(AuditLog.workspace_id == workspace_id)
+    total = base.count()
+    entries = base.order_by(AuditLog.timestamp.desc()).offset((page - 1) * limit).limit(limit).all()
+    return AuditLogPage(
+        entries=entries,
+        total=total,
+        page=page,
+        pages=max(1, math.ceil(total / limit)),
+    )

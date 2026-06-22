@@ -8,7 +8,13 @@ from app.database import get_db
 from app.models.user import User
 from app.schemas.user import LoginOut, UserLogin, UserOut, UserRegister
 from app.services import audit
-from app.services.auth import create_access_token, get_current_user, hash_password, verify_password
+from app.services.auth import (
+    create_access_token,
+    create_user,
+    get_current_user,
+    get_user_by_email,
+    verify_password,
+)
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -16,16 +22,9 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 
 @router.post("/register", response_model=UserOut, status_code=201)
 def register(payload: UserRegister, db: Session = Depends(get_db)):
-    if db.query(User).filter(User.email == payload.email).first():
+    if get_user_by_email(db, payload.email):
         raise HTTPException(status_code=400, detail="Email already registered")
-    user = User(
-        email=payload.email,
-        password_hash=hash_password(payload.password),
-        full_name=payload.full_name,
-    )
-    db.add(user)
-    db.commit()
-    db.refresh(user)
+    user = create_user(db, payload.email, payload.password, payload.full_name)
     try:
         audit.log(db, action="registered", user_id=user.id)
     except Exception as e:
@@ -35,7 +34,7 @@ def register(payload: UserRegister, db: Session = Depends(get_db)):
 
 @router.post("/login", response_model=LoginOut)
 def login(payload: UserLogin, response: Response, db: Session = Depends(get_db)):
-    user = db.query(User).filter(User.email == payload.email).first()
+    user = get_user_by_email(db, payload.email)
     if not user or not verify_password(payload.password, user.password_hash):
         try:
             masked = payload.email[:3] + "***" if payload.email else "***"

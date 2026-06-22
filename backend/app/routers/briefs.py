@@ -6,9 +6,8 @@ from app.database import get_db
 from app.deps import get_workspace_or_404
 from app.models.brief import Brief
 from app.models.user import User
-from app.services import audit
+from app.services import synthesis_service
 from app.services.auth import get_current_user
-from app.services.synthesis_service import resolve_citation, store_brief, synthesize_brief
 
 router = APIRouter(prefix="/workspaces/{workspace_id}", tags=["briefs"])
 
@@ -39,21 +38,7 @@ def generate_brief(
     user: User = Depends(get_current_user),
 ):
     get_workspace_or_404(workspace_id, user, db)
-    brief = synthesize_brief(workspace_id, db)
-    row = store_brief(workspace_id, brief, db)
-    audit.log(
-        db,
-        action="brief_generated",
-        user_id=user.id,
-        workspace_id=workspace_id,
-        entity_type="brief",
-        entity_id=row.id,
-        after_state={
-            "version": row.version,
-            "claim_count": len(row.claims),
-            "claims_dropped": brief.get("claims_dropped", 0),
-        },
-    )
+    row = synthesis_service.generate_brief(workspace_id, user.id, db)
     return _serialize(row)
 
 
@@ -64,12 +49,7 @@ def latest_brief(
     user: User = Depends(get_current_user),
 ):
     get_workspace_or_404(workspace_id, user, db)
-    row = (
-        db.query(Brief)
-        .filter(Brief.workspace_id == workspace_id, Brief.is_deleted == False)  # noqa: E712
-        .order_by(Brief.version.desc())
-        .first()
-    )
+    row = synthesis_service.get_latest_brief(workspace_id, db)
     if not row:
         raise HTTPException(status_code=404, detail="No brief generated yet")
     return _serialize(row)
@@ -82,12 +62,7 @@ def brief_history(
     user: User = Depends(get_current_user),
 ):
     get_workspace_or_404(workspace_id, user, db)
-    rows = (
-        db.query(Brief)
-        .filter(Brief.workspace_id == workspace_id, Brief.is_deleted == False)  # noqa: E712
-        .order_by(Brief.version.desc())
-        .all()
-    )
+    rows = synthesis_service.list_briefs(workspace_id, db)
     return {"briefs": [_serialize(r) for r in rows], "count": len(rows)}
 
 
@@ -99,7 +74,7 @@ def get_citation(
     user: User = Depends(get_current_user),
 ):
     get_workspace_or_404(workspace_id, user, db)
-    resolved = resolve_citation(workspace_id, extraction_id, db)
+    resolved = synthesis_service.resolve_citation(workspace_id, extraction_id, db)
     if not resolved:
         raise HTTPException(status_code=404, detail="Citation not found in this workspace")
     return resolved
@@ -115,7 +90,7 @@ def resolve_citations(
     get_workspace_or_404(workspace_id, user, db)
     resolved = {}
     for eid in payload.extraction_ids:
-        r = resolve_citation(workspace_id, eid, db)
+        r = synthesis_service.resolve_citation(workspace_id, eid, db)
         if r:
             resolved[eid] = r
     return {"resolved": resolved, "count": len(resolved)}

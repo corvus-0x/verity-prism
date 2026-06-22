@@ -21,7 +21,7 @@ from app.models.brief import Brief
 from app.models.document import Document
 from app.models.document_schema import DocumentSchema
 from app.models.workspace import Workspace
-from app.services import claude_client, signal_registry
+from app.services import audit, claude_client, signal_registry
 from app.services.claude_client import CHAT_MODEL
 from app.services.export_service import latest_extractions
 from app.services.saliences import DocumentMeta, Evidence, Salience, compute_saliences
@@ -298,3 +298,44 @@ def store_brief(workspace_id: str, brief: dict, db: Session) -> Brief:
     db.commit()
     db.refresh(row)
     return row
+
+
+def generate_brief(workspace_id: str, user_id: str, db: Session) -> Brief:
+    """Synthesize a brief, persist it as the next version, and audit it.
+    Returns the stored row."""
+    brief = synthesize_brief(workspace_id, db)
+    row = store_brief(workspace_id, brief, db)
+    audit.log(
+        db,
+        action="brief_generated",
+        user_id=user_id,
+        workspace_id=workspace_id,
+        entity_type="brief",
+        entity_id=row.id,
+        after_state={
+            "version": row.version,
+            "claim_count": len(row.claims),
+            "claims_dropped": brief.get("claims_dropped", 0),
+        },
+    )
+    return row
+
+
+def get_latest_brief(workspace_id: str, db: Session) -> Brief | None:
+    """Return the newest active brief for a workspace, or None if none exist."""
+    return (
+        db.query(Brief)
+        .filter(Brief.workspace_id == workspace_id, Brief.is_deleted == False)  # noqa: E712
+        .order_by(Brief.version.desc())
+        .first()
+    )
+
+
+def list_briefs(workspace_id: str, db: Session) -> list[Brief]:
+    """Return all active briefs for a workspace, newest version first."""
+    return (
+        db.query(Brief)
+        .filter(Brief.workspace_id == workspace_id, Brief.is_deleted == False)  # noqa: E712
+        .order_by(Brief.version.desc())
+        .all()
+    )
