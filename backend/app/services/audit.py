@@ -1,6 +1,9 @@
+import math
+
 from sqlalchemy.orm import Session
 
 from app.models.audit import AuditLog
+from app.schemas.audit_log import AuditLogPage
 
 
 def log(
@@ -22,6 +25,13 @@ def log(
 
     before_state / after_state accept any dict; store the relevant fields, not
     entire ORM objects.
+
+    Atomic with the caller's change: this commits the current transaction, so a
+    mutating service should db.add(...) + db.flush() its business row (NOT commit)
+    and then call audit.log() — the single commit here persists the business row
+    and its audit entry together. If the audit write fails, the whole transaction
+    (including the business change) rolls back and the error propagates, so a
+    state change can never exist without its audit record.
     """
     # WALKTHROUGH: notice how little is here — just INSERT a row. There is no
     # update() or delete() function in this module, and that's the whole point.
@@ -47,3 +57,16 @@ def log(
     )
     db.add(entry)
     db.commit()
+
+
+def get_page(db: Session, workspace_id: str, page: int, limit: int) -> AuditLogPage:
+    """Return a page of audit entries for a workspace, newest first."""
+    base = db.query(AuditLog).filter(AuditLog.workspace_id == workspace_id)
+    total = base.count()
+    entries = base.order_by(AuditLog.timestamp.desc()).offset((page - 1) * limit).limit(limit).all()
+    return AuditLogPage(
+        entries=entries,
+        total=total,
+        page=page,
+        pages=max(1, math.ceil(total / limit)),
+    )

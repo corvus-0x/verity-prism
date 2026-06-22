@@ -36,7 +36,9 @@ Private/sensitive case files: `private/` (gitignored — never commit)
 ```bash
 docker-compose up --build
 ```
-Frontend: `http://localhost:5173` | Backend API: `http://localhost:8000` | API docs: `http://localhost:8000/docs`
+Frontend: `http://localhost:5173` | Backend API: `http://localhost:8001` | API docs: `http://localhost:8001/docs`
+
+> Host ports are offset from the defaults so Prism never collides with the Catalyst stack: db `5433`→5432, backend `8001`→8000. Container-internal ports are unchanged (`db:5432`, `backend:8000`), so the commands below that use `db:5432` are correct as written.
 
 ### Backend only (faster iteration)
 ```bash
@@ -147,7 +149,7 @@ Routers, models, and schemas do **not** need docstrings.
 
 Required in `backend/.env` (copy from `backend/.env.example`):
 ```
-DATABASE_URL=postgresql://catalyst:catalyst@localhost:5432/catalyst
+DATABASE_URL=postgresql://catalyst:catalyst@localhost:5433/catalyst
 SECRET_KEY=<long random string>
 ANTHROPIC_API_KEY=sk-ant-...
 UPLOAD_DIR=./uploads
@@ -190,3 +192,26 @@ Blog posts live in `docs/blog/`. Always start from `docs/blog/template.md`.
 5. Apply CodeRabbit fixes with `/coderabbit autofix` before merging
 
 Never commit code directly to `main` during active implementation work. Main receives merges from reviewed PRs only — with one exception: **docs-only changes** (build tracker entries, README tweaks, blog posts, roadmap updates) may commit directly to main, matching established practice.
+
+---
+
+## Development System
+
+The system that produces the code is itself maintained. Invest in it, not just features.
+
+**Every repeated manual correction is a signal the system — not the output — needs to change.** When Claude gets something wrong and you fix it, don't just move on: encode the correction so that category of mistake can't recur. Run `/encode-correction` (or say "encode this correction").
+
+- It routes the fix to the **strongest enforcement that fits**: hook > skill > CLAUDE.md rule > MEMORY. Mechanizable conventions become hooks (they fire whether or not anyone remembers); the rest become skills, rules, or memory.
+- Every encoded correction is logged to `docs/correction-log.md` — the dated record that the system gets stricter over time.
+
+Build the system that verifies; don't be the system.
+
+### Active guards (PostToolUse hooks)
+
+These run automatically on every edit — see `.claude/settings.local.json`:
+
+- **`check_soft_delete.py`** — flags a service that queries a soft-deletable model (Document, Entity, Brief, Note, etc.) without referencing `is_deleted`.
+- **`check_thin_routers.py`** — flags any `db.`/`session.` data call in `app/routers/`. Routers stay thin: validate input → call a service → return. All DB logic lives in `app/services/` (one `*_service.py` per router).
+- **ruff** — auto-formats and `--fix`es every `.py` on save.
+
+**Editing gotcha:** when adding a new import, include its first usage in the *same* edit. The ruff `--fix` hook strips imports that are still unused at write time, so adding an import in a separate earlier edit silently removes it.

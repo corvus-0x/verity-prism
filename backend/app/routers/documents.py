@@ -7,11 +7,9 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.database import get_db
 from app.deps import get_workspace_or_404
-from app.models.document import Document
-from app.models.document_extraction import DocumentExtraction
 from app.models.user import User
 from app.schemas.document import DocumentOut, ExtractionOut
-from app.services import audit, export_service
+from app.services import audit, document_service, export_service
 from app.services.auth import get_current_user
 from app.services.document_pipeline import (
     EXTENSION_TO_TYPE,
@@ -46,25 +44,33 @@ def upload_document(
       failed    — a pipeline step failed; check extraction_error for details
       no_schema — document type has no schema; an investigation lead was created
     """
-    get_workspace_or_404(workspace_id, user, db, required_roles={"owner", "analyst"}, require_active=True)
+    get_workspace_or_404(
+        workspace_id, user, db, required_roles={"owner", "analyst"}, require_active=True
+    )
 
     # Fast-fail before loading into memory if size is available
     if getattr(file, "size", 0) and file.size > settings.max_upload_bytes:
-        raise HTTPException(status_code=413, detail=f"File too large. Maximum size is {settings.max_upload_bytes // 1_048_576} MB.")
+        raise HTTPException(
+            status_code=413,
+            detail=f"File too large. Maximum size is {settings.max_upload_bytes // 1_048_576} MB.",
+        )
 
     # Read file bytes NOW — UploadFile is not available after the response is sent
     file_bytes = file.file.read()
     if not file_bytes:
         raise HTTPException(status_code=400, detail="Uploaded file is empty")
     if len(file_bytes) > settings.max_upload_bytes:
-        raise HTTPException(status_code=413, detail=f"File too large. Maximum size is {settings.max_upload_bytes // 1_048_576} MB.")
+        raise HTTPException(
+            status_code=413,
+            detail=f"File too large. Maximum size is {settings.max_upload_bytes // 1_048_576} MB.",
+        )
 
     ext = Path(file.filename or "").suffix.lower()
     if ext not in ALLOWED_UPLOAD_EXTENSIONS:
         raise HTTPException(
             status_code=415,
             detail=f"Unsupported file type '{ext or '(none)'}'. Accepted: "
-                   f"{', '.join(sorted(ALLOWED_UPLOAD_EXTENSIONS))}",
+            f"{', '.join(sorted(ALLOWED_UPLOAD_EXTENSIONS))}",
         )
 
     # Step 1–2: hash + store + create pending record (synchronous)
@@ -96,10 +102,7 @@ def list_documents(
     user: User = Depends(get_current_user),
 ):
     get_workspace_or_404(workspace_id, user, db)
-    return db.query(Document).filter(
-        Document.workspace_id == workspace_id,
-        Document.is_deleted == False,
-    ).all()
+    return document_service.list_documents(db, workspace_id)
 
 
 @router.get("/documents/{document_id}/status/stream")
@@ -126,11 +129,7 @@ def get_document(
     user: User = Depends(get_current_user),
 ):
     get_workspace_or_404(workspace_id, user, db)
-    doc = db.query(Document).filter(
-        Document.id == document_id,
-        Document.workspace_id == workspace_id,
-        Document.is_deleted == False
-    ).first()
+    doc = document_service.get_document(db, workspace_id, document_id)
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
     return doc
@@ -151,21 +150,12 @@ def list_extractions(
     """
     get_workspace_or_404(workspace_id, user, db)
 
-    doc = db.query(Document).filter(
-        Document.id == document_id,
-        Document.workspace_id == workspace_id,
-        Document.is_deleted == False
-    ).first()
+    doc = document_service.get_document(db, workspace_id, document_id)
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
 
     if include_history:
-        return (
-            db.query(DocumentExtraction)
-            .filter(DocumentExtraction.document_id == document_id)
-            .order_by(DocumentExtraction.field_name, DocumentExtraction.attempt)
-            .all()
-        )
+        return document_service.list_extraction_history(db, document_id)
 
     return export_service.latest_extractions(document_id, db)
 
@@ -179,11 +169,7 @@ def download_extractions_csv(
 ):
     """Download extracted fields for one document as CSV (latest attempt per field)."""
     get_workspace_or_404(workspace_id, user, db)
-    doc = db.query(Document).filter(
-        Document.id == document_id,
-        Document.workspace_id == workspace_id,
-        Document.is_deleted == False
-    ).first()
+    doc = document_service.get_document(db, workspace_id, document_id)
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
     extractions = export_service.latest_extractions(document_id, db)
@@ -191,7 +177,11 @@ def download_extractions_csv(
     return Response(
         content=content,
         media_type="text/csv",
-        headers={"Content-Disposition": content_disposition(f"{doc.filename}_extractions.csv", "attachment")},
+        headers={
+            "Content-Disposition": content_disposition(
+                f"{doc.filename}_extractions.csv", "attachment"
+            )
+        },
     )
 
 
@@ -204,11 +194,7 @@ def download_extractions_json(
 ):
     """Download extracted fields for one document as JSON (latest attempt per field)."""
     get_workspace_or_404(workspace_id, user, db)
-    doc = db.query(Document).filter(
-        Document.id == document_id,
-        Document.workspace_id == workspace_id,
-        Document.is_deleted == False
-    ).first()
+    doc = document_service.get_document(db, workspace_id, document_id)
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
     extractions = export_service.latest_extractions(document_id, db)
@@ -216,7 +202,11 @@ def download_extractions_json(
     return Response(
         content=content,
         media_type="application/json",
-        headers={"Content-Disposition": content_disposition(f"{doc.filename}_extractions.json", "attachment")},
+        headers={
+            "Content-Disposition": content_disposition(
+                f"{doc.filename}_extractions.json", "attachment"
+            )
+        },
     )
 
 
@@ -228,11 +218,7 @@ def download_workspace_extractions_csv(
 ):
     """Download all extractions across the workspace as CSV."""
     get_workspace_or_404(workspace_id, user, db)
-    docs = db.query(Document).filter(
-        Document.workspace_id == workspace_id,
-        Document.extraction_status.in_(["complete", "needs_review"]),
-        Document.is_deleted == False,  # noqa: E712
-    ).all()
+    docs = document_service.list_export_documents(db, workspace_id)
     content = export_service.build_workspace_csv(docs, db)
     return Response(
         content=content,
@@ -249,11 +235,7 @@ def download_workspace_extractions_json(
 ):
     """Download all extractions across the workspace as JSON."""
     get_workspace_or_404(workspace_id, user, db)
-    docs = db.query(Document).filter(
-        Document.workspace_id == workspace_id,
-        Document.extraction_status.in_(["complete", "needs_review"]),
-        Document.is_deleted == False,  # noqa: E712
-    ).all()
+    docs = document_service.list_export_documents(db, workspace_id)
     content = export_service.build_workspace_json(docs, db)
     return Response(
         content=content,
@@ -282,11 +264,7 @@ def get_document_file(
 ):
     """Serve the raw source file for a document."""
     get_workspace_or_404(workspace_id, user, db)
-    doc = db.query(Document).filter(
-        Document.id == document_id,
-        Document.workspace_id == workspace_id,
-        Document.is_deleted == False,
-    ).first()
+    doc = document_service.get_document(db, workspace_id, document_id)
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
 

@@ -1,11 +1,8 @@
-from uuid import uuid4
-
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.deps import get_workspace_or_404
-from app.models.connector_run import ConnectorRun
 from app.models.user import User
 from app.schemas.connector import (
     CandidateOut,
@@ -111,18 +108,15 @@ def fetch_connector_items(
     allowed_ids = {c.id for c in connector_registry.get_connectors_for_vertical(ws.vertical)}
     if connector is None or connector_id not in allowed_ids:
         raise HTTPException(status_code=404, detail="Connector not found")
-    run = ConnectorRun(
-        id=str(uuid4()),
-        workspace_id=workspace_id,
-        connector_id=connector_id,
-        search_query=body.search_query,
-        candidate_label=body.candidate_label,
-        params={"candidate_ref": body.candidate_ref, "item_refs": body.item_refs},
-        status="running",
+    run = connector_service.create_run(
+        db,
+        workspace_id,
+        connector_id,
+        body.search_query,
+        body.candidate_label,
+        body.candidate_ref,
+        body.item_refs,
     )
-    db.add(run)
-    db.commit()
-    db.refresh(run)
     background.add_task(
         connector_service.run_fetch,
         run.id,
@@ -144,17 +138,7 @@ def list_connector_runs(
 ):
     """List this workspace's connector runs, newest first."""
     get_workspace_or_404(workspace_id, user, db)
-    return (
-        db.query(ConnectorRun)
-        .filter(
-            ConnectorRun.workspace_id == workspace_id,
-            ConnectorRun.is_deleted == False,  # noqa: E712
-        )
-        .order_by(ConnectorRun.started_at.desc())
-        .offset((page - 1) * limit)
-        .limit(limit)
-        .all()
-    )
+    return connector_service.list_runs(db, workspace_id, page, limit)
 
 
 @router.get("/connector-runs/{run_id}", response_model=RunOut)
@@ -166,15 +150,7 @@ def get_connector_run(
 ):
     """Fetch a single connector run by id."""
     get_workspace_or_404(workspace_id, user, db)
-    run = (
-        db.query(ConnectorRun)
-        .filter(
-            ConnectorRun.id == run_id,
-            ConnectorRun.workspace_id == workspace_id,
-            ConnectorRun.is_deleted == False,  # noqa: E712
-        )
-        .first()
-    )
+    run = connector_service.get_run(db, workspace_id, run_id)
     if run is None:
         raise HTTPException(status_code=404, detail="Connector run not found")
     return run

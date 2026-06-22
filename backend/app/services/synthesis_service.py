@@ -21,13 +21,25 @@ from app.models.brief import Brief
 from app.models.document import Document
 from app.models.document_schema import DocumentSchema
 from app.models.workspace import Workspace
-from app.services import claude_client, signal_registry
+from app.services import audit, claude_client, signal_registry
 from app.services.claude_client import CHAT_MODEL
 from app.services.export_service import latest_extractions
 from app.services.saliences import DocumentMeta, Evidence, Salience, compute_saliences
 from app.utils.json_helpers import strip_json_fences
 
 logger = logging.getLogger(__name__)
+
+
+class SynthesisError(Exception):
+    """Domain error carrying the HTTP status the router should surface.
+    Raised when synthesis cannot produce a usable brief (e.g. an unparseable
+    model response) so the caller fails loudly instead of storing an empty brief."""
+
+    def __init__(self, status_code: int, detail: str):
+        self.status_code = status_code
+        self.detail = detail
+        super().__init__(detail)
+
 
 _SYNTHESIS_SYSTEM = (
     "You are the synthesis layer of a document-intelligence platform. You receive "
@@ -107,6 +119,8 @@ def _validate_and_annotate(brief: dict, evidence: list[Evidence]) -> dict:
 
 
 def _required_fields_by_doc(docs: list[Document], db: Session) -> dict[str, set]:
+    """Map each document id to the set of field names its schema marks as required.
+    Used to score brief completeness against what each document was expected to yield."""
     schema_ids = {d.schema_id for d in docs if d.schema_id}
     if not schema_ids:
         return {}
@@ -218,7 +232,7 @@ def _synthesize(
         parsed = json.loads(strip_json_fences(response.content[0].text))
     except Exception as e:
         logger.warning(f"Brief synthesis returned unparseable JSON: {e}")
-        parsed = {"summary": "", "claims": []}
+        raise SynthesisError(502, "Brief synthesis returned an unparseable response") from e
     return parsed, meta
 
 
@@ -274,9 +288,12 @@ def resolve_citation(workspace_id: str, extraction_id: str, db: Session) -> dict
     }
 
 
-def store_brief(workspace_id: str, brief: dict, db: Session) -> Brief:
+def store_brief(workspace_id: str, brief: dict, db: Session, commit: bool = True) -> Brief:
     """Persist a brief as the next version for the workspace; prior versions are
     retained. Returns the stored row.
+
+    Pass commit=False to flush only, so the caller can commit the brief together
+    with its audit entry in one transaction (see generate_brief).
     """
     last = (
         db.query(Brief)
@@ -295,6 +312,49 @@ def store_brief(workspace_id: str, brief: dict, db: Session) -> Brief:
         output_tokens=brief.get("output_tokens"),
     )
     db.add(row)
-    db.commit()
+    db.flush()
+    if commit:
+        db.commit()
     db.refresh(row)
     return row
+
+
+def generate_brief(workspace_id: str, user_id: str, db: Session) -> Brief:
+    """Synthesize a brief, persist it as the next version, and audit it.
+    Returns the stored row."""
+    brief = synthesize_brief(workspace_id, db)
+    row = store_brief(workspace_id, brief, db, commit=False)
+    audit.log(
+        db,
+        action="brief_generated",
+        user_id=user_id,
+        workspace_id=workspace_id,
+        entity_type="brief",
+        entity_id=row.id,
+        after_state={
+            "version": row.version,
+            "claim_count": len(row.claims),
+            "claims_dropped": brief.get("claims_dropped", 0),
+        },
+    )
+    return row
+
+
+def get_latest_brief(workspace_id: str, db: Session) -> Brief | None:
+    """Return the newest active brief for a workspace, or None if none exist."""
+    return (
+        db.query(Brief)
+        .filter(Brief.workspace_id == workspace_id, Brief.is_deleted == False)  # noqa: E712
+        .order_by(Brief.version.desc())
+        .first()
+    )
+
+
+def list_briefs(workspace_id: str, db: Session) -> list[Brief]:
+    """Return all active briefs for a workspace, newest version first."""
+    return (
+        db.query(Brief)
+        .filter(Brief.workspace_id == workspace_id, Brief.is_deleted == False)  # noqa: E712
+        .order_by(Brief.version.desc())
+        .all()
+    )

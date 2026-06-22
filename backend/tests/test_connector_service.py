@@ -6,6 +6,7 @@ process_upload_background is patched so no real pipeline (OCR/Claude/DB writes
 beyond the pending Document) runs. user/workspace fixtures are defined locally
 here (they live inside test_pipeline.py, not conftest.py).
 """
+
 import uuid
 from unittest.mock import patch
 
@@ -17,6 +18,7 @@ from app.services import connector_service
 from app.services.connectors.base import FetchItemResult
 
 # ── Local fixtures (mirror test_pipeline.py) ──────────────────────────────────
+
 
 @pytest.fixture
 def user(db):
@@ -46,12 +48,17 @@ def workspace(db, user):
 
 # ── Tests ─────────────────────────────────────────────────────────────────────
 
+
 def test_ingest_bytes_creates_document_with_provenance(db, workspace, user):
     with patch("app.services.document_pipeline.process_upload_background"):
         outcome = connector_service.ingest_bytes(
-            db=db, workspace_id=workspace.id, user_id=user.id,
-            filename="2023_123456789_990.xml", file_bytes=b"<Return>x</Return>",
-            connector_id="irs-teos", item_ref="123456789:2023:obj",
+            db=db,
+            workspace_id=workspace.id,
+            user_id=user.id,
+            filename="2023_123456789_990.xml",
+            file_bytes=b"<Return>x</Return>",
+            connector_id="irs-teos",
+            item_ref="123456789:2023:obj",
         )
     assert isinstance(outcome, FetchItemResult)
     assert outcome.status == "created"
@@ -62,14 +69,62 @@ def test_ingest_bytes_skips_duplicate_by_hash(db, workspace, user):
     payload = b"<Return>same</Return>"
     with patch("app.services.document_pipeline.process_upload_background"):
         first = connector_service.ingest_bytes(
-            db=db, workspace_id=workspace.id, user_id=user.id,
-            filename="a.xml", file_bytes=payload, connector_id="irs-teos", item_ref="r1",
+            db=db,
+            workspace_id=workspace.id,
+            user_id=user.id,
+            filename="a.xml",
+            file_bytes=payload,
+            connector_id="irs-teos",
+            item_ref="r1",
         )
         second = connector_service.ingest_bytes(
-            db=db, workspace_id=workspace.id, user_id=user.id,
-            filename="b.xml", file_bytes=payload, connector_id="irs-teos", item_ref="r2",
+            db=db,
+            workspace_id=workspace.id,
+            user_id=user.id,
+            filename="b.xml",
+            file_bytes=payload,
+            connector_id="irs-teos",
+            item_ref="r2",
         )
     assert first.status == "created"
     assert second.status == "skipped"
     assert "already in workspace" in (second.reason or "")
+    assert second.document_id == first.document_id
+
+
+def test_ingest_bytes_recovers_from_dedup_race(db, workspace, user):
+    """If the pre-check misses (concurrent race), the unique index rejects the
+    duplicate and the fallback returns the winner's document instead of erroring."""
+    from app.models.document import Document
+
+    payload = b"<Return>race</Return>"
+    with patch("app.services.document_pipeline.process_upload_background"):
+        first = connector_service.ingest_bytes(
+            db=db,
+            workspace_id=workspace.id,
+            user_id=user.id,
+            filename="a.xml",
+            file_bytes=payload,
+            connector_id="irs-teos",
+            item_ref="r1",
+        )
+    assert first.status == "created"
+    existing = db.query(Document).filter(Document.id == first.document_id).first()
+
+    # Pre-check returns None (forcing the insert path); the fallback re-query returns
+    # the doc the winner inserted.
+    with (
+        patch("app.services.document_pipeline.process_upload_background"),
+        patch("app.services.document_pipeline.find_existing_by_hash", side_effect=[None, existing]),
+    ):
+        second = connector_service.ingest_bytes(
+            db=db,
+            workspace_id=workspace.id,
+            user_id=user.id,
+            filename="b.xml",
+            file_bytes=payload,
+            connector_id="irs-teos",
+            item_ref="r2",
+        )
+    assert second.status == "skipped"
     assert second.document_id == first.document_id

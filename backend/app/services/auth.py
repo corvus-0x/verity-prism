@@ -13,19 +13,50 @@ from app.models.user import User
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 bearer_scheme = HTTPBearer(auto_error=False)
 
+
 def hash_password(password: str) -> str:
     """Return a bcrypt hash of the given password."""
     return pwd_context.hash(password)
 
+
 def verify_password(plain: str, hashed: str) -> bool:
-    """Return True if plain matches the stored bcrypt hash."""
-    return pwd_context.verify(plain, hashed)
+    """Return True if plain matches the stored bcrypt hash.
+
+    A malformed or non-bcrypt stored hash makes passlib raise (UnknownHashError,
+    a ValueError) rather than return False. Treat that as a failed match so a
+    corrupt/placeholder password_hash yields a clean 401 instead of a 500.
+    """
+    try:
+        return pwd_context.verify(plain, hashed)
+    except ValueError:
+        return False
+
+
+def get_user_by_email(db: Session, email: str) -> User | None:
+    """Look up a user by email; None if not registered."""
+    return db.query(User).filter(User.email == email).first()
+
+
+def create_user(db: Session, email: str, password: str, full_name: str) -> User:
+    """Create a user with a hashed password and flush it, returning the row.
+
+    Flushes rather than commits so the caller (the register endpoint) can write
+    the 'registered' audit entry in the same transaction — the user and its audit
+    record commit together, so a user can never exist without a registration event.
+    """
+    user = User(email=email, password_hash=hash_password(password), full_name=full_name)
+    db.add(user)
+    db.flush()
+    db.refresh(user)
+    return user
+
 
 def create_access_token(user_id: str) -> str:
     """Return a signed JWT for user_id, expiring per settings.access_token_expire_minutes."""
     expire = datetime.now(UTC) + timedelta(minutes=settings.access_token_expire_minutes)
     payload = {"sub": user_id, "exp": expire}
     return jwt.encode(payload, settings.secret_key, algorithm="HS256")
+
 
 def get_current_user(
     credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),

@@ -486,3 +486,36 @@ def test_suggest_source_returns_structured_suggestion():
     assert result["search_query"] == "Bright Future"
     assert "reason" in result
     assert result["action"] == "suggest_source"
+
+
+def test_get_findings_excludes_soft_deleted(db, workspace, user):
+    """AI tools must not surface soft-deleted records (hardened soft-delete guard)."""
+    from app.models.finding import Finding
+    from app.services.agent_tools import get_findings
+
+    db.add_all(
+        [
+            Finding(
+                id=str(uuid.uuid4()),
+                workspace_id=workspace.id,
+                title="Active",
+                severity="high",
+                status="open",
+                created_by=user.id,
+                is_deleted=False,
+            ),
+            Finding(
+                id=str(uuid.uuid4()),
+                workspace_id=workspace.id,
+                title="Deleted",
+                severity="low",
+                status="open",
+                created_by=user.id,
+                is_deleted=True,
+            ),
+        ]
+    )
+    db.commit()
+    titles = [f["title"] for f in get_findings(workspace.id, db)["findings"]]
+    assert "Active" in titles
+    assert "Deleted" not in titles

@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel
 
@@ -18,7 +18,7 @@ class ReviewQueueItem(BaseModel):
 
 class ExtractionCorrectionIn(BaseModel):
     field_value: str
-    evidence: dict | None = None
+    evidence: dict[str, Any] | None = None
 
 
 class ExtractionCorrectionOut(BaseModel):
@@ -30,14 +30,16 @@ class ExtractionCorrectionOut(BaseModel):
     ocr_confidence: float
     attempt: int
     extracted_at: datetime
-    evidence: dict | None = None
+    evidence: dict[str, Any] | None = None
 
     class Config:
         from_attributes = True
 
 
 class FlagDocumentIn(BaseModel):
-    flag_reason: Literal["unknown_type", "missing_pages", "low_quality_scan", "wrong_schema", "other"]
+    flag_reason: Literal[
+        "unknown_type", "missing_pages", "low_quality_scan", "wrong_schema", "other"
+    ]
     flag_note: str | None = None
 
 

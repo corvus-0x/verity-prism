@@ -11,8 +11,7 @@ from app.database import Base, get_db
 from app.main import app
 
 TEST_DATABASE_URL = os.environ.get(
-    "TEST_DATABASE_URL",
-    "postgresql://catalyst:catalyst@localhost:5432/catalyst_test"
+    "TEST_DATABASE_URL", "postgresql://catalyst:catalyst@localhost:5433/catalyst_test"
 )
 os.environ["TEST_DATABASE_URL"] = TEST_DATABASE_URL  # ensure env.py picks up the resolved value
 
@@ -30,24 +29,31 @@ def migrate_db():
     """
     alembic_cfg = Config("alembic.ini")
     command.upgrade(alembic_cfg, "head")
+    # Snapshot migration-seeded reference data (signal_types) into a side table so
+    # each test can truncate EVERYTHING for a clean state and then restore the
+    # catalog server-side (no per-row marshalling of the relevant_to array).
+    with engine.begin() as conn:
+        conn.execute(text("DROP TABLE IF EXISTS _signal_types_seed_backup"))
+        conn.execute(text("CREATE TABLE _signal_types_seed_backup AS TABLE signal_types"))
     yield
+    with engine.begin() as conn:
+        conn.execute(text("DROP TABLE IF EXISTS _signal_types_seed_backup"))
 
 
 @pytest.fixture(autouse=True)
 def setup_db():
-    """Truncate all app tables before each test for a clean data state.
+    """Truncate all app tables before each test, then restore reference data.
 
-    Uses RESTART IDENTITY CASCADE so sequences reset and FK children are cleared
-    before parents. Equivalent to the old create_all/drop_all cycle but ~10x
-    faster (no DDL round-trip) and preserves migration-only schema objects
-    (triggers, enum values, indexes).
+    Every test starts clean (RESTART IDENTITY CASCADE resets sequences and clears
+    FK children before parents). signal_types is migration-seeded reference data,
+    so it's truncated like everything else and immediately re-seeded from the
+    session snapshot — a clean per-test state that still has the signal catalog.
+    Preserves migration-only schema objects (triggers, enum values, indexes).
     """
-    table_names = ", ".join(
-        f'"{t.name}"'
-        for t in reversed(Base.metadata.sorted_tables)
-    )
+    table_names = ", ".join(f'"{t.name}"' for t in reversed(Base.metadata.sorted_tables))
     with engine.begin() as conn:
         conn.execute(text(f"TRUNCATE {table_names} RESTART IDENTITY CASCADE"))
+        conn.execute(text("INSERT INTO signal_types SELECT * FROM _signal_types_seed_backup"))
     yield
 
 
@@ -73,6 +79,7 @@ def client(db):
             yield db
         finally:
             pass
+
     app.dependency_overrides[get_db] = override_get_db
     with TestClient(app) as c:
         yield c
@@ -81,11 +88,14 @@ def client(db):
 
 @pytest.fixture
 def registered_user(client):
-    client.post("/auth/register", json={
-        "email": "analyst@example.com",
-        "password": "TestPass123!",
-        "full_name": "Test Analyst"
-    })
+    client.post(
+        "/auth/register",
+        json={
+            "email": "analyst@example.com",
+            "password": "TestPass123!",
+            "full_name": "Test Analyst",
+        },
+    )
     return {"email": "analyst@example.com", "password": "TestPass123!"}
 
 

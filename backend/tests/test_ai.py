@@ -276,6 +276,44 @@ def test_get_conversation_history_workspace_scoped(db):
     assert history_wrong_ws == []
 
 
+def test_list_messages_workspace_scoped(db):
+    """list_messages must scope to the workspace, not trust conversation_id alone.
+    A conversation in another workspace must not leak its messages."""
+    import hashlib
+    import uuid
+
+    from app.models.ai import AIConversation, AIMessage
+    from app.models.user import User
+    from app.models.workspace import Workspace
+    from app.services.ai_service import list_messages
+
+    user = User(
+        id=str(uuid.uuid4()),
+        email=f"lm_{uuid.uuid4().hex[:6]}@test.com",
+        password_hash=hashlib.sha256(b"x").hexdigest(),
+        full_name="LM User",
+    )
+    db.add(user)
+    db.commit()
+
+    ws1 = Workspace(id=str(uuid.uuid4()), name="WS1", vertical="fraud", created_by=user.id)
+    ws2 = Workspace(id=str(uuid.uuid4()), name="WS2", vertical="fraud", created_by=user.id)
+    db.add_all([ws1, ws2])
+    db.commit()
+
+    conv = AIConversation(id=str(uuid.uuid4()), workspace_id=ws1.id, user_id=user.id)
+    db.add(conv)
+    db.commit()
+
+    db.add(AIMessage(id=str(uuid.uuid4()), conversation_id=conv.id, role="user", content="secret"))
+    db.commit()
+
+    # Correct workspace returns the message.
+    assert len(list_messages(db, ws1.id, conv.id)) == 1
+    # Foreign workspace must not see it, even with the right conversation_id.
+    assert list_messages(db, ws2.id, conv.id) == []
+
+
 def test_chat_uses_chat_model(db, ws_and_conv):
     """The chat path routes Claude calls through the shared CHAT_MODEL constant."""
     from app.services.claude_client import CHAT_MODEL

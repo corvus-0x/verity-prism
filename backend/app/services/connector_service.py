@@ -1,7 +1,9 @@
 import hashlib
 import logging
 from datetime import UTC, datetime
+from uuid import uuid4
 
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.database import SessionLocal
@@ -14,8 +16,13 @@ logger = logging.getLogger(__name__)
 
 
 def ingest_bytes(
-    db: Session, workspace_id: str, user_id: str, filename: str, file_bytes: bytes,
-    connector_id: str, item_ref: str,
+    db: Session,
+    workspace_id: str,
+    user_id: str,
+    filename: str,
+    file_bytes: bytes,
+    connector_id: str,
+    item_ref: str,
 ) -> FetchItemResult:
     """Hand fetched bytes to the pipeline with provenance, deduping by SHA-256.
     Connector docs are tagged source_type='api_pull'; connector id + item_ref
@@ -23,27 +30,60 @@ def ingest_bytes(
     sha256_hash = hashlib.sha256(file_bytes).hexdigest()
     existing = document_pipeline.find_existing_by_hash(workspace_id, sha256_hash, db)
     if existing is not None:
-        return FetchItemResult(item_ref=item_ref, status="skipped",
-                               document_id=existing.id, reason="already in workspace")
+        return FetchItemResult(
+            item_ref=item_ref,
+            status="skipped",
+            document_id=existing.id,
+            reason="already in workspace",
+        )
 
-    doc = document_pipeline.create_pending_document(
-        filename=filename, file_bytes=file_bytes, workspace_id=workspace_id,
-        user_id=user_id, db=db, source_type="api_pull",
-    )
+    try:
+        doc = document_pipeline.create_pending_document(
+            filename=filename,
+            file_bytes=file_bytes,
+            workspace_id=workspace_id,
+            user_id=user_id,
+            db=db,
+            source_type="api_pull",
+        )
+    except IntegrityError:
+        # Lost a concurrent dedup race — the (workspace_id, sha256_hash) unique
+        # index rejected the duplicate. Fall back to the doc the winner inserted.
+        db.rollback()
+        existing = document_pipeline.find_existing_by_hash(workspace_id, sha256_hash, db)
+        if existing is not None:
+            return FetchItemResult(
+                item_ref=item_ref,
+                status="skipped",
+                document_id=existing.id,
+                reason="already in workspace",
+            )
+        raise
     document_pipeline.process_upload_background(
-        doc.id, file_bytes, filename, workspace_id, user_id,
+        doc.id,
+        file_bytes,
+        filename,
+        workspace_id,
+        user_id,
     )
     try:
-        audit.log(db, action="document_sourced", user_id=user_id, workspace_id=workspace_id,
-                  entity_type="document", entity_id=doc.id,
-                  after_state={"connector_id": connector_id, "item_ref": item_ref})
+        audit.log(
+            db,
+            action="document_sourced",
+            user_id=user_id,
+            workspace_id=workspace_id,
+            entity_type="document",
+            entity_id=doc.id,
+            after_state={"connector_id": connector_id, "item_ref": item_ref},
+        )
     except Exception as exc:  # noqa: BLE001 — audit failure must not break ingestion
         logger.warning("audit log failed for sourced doc %s: %s", doc.id, exc)
     return FetchItemResult(item_ref=item_ref, status="created", document_id=doc.id)
 
 
-def run_fetch(run_id: str, connector_id: str, item_refs: list[str],
-              workspace_id: str, user_id: str) -> None:
+def run_fetch(
+    run_id: str, connector_id: str, item_refs: list[str], workspace_id: str, user_id: str
+) -> None:
     """Background task: execute a connector fetch and finalize the ConnectorRun row.
     Opens its own session (request session is closed by the time this runs)."""
     db = SessionLocal()
@@ -56,8 +96,12 @@ def run_fetch(run_id: str, connector_id: str, item_refs: list[str],
         try:
             result = connector.fetch(item_refs, workspace_id, user_id, db)
             run.result = [
-                {"item_ref": i.item_ref, "status": i.status,
-                 "document_id": i.document_id, "reason": i.reason}
+                {
+                    "item_ref": i.item_ref,
+                    "status": i.status,
+                    "document_id": i.document_id,
+                    "reason": i.reason,
+                }
                 for i in result.items
             ]
             if result.failed_count == 0:
@@ -75,3 +119,56 @@ def run_fetch(run_id: str, connector_id: str, item_refs: list[str],
             db.commit()
     finally:
         db.close()
+
+
+def create_run(
+    db: Session,
+    workspace_id: str,
+    connector_id: str,
+    search_query: str | None,
+    candidate_label: str | None,
+    candidate_ref: str | None,
+    item_refs: list[str],
+) -> ConnectorRun:
+    """Create a running ConnectorRun row for a fetch and return it."""
+    run = ConnectorRun(
+        id=str(uuid4()),
+        workspace_id=workspace_id,
+        connector_id=connector_id,
+        search_query=search_query,
+        candidate_label=candidate_label,
+        params={"candidate_ref": candidate_ref, "item_refs": item_refs},
+        status="running",
+    )
+    db.add(run)
+    db.commit()
+    db.refresh(run)
+    return run
+
+
+def list_runs(db: Session, workspace_id: str, page: int, limit: int) -> list[ConnectorRun]:
+    """List a workspace's active connector runs, newest first, paginated."""
+    return (
+        db.query(ConnectorRun)
+        .filter(
+            ConnectorRun.workspace_id == workspace_id,
+            ConnectorRun.is_deleted == False,  # noqa: E712
+        )
+        .order_by(ConnectorRun.started_at.desc())
+        .offset((page - 1) * limit)
+        .limit(limit)
+        .all()
+    )
+
+
+def get_run(db: Session, workspace_id: str, run_id: str) -> ConnectorRun | None:
+    """Fetch a single active connector run by id; None if not found."""
+    return (
+        db.query(ConnectorRun)
+        .filter(
+            ConnectorRun.id == run_id,
+            ConnectorRun.workspace_id == workspace_id,
+            ConnectorRun.is_deleted == False,  # noqa: E712
+        )
+        .first()
+    )
