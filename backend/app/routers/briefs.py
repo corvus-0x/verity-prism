@@ -38,7 +38,10 @@ def generate_brief(
     user: User = Depends(get_current_user),
 ):
     get_workspace_or_404(workspace_id, user, db)
-    row = synthesis_service.generate_brief(workspace_id, user.id, db)
+    try:
+        row = synthesis_service.generate_brief(workspace_id, user.id, db)
+    except synthesis_service.SynthesisError as e:
+        raise HTTPException(status_code=e.status_code, detail=e.detail) from e
     return _serialize(row)
 
 

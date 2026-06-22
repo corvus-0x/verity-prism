@@ -35,6 +35,15 @@ def test_list_entities_excludes_deleted(client, auth_headers, workspace_id):
     assert len(response.json()) == 0
 
 
+def test_create_entity_invalid_type_returns_422(client, auth_headers, workspace_id):
+    response = client.post(
+        f"/workspaces/{workspace_id}/entities",
+        json={"type": "alien", "name": "X"},
+        headers=auth_headers,
+    )
+    assert response.status_code == 422
+
+
 def test_update_deleted_entity_returns_404(client, auth_headers, workspace_id):
     entity = client.post(
         f"/workspaces/{workspace_id}/entities",

@@ -33,6 +33,15 @@ def test_create_finding(client, auth_headers, workspace_id):
     assert response.json()["status"] == "open"
 
 
+def test_create_finding_invalid_severity_returns_422(client, auth_headers, workspace_id):
+    response = client.post(
+        f"/workspaces/{workspace_id}/findings",
+        json={"title": "X", "severity": "bogus"},
+        headers=auth_headers,
+    )
+    assert response.status_code == 422
+
+
 def test_update_deleted_finding_returns_404(client, auth_headers, workspace_id, db):
     from app.models.finding import Finding
 

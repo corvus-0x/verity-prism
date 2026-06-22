@@ -29,6 +29,18 @@ from app.utils.json_helpers import strip_json_fences
 
 logger = logging.getLogger(__name__)
 
+
+class SynthesisError(Exception):
+    """Domain error carrying the HTTP status the router should surface.
+    Raised when synthesis cannot produce a usable brief (e.g. an unparseable
+    model response) so the caller fails loudly instead of storing an empty brief."""
+
+    def __init__(self, status_code: int, detail: str):
+        self.status_code = status_code
+        self.detail = detail
+        super().__init__(detail)
+
+
 _SYNTHESIS_SYSTEM = (
     "You are the synthesis layer of a document-intelligence platform. You receive "
     "EVIDENCE (extracted fields, each with an id) and SALIENCES (notable "
@@ -220,7 +232,7 @@ def _synthesize(
         parsed = json.loads(strip_json_fences(response.content[0].text))
     except Exception as e:
         logger.warning(f"Brief synthesis returned unparseable JSON: {e}")
-        parsed = {"summary": "", "claims": []}
+        raise SynthesisError(502, "Brief synthesis returned an unparseable response") from e
     return parsed, meta
 
 

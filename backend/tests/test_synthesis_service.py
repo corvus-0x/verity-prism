@@ -3,6 +3,8 @@ import uuid
 from types import SimpleNamespace
 from unittest.mock import patch
 
+import pytest
+
 from app.models.brief import Brief
 from app.models.document import Document
 from app.models.document_extraction import DocumentExtraction
@@ -152,6 +154,20 @@ def test_synthesize_brief_end_to_end(mock_get_client, db):
     assert brief["model"]  # set from CHAT_MODEL
     assert brief["input_tokens"] == 11 and brief["output_tokens"] == 22
     assert brief["latency_ms"] is not None
+
+
+@patch("app.services.claude_client.get_client")
+def test_synthesize_brief_raises_on_unparseable_response(mock_get_client, db):
+    """An unparseable model response must raise, not silently store an empty brief."""
+    from app.services.synthesis_service import SynthesisError
+
+    ws, doc, ext = _seed_workspace(db)
+    mock_get_client.return_value.messages.create.return_value = SimpleNamespace(
+        content=[SimpleNamespace(text="this is not json at all")],
+        usage=SimpleNamespace(input_tokens=1, output_tokens=1),
+    )
+    with pytest.raises(SynthesisError):
+        synthesize_brief(ws.id, db)
 
 
 @patch("app.services.claude_client.get_client")

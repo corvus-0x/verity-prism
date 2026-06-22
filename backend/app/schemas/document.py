@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Any
 
 from pydantic import BaseModel
 
@@ -33,7 +34,7 @@ class ExtractionOut(BaseModel):
     ocr_confidence: float
     attempt: int
     extracted_at: datetime
-    evidence: dict | None = None
+    evidence: dict[str, Any] | None = None
 
     class Config:
         from_attributes = True
@@ -44,4 +45,4 @@ class ExtractionCreateIn(BaseModel):
     field_value: str | None
     field_type: str = "text"
     schema_id: str
-    evidence: dict | None = None
+    evidence: dict[str, Any] | None = None

@@ -12,9 +12,9 @@ from app.services.document_pipeline import _fail
 
 @pytest.fixture
 def workspace_id(client, auth_headers):
-    return client.post(
-        "/workspaces/", json={"name": "Audit Test"}, headers=auth_headers
-    ).json()["id"]
+    return client.post("/workspaces/", json={"name": "Audit Test"}, headers=auth_headers).json()[
+        "id"
+    ]
 
 
 def test_audit_log_returns_paginated_entries(client, auth_headers, workspace_id, db):
@@ -42,9 +42,9 @@ def test_audit_log_returns_paginated_entries(client, auth_headers, workspace_id,
 
 
 def test_audit_log_scoped_to_workspace(client, auth_headers, workspace_id, db):
-    other_ws = client.post(
-        "/workspaces/", json={"name": "Other"}, headers=auth_headers
-    ).json()["id"]
+    other_ws = client.post("/workspaces/", json={"name": "Other"}, headers=auth_headers).json()[
+        "id"
+    ]
     audit_service.log(db, action="searched", workspace_id=other_ws)
     audit_service.log(
         db,
@@ -65,7 +65,19 @@ def test_audit_log_scoped_to_workspace(client, auth_headers, workspace_id, db):
     assert "uploaded" in actions
 
 
+def test_audit_log_swallows_commit_failure_and_rolls_back():
+    """A failing audit write must not break the business op that already committed.
+    audit.log catches the failure, rolls back the audit insert, and logs a warning."""
+    from unittest.mock import MagicMock
+
+    db = MagicMock()
+    db.commit.side_effect = Exception("audit table unavailable")
+    audit_service.log(db, action="test_action", user_id="u1")  # must not raise
+    db.rollback.assert_called_once()
+
+
 # ── M4a: pipeline failure audit ─────────────────────────────────────────────
+
 
 @pytest.fixture
 def user_ws_doc(db):
@@ -118,17 +130,17 @@ def test_fail_writes_upload_failed_audit_row(db, user_ws_doc):
 
 # ── M4b: auth event audit ────────────────────────────────────────────────────
 
+
 def test_register_writes_audit_row(client, db):
-    client.post("/auth/register", json={
-        "email": "audit_reg@example.com",
-        "password": "TestPass123!",
-        "full_name": "Audit Reg",
-    })
-    entry = (
-        db.query(AuditLog)
-        .filter(AuditLog.action == "registered")
-        .first()
+    client.post(
+        "/auth/register",
+        json={
+            "email": "audit_reg@example.com",
+            "password": "TestPass123!",
+            "full_name": "Audit Reg",
+        },
     )
+    entry = db.query(AuditLog).filter(AuditLog.action == "registered").first()
     assert entry is not None
     assert entry.workspace_id is None
     assert entry.after_state is None  # no PII stored in immutable audit rows
@@ -136,26 +148,21 @@ def test_register_writes_audit_row(client, db):
 
 def test_login_success_writes_audit_row(client, registered_user, db):
     client.post("/auth/login", json=registered_user)
-    entry = (
-        db.query(AuditLog)
-        .filter(AuditLog.action == "login_success")
-        .first()
-    )
+    entry = db.query(AuditLog).filter(AuditLog.action == "login_success").first()
     assert entry is not None
     assert entry.user_id is not None
     assert entry.workspace_id is None
 
 
 def test_login_failure_writes_audit_row(client, db):
-    client.post("/auth/login", json={
-        "email": "nobody@example.com",
-        "password": "wrongpassword",
-    })
-    entry = (
-        db.query(AuditLog)
-        .filter(AuditLog.action == "login_failed")
-        .first()
+    client.post(
+        "/auth/login",
+        json={
+            "email": "nobody@example.com",
+            "password": "wrongpassword",
+        },
     )
+    entry = db.query(AuditLog).filter(AuditLog.action == "login_failed").first()
     assert entry is not None
     assert entry.user_id is None
     assert entry.after_state["email"] == "nob***"  # masked: first 3 chars + ***

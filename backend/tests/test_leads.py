@@ -21,6 +21,18 @@ def test_create_lead(client, auth_headers, workspace_id):
     assert response.json()["status"] == "pending"
 
 
+def test_update_lead_invalid_status_returns_422(client, auth_headers, workspace_id):
+    lead = client.post(
+        f"/workspaces/{workspace_id}/leads", json={"question": "Q"}, headers=auth_headers
+    ).json()
+    response = client.patch(
+        f"/workspaces/{workspace_id}/leads/{lead['id']}",
+        json={"status": "bogus"},
+        headers=auth_headers,
+    )
+    assert response.status_code == 422
+
+
 def test_update_deleted_lead_returns_404(client, auth_headers, workspace_id, db):
     from app.models.lead import InvestigationLead
 

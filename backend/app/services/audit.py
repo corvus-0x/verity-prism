@@ -1,9 +1,12 @@
+import logging
 import math
 
 from sqlalchemy.orm import Session
 
 from app.models.audit import AuditLog
 from app.schemas.audit_log import AuditLogPage
+
+logger = logging.getLogger(__name__)
 
 
 def log(
@@ -25,6 +28,11 @@ def log(
 
     before_state / after_state accept any dict; store the relevant fields, not
     entire ORM objects.
+
+    A failed audit write must never break the business operation that already
+    committed: the write is wrapped so a DB error is rolled back and logged as a
+    warning rather than surfacing to the caller as a 500. Callers therefore do not
+    need to guard audit.log() themselves.
     """
     # WALKTHROUGH: notice how little is here — just INSERT a row. There is no
     # update() or delete() function in this module, and that's the whole point.
@@ -48,8 +56,14 @@ def log(
         after_state=after_state,
         ip_address=ip_address,
     )
-    db.add(entry)
-    db.commit()
+    try:
+        db.add(entry)
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        logger.warning(
+            "Audit log write failed for action=%s entity_id=%s: %s", action, entity_id, e
+        )
 
 
 def get_page(db: Session, workspace_id: str, page: int, limit: int) -> AuditLogPage:
