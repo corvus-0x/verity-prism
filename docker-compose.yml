@@ -1,5 +1,3 @@
-version: "3.9"
-
 services:
   db:
     image: pgvector/pgvector:pg16
@@ -7,15 +5,21 @@ services:
       POSTGRES_USER: catalyst
       POSTGRES_PASSWORD: catalyst
       POSTGRES_DB: catalyst
+    # Host port 5433 (not the default 5432) so Prism's db never collides with
+    # the Catalyst stack, which publishes host 5432. Container port stays 5432,
+    # so internal URLs (DATABASE_URL=...@db:5432) are unchanged.
     ports:
-      - "5432:5432"
+      - "5433:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
   backend:
     build: ./backend
+    # Host port 8001 (not the default 8000) so Prism's backend never collides
+    # with the Catalyst stack, which publishes host 8000. Container port stays
+    # 8000, so the frontend proxy target (http://backend:8000) is unchanged.
     ports:
-      - "8000:8000"
+      - "8001:8000"
     environment:
       DATABASE_URL: postgresql://catalyst:catalyst@db:5432/catalyst
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}

@@ -36,7 +36,9 @@ Private/sensitive case files: `private/` (gitignored — never commit)
 ```bash
 docker-compose up --build
 ```
-Frontend: `http://localhost:5173` | Backend API: `http://localhost:8000` | API docs: `http://localhost:8000/docs`
+Frontend: `http://localhost:5173` | Backend API: `http://localhost:8001` | API docs: `http://localhost:8001/docs`
+
+> Host ports are offset from the defaults so Prism never collides with the Catalyst stack: db `5433`→5432, backend `8001`→8000. Container-internal ports are unchanged (`db:5432`, `backend:8000`), so the commands below that use `db:5432` are correct as written.
 
 ### Backend only (faster iteration)
 ```bash
@@ -147,7 +149,7 @@ Routers, models, and schemas do **not** need docstrings.
 
 Required in `backend/.env` (copy from `backend/.env.example`):
 ```
-DATABASE_URL=postgresql://catalyst:catalyst@localhost:5432/catalyst
+DATABASE_URL=postgresql://catalyst:catalyst@localhost:5433/catalyst
 SECRET_KEY=<long random string>
 ANTHROPIC_API_KEY=sk-ant-...
 UPLOAD_DIR=./uploads
