@@ -8,7 +8,7 @@ from app.models.document_extraction import DocumentExtraction
 from app.models.document_schema import DocumentSchema
 from app.schemas.document import ExtractionCreateIn
 from app.schemas.review import ExtractionCorrectionIn, ReviewQueueItem
-from app.services import audit
+from app.services import audit, document_service
 
 # image_b64 can be large; 200KB is generous for a single field region.
 EVIDENCE_MAX_BYTES = 204_800
@@ -24,19 +24,8 @@ class ReviewError(Exception):
         super().__init__(detail)
 
 
-def _get_active_document(db: Session, workspace_id: str, document_id: str) -> Document | None:
-    return (
-        db.query(Document)
-        .filter(
-            Document.id == document_id,
-            Document.workspace_id == workspace_id,
-            Document.is_deleted == False,  # noqa: E712
-        )
-        .first()
-    )
-
-
-def _check_evidence_size(evidence) -> None:
+def _check_evidence_size(evidence: dict | None) -> None:
+    """Reject an evidence payload larger than EVIDENCE_MAX_BYTES (raises ReviewError 413)."""
     if evidence and len(json.dumps(evidence).encode("utf-8")) > EVIDENCE_MAX_BYTES:
         raise ReviewError(413, "Evidence payload exceeds 200KB limit")
 
@@ -149,7 +138,7 @@ def correct_extraction(
 ) -> DocumentExtraction:
     """Apply a human correction as a new attempt=3 row (originals preserved).
     Flips the document back to 'complete' when no field still needs review."""
-    doc = _get_active_document(db, workspace_id, document_id)
+    doc = document_service.get_document(db, workspace_id, document_id)
     if not doc:
         raise ReviewError(404, "Document not found")
 
@@ -220,7 +209,7 @@ def flag_document(
     flag_note: str | None,
 ) -> Document:
     """Store a structured rejection reason on a document; does not change status."""
-    doc = _get_active_document(db, workspace_id, document_id)
+    doc = document_service.get_document(db, workspace_id, document_id)
     if not doc:
         raise ReviewError(404, "Document not found")
 
@@ -248,7 +237,7 @@ def create_extraction(
 ) -> DocumentExtraction:
     """Create an attempt=3 row for a field the pipeline never extracted.
     Validates the field against the document's schema before inserting."""
-    doc = _get_active_document(db, workspace_id, document_id)
+    doc = document_service.get_document(db, workspace_id, document_id)
     if not doc:
         raise ReviewError(404, "Document not found")
 

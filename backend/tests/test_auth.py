@@ -8,6 +8,27 @@ def test_verify_password_returns_false_for_malformed_hash():
     assert verify_password("any-password", "!not-a-valid-bcrypt-hash") is False
 
 
+def test_login_with_malformed_hash_returns_401(client, db):
+    # End-to-end of the bugfix: a corrupt stored hash must yield 401, not 500.
+    from app.models.user import User
+
+    client.post(
+        "/auth/register",
+        json={
+            "email": "corrupt@example.com",
+            "password": "TestPass123!",
+            "full_name": "Corrupt Hash",
+        },
+    )
+    user = db.query(User).filter(User.email == "corrupt@example.com").first()
+    user.password_hash = "!not-a-bcrypt-hash"
+    db.commit()
+    response = client.post(
+        "/auth/login", json={"email": "corrupt@example.com", "password": "TestPass123!"}
+    )
+    assert response.status_code == 401
+
+
 def test_register_creates_user(client):
     response = client.post(
         "/auth/register",

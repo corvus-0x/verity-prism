@@ -46,6 +46,7 @@ def update_entity(
         .filter(
             Entity.id == entity_id,
             Entity.workspace_id == workspace_id,
+            Entity.is_deleted == False,  # noqa: E712
         )
         .first()
     )
@@ -75,6 +76,7 @@ def delete_entity(db: Session, workspace_id: str, entity_id: str, user_id: str) 
         .filter(
             Entity.id == entity_id,
             Entity.workspace_id == workspace_id,
+            Entity.is_deleted == False,  # noqa: E712
         )
         .first()
     )

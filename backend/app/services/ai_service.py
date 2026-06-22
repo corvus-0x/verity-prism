@@ -37,11 +37,18 @@ def get_conversation(db: Session, workspace_id: str, conversation_id: str) -> AI
     )
 
 
-def list_messages(db: Session, conversation_id: str) -> list[AIMessage]:
-    """List a conversation's messages in chronological order."""
+def list_messages(db: Session, workspace_id: str, conversation_id: str) -> list[AIMessage]:
+    """List a conversation's messages in chronological order, scoped to the workspace.
+    Joins AIConversation so a conversation_id belonging to another workspace returns
+    nothing rather than leaking its messages (the router only verifies workspace access,
+    not that the conversation lives in that workspace)."""
     return (
         db.query(AIMessage)
-        .filter(AIMessage.conversation_id == conversation_id)
+        .join(AIConversation, AIConversation.id == AIMessage.conversation_id)
+        .filter(
+            AIMessage.conversation_id == conversation_id,
+            AIConversation.workspace_id == workspace_id,
+        )
         .order_by(AIMessage.created_at)
         .all()
     )

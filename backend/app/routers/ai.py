@@ -61,4 +61,4 @@ def list_messages(
     user: User = Depends(get_current_user),
 ):
     get_workspace_or_404(workspace_id, user, db)
-    return ai_service.list_messages(db, conversation_id)
+    return ai_service.list_messages(db, workspace_id, conversation_id)

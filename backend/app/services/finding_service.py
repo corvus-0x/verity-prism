@@ -117,6 +117,7 @@ def update_finding(
         .filter(
             Finding.id == finding_id,
             Finding.workspace_id == workspace_id,
+            Finding.is_deleted == False,  # noqa: E712
         )
         .first()
     )

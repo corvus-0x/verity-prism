@@ -107,6 +107,8 @@ def _validate_and_annotate(brief: dict, evidence: list[Evidence]) -> dict:
 
 
 def _required_fields_by_doc(docs: list[Document], db: Session) -> dict[str, set]:
+    """Map each document id to the set of field names its schema marks as required.
+    Used to score brief completeness against what each document was expected to yield."""
     schema_ids = {d.schema_id for d in docs if d.schema_id}
     if not schema_ids:
         return {}

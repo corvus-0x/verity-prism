@@ -48,6 +48,7 @@ def update_lead(
         .filter(
             InvestigationLead.id == lead_id,
             InvestigationLead.workspace_id == workspace_id,
+            InvestigationLead.is_deleted == False,  # noqa: E712
         )
         .first()
     )
