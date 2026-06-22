@@ -1,0 +1,26 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 -c \"import sys,json,os; d=json.load(sys.stdin); fp=d.get('tool_input',d).get('file_path',''); b=os.path.basename(fp); (print('Blocked: .env contains API keys — edit manually.'), sys.exit(2)) if b in ('.env','.env.local','.env.production') else None\""
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 -c \"import sys,json,os,subprocess,shutil; d=json.load(sys.stdin); fp=d.get('tool_input',d).get('file_path',''); shutil.which('ruff') and fp.endswith('.py') and os.path.exists(fp) and [subprocess.run(['ruff','check','--fix','--quiet',fp],capture_output=True), subprocess.run(['ruff','format','--quiet',fp],capture_output=True)]\""
+          }
+        ]
+      }
+    ]
+  }
+}
