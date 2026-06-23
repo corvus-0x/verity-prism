@@ -98,3 +98,30 @@ def validate_proposal(proposal: SchemaChangeProposal, db: Session) -> list[str]:
                     errors.append(f"field '{name}' {key} must be between 0.0 and 1.0")
 
     return errors
+
+
+def supersede_schema(db: Session, base: DocumentSchema, new_fields: list[dict]) -> DocumentSchema:
+    """Deactivate `base` and insert its successor (version+1) in one transaction.
+
+    Why one transaction: the partial unique index forbids two active schemas for
+    the same (document_type, vertical). Deactivating the base and inserting the
+    successor must commit together, or the insert would either collide (if base
+    stays active) or leave a window with no active schema.
+    """
+    base.is_active = False
+    db.flush()  # release the active slot before inserting the successor
+    successor = DocumentSchema(
+        document_type=base.document_type,
+        vertical=base.vertical,
+        display_name=base.display_name,
+        schema_fields=new_fields,
+        extraction_prompt=base.extraction_prompt,
+        version=base.version + 1,
+        is_active=True,
+        parse_strategy=base.parse_strategy,
+        default_confidence_threshold=base.default_confidence_threshold,
+    )
+    db.add(successor)
+    db.commit()
+    db.refresh(successor)
+    return successor

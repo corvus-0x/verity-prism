@@ -264,3 +264,49 @@ def test_validate_extension_rejects_field_clashing_with_base(db):
     )
     errors = validate_proposal(p, db)
     assert any("duplicate" in e for e in errors)
+
+
+from app.services.schema_proposal_service import supersede_schema
+
+
+def test_supersede_schema_swaps_active_version_atomically(db):
+    base = DocumentSchema(
+        id=str(uuid.uuid4()),
+        document_type="DEED",
+        display_name="Deed",
+        vertical="general",
+        schema_fields=[{"name": "grantor_name", "type": "name", "description": "g"}],
+        version=1,
+        is_active=True,
+        parse_strategy="claude",
+        default_confidence_threshold=0.75,
+    )
+    db.add(base)
+    db.commit()
+
+    new_fields = base.schema_fields + [
+        {"name": "notary_commission_expiration", "type": "date", "description": "Notary expiry"}
+    ]
+    new_schema = supersede_schema(db, base, new_fields)
+    db.refresh(base)
+
+    assert base.is_active is False
+    assert new_schema.is_active is True
+    assert new_schema.version == 2
+    assert new_schema.document_type == "DEED"
+    assert new_schema.vertical == "general"
+    assert new_schema.parse_strategy == "claude"
+    assert new_schema.default_confidence_threshold == 0.75
+    assert len(new_schema.schema_fields) == 2
+    # invariant intact: exactly one active DEED/general schema
+    active = (
+        db.query(DocumentSchema)
+        .filter(
+            DocumentSchema.document_type == "DEED",
+            DocumentSchema.vertical == "general",
+            DocumentSchema.is_active == True,  # noqa: E712
+        )
+        .all()
+    )
+    assert len(active) == 1
+    assert active[0].id == new_schema.id
