@@ -1,6 +1,6 @@
 # Verity Prism — Product Roadmap
 
-**Last updated:** 2026-06-19  
+**Last updated:** 2026-06-22  
 **Core principle:** Verity Prism is an Intelligent Document Processing platform first. Verticals are plug-and-play caps that tell the platform what to care about. The engine ships to every customer. The cap ships only to the relevant vertical.
 
 ---
@@ -117,16 +117,16 @@ Shared schemas (PARCEL-RECORD, for example) can belong to multiple verticals. Th
 - **Frontend vertical separation** (2026-05-28): sidebar and overview now driven by `workspace.vertical` — General workspaces show engine-only nav; Fraud workspaces add Transactions/Findings/Leads. Workspace creation modal replaced `prompt()` with a proper form that captures name and vertical. `WorkspaceContext` provides workspace data to all children without redundant fetches.
 - **Schema Library** (2026-05-28): platform-level page at `/schemas` showing all active document types grouped by vertical — field count, parse strategy, confidence threshold, and expandable full field list with name/type/description/required. Accessible from global header nav. Backend `GET /schemas/` endpoint added. All case-specific content (county names, person names, org names, signal codes) scrubbed from all 11 schemas in seed file and live DB. Seed functions now do upserts — re-running updates existing records.
 
-### Deferred (not blocking Phase 2, but tracked)
-- **Three Anthropic client instances** (`extraction_engine.py`, `search_service.py`, `ai_engine.py`) — consolidate into shared `app/services/claude_client.py` before adding retry logic or spend tracking
-- **Signal type seed data in findings router** — move to cap installer before Insurance Vertical starts
-- **Frontend test coverage** — Vitest suite exists in the plan but test count is not tracked; establish baseline before Phase 3
+### Deferred (resolved or moved into later gates)
+- **Three Anthropic client instances** — resolved in Phase 2D via shared `app/services/claude_client.py`.
+- **Signal type seed data** — runtime seeding was removed, but fraud-specific seed content still needs to move from engine migration/default data into the fraud cap installer in Phase 2G.
+- **Frontend test coverage and lint signal** — test baseline exists, but CI/lint quality gates need hardening in Phase 2G.
 
 ---
 
 ## Phase 2 — IDP Engine Capabilities
 **What it is:** The engine gets smarter and more connected. No vertical logic — these capabilities serve all verticals equally.  
-**Status:** In progress — 2A, 2C, and 2D complete. 2B (signal detection) moved to Phase 3. Remaining: 2E (data connectors).
+**Status:** 2A, 2C, 2D, 2E, and 2F complete. 2B (signal detection) moved to Phase 3. 2G is now the planned hardening gate before vertical packaging.
 
 ### 2A — Intelligence Layer: Agentic Hardening + Document Viewer
 The engine's intelligence layer is functional. These builds make it measurable and trustworthy, and give it a human interface for reviewing what it produces. **Must complete before connectors or signal detection** — connectors bring more documents; signal detection reads extracted fields. Both are only as good as extraction is reliable. Measure reliability first.
@@ -284,9 +284,62 @@ POST /workspaces/{id}/connectors/county-auditor
 
 ---
 
+### 2G — Principal Engine Hardening Before Verticals
+**What it is:** The engine has proven the product direction, but it is not yet hardened enough to be the correctness layer for paid verticals. This phase turns the current IDP engine from a strong prototype into a product-grade processing core.  
+**Status:** Planned — required before Phase 3 vertical packaging.
+
+**Principal audit readout (2026-06-22):** 62/100, risky but moving in the right direction. The architecture is credible: schema-driven extraction, row-per-field storage, hash-first ingestion, workspace-scoped tools, review attempts, immutable audit, and grounded synthesis are the right foundations. The gap is that the system demonstrates IDP capability more than it enforces IDP correctness under production conditions.
+
+**Why this blocks vertical work:**  
+Fraud, insurance, legal, and compliance caps all depend on the same extracted facts. If the engine can match stale extraction attempts, trust model self-reported confidence, lose background jobs on process restart, or serve files without strong path/content controls, every vertical built on top inherits that weakness. The verticals should not compensate for engine uncertainty.
+
+**Hardening track 1 — Extraction correctness**
+- Field filters and AI tools must query only the latest authoritative extraction attempt per field. Old attempt rows stay in history, but they must not drive search matches, chat answers, or signal inputs unless history is explicitly requested.
+- Build a golden document corpus for each engine schema with expected fields, acceptable variants, and known hard cases. CI should report extraction accuracy, required-field completeness, false positives, and review-routing rate.
+- Replace model-only confidence with measurable confidence. OCR confidence should come from OCR word/region evidence where available, not only from Claude self-reporting.
+- Add initial-extraction source evidence: page, text span or region, extraction method, and confidence provenance. Text-layer search can remain a fallback, not the primary evidence link.
+- Add table/layout extraction as a first-class path before relying on the engine for invoices, claims forms, schedules, or financial tables.
+
+**Hardening track 2 — Durable ingestion and processing**
+- Replace FastAPI `BackgroundTasks` as the core processing mechanism with a durable job table or queue. Upload should create a job, workers should claim jobs, and every job should survive API process restarts.
+- Add retry policy, timeout policy, terminal error taxonomy, idempotency keys, and dead-letter handling for OCR, type detection, extraction, naming, indexing, embeddings, and connector fetches.
+- Stop passing full `file_bytes` through in-memory background callbacks as the long-term path. Workers should read from durable storage after hash/store completes.
+- Add recovery tooling: requeue failed jobs, reprocess one document, reprocess a workspace, and inspect job history.
+
+**Hardening track 3 — Security and tenant safety**
+- Add rate limiting for login, registration, upload, search, chat, brief generation, and connector endpoints.
+- Add password policy and abuse controls for registration/login.
+- Decide the browser auth model deliberately: either add CSRF protection for cookie-auth state-changing routes or move browser API calls fully to bearer/session-token semantics that do not rely on ambient cookies.
+- Validate uploaded content by magic bytes/MIME, not only extension. Reject unsupported or malformed file types before OCR/parsing.
+- Constrain raw-file serving to the configured upload root even if a `documents.file_path` value is corrupted or malicious. Add content-disposition and `nosniff` tests for every served type.
+- Add unsafe-file scanning or a documented pre-customer mitigation path before handling customer documents.
+
+**Hardening track 4 — Operations and observability**
+- Split `/health` into liveness and readiness. Readiness should verify database reachability, migration state, upload storage writability, worker availability, and optional AI/OCR dependency status.
+- Add structured logs with workspace/document/job IDs, but never raw document text, secrets, or sensitive extracted values.
+- Add spend and quota guardrails around Claude/OpenAI calls before scaling connectors or chat.
+- Make CI authoritative: backend tests, frontend tests, Ruff, ESLint with meaningful React rules, migration upgrade from a clean database, and a golden-corpus extraction report.
+- Clean the frontend lint signal. ESLint currently passes with many warnings, including JSX false positives and hook-dependency warnings; the warning floor should be near zero before the UI is treated as stable.
+
+**Hardening track 5 — Engine/cap separation**
+- Move fraud signal type seed data and any SR-specific catalog content out of engine migrations into a fraud cap installer.
+- Keep the engine responsible for generic signal infrastructure, saliences, schemas, extraction, evidence, search, audit, and review. Keep fraud/insurance/legal judgment outside the engine.
+- Update `docs/build-inventory.md` so the migration chain, loose ends, and engine/cap ownership match the actual repo before new implementation starts.
+
+**Exit criteria for Phase 2G**
+- Latest-attempt correctness is enforced in search, chat tools, synthesis, exports, and future signal inputs.
+- Golden corpus runs in CI with visible extraction quality metrics by schema.
+- Upload/extraction jobs are durable, retryable, observable, and recoverable.
+- Security controls cover auth abuse, CSRF/session choice, upload validation, raw-file serving, and rate limits.
+- Readiness checks prove the engine can actually process documents, not just serve HTTP.
+- Fraud-specific seeds/content are no longer shipped as engine defaults.
+- Roadmap and build inventory match the live codebase.
+
+---
+
 ## Phase 3 — Vertical Packaging
 **What it is:** The engine gets its first two caps. Each vertical is a complete, installable package.  
-**Trigger:** Phase 2A, 2C, and 2D complete. Engine extraction is measured, reliable, and security-hardened. At least one full end-to-end case has run against real documents with observable confidence metrics.
+**Trigger:** Phase 2G complete. Engine extraction is measured against a golden corpus, processing is durable, core security controls are in place, operational readiness checks pass, and at least one full end-to-end case has run against real documents with observable confidence and evidence metrics.
 
 ### 3A — Fraud Vertical v1.0
 **Installs:** Fraud schema set + SR signal definitions + signal detection engine + investigation workflow + referral export
@@ -412,7 +465,7 @@ If you're changing the pipeline, the schema registry, the connector framework, o
 The `document_schemas` table already has a `vertical` field. A schema tagged `general` works in any workspace. A schema tagged `fraud` only activates in fraud workspaces. Insurance schemas tagged `insurance` never appear in a fraud case. No code change needed — just the row in the table.
 
 **Every phase delivers working software.**  
-Don't start Phase 3 until Phase 2D (audit hardening) and 2E (connectors) are complete. Signal detection is Phase 3A fraud cap work, not a Phase 2 prerequisite. Don't let verticals leak into engine phases.
+Don't start Phase 3 until Phase 2G is complete. Signal detection is Phase 3A fraud cap work, not a Phase 2 prerequisite. Don't let verticals leak into engine phases, and don't let vertical work compensate for unresolved engine correctness.
 
 **The build inventory stays current.**  
 See `docs/build-inventory.md`. Everything built gets an entry. Every loose end gets a phase destination.
@@ -428,6 +481,7 @@ The fraud vertical was built first because it's the hardest case. If the engine 
 |---|---|
 | Core Hardening | ✅ CORS configurable, file size bounded, soft-delete consistent, Alembic verified on fresh DB. |
 | Phase 1 | ✅ All backend tasks pass. Frontend working. Documents flow through full pipeline end-to-end. |
-| Phase 2 | 2A ✅. 2C ✅. 2D ✅. 2E ✅. 2F ✅ Plans 1–3 (commercial readiness, connector backend, Sources UI/digital viewer/AI suggestion). 2B moved to Phase 3. **Phase 2 COMPLETE.** |
-| Phase 3 | **No vertical work starts until:** extraction reliability is measurable (2A complete) and at least one full case has run with observable confidence metrics. Fraud vertical installs as a complete package. Insurance vertical processes a real claim end-to-end. Both run on the same engine with no engine modifications. |
+| Phase 2 | 2A ✅. 2C ✅. 2D ✅. 2E ✅. 2F ✅ Plans 1–3 (commercial readiness, connector backend, Sources UI/digital viewer/AI suggestion). 2B moved to Phase 3. 2G planned as the pre-vertical hardening gate. |
+| Phase 2G | **Required before verticals:** latest-attempt correctness enforced, golden corpus in CI, durable extraction jobs, security controls, readiness checks, clean engine/cap separation, and current docs. |
+| Phase 3 | **No vertical work starts until Phase 2G is complete.** Fraud vertical installs as a complete package. Insurance vertical processes a real claim end-to-end. Both run on the same engine with no engine modifications. |
 | Phase 4 | Multi-user orgs with role-based access. Platform runs on AWS. Two paying clients in different verticals. New vertical takes one week to install, not one month. |
