@@ -112,28 +112,29 @@ def _get_schema_for_vertical(
 ) -> DocumentSchema | None:
     """
     Vertical-aware schema lookup helper (used by get_schema_for_type).
+
+    Tries the workspace's vertical first (when not 'general'), then falls back to
+    'general'. Within each tier the highest active version wins. Returns None if
+    no active schema matches in any tier.
     """
-    if workspace_vertical != "general":
+    # Priority tiers: vertical-specific (if any) then the general fallback. When
+    # the workspace is already 'general' the single tier avoids a duplicate query.
+    verticals = [workspace_vertical] if workspace_vertical != "general" else []
+    verticals.append("general")
+    for vertical in verticals:
         schema = (
             db.query(DocumentSchema)
             .filter(
                 DocumentSchema.document_type == doc_type,
-                DocumentSchema.vertical == workspace_vertical,
-                DocumentSchema.is_active == True,
+                DocumentSchema.vertical == vertical,
+                DocumentSchema.is_active == True,  # noqa: E712
             )
+            .order_by(DocumentSchema.version.desc())
             .first()
         )
         if schema:
             return schema
-    return (
-        db.query(DocumentSchema)
-        .filter(
-            DocumentSchema.document_type == doc_type,
-            DocumentSchema.vertical == "general",
-            DocumentSchema.is_active == True,
-        )
-        .first()
-    )
+    return None
 
 
 def detect_document_type(ocr_text: str, db: Session, document_id: str | None = None) -> str:
@@ -361,8 +362,9 @@ def extract_fields(
     Extract all fields defined in the schema by running batched Claude calls.
     BATCH_SIZE fields per call prevents token-limit truncation on large schemas.
     Results from all batches are merged and returned as a single list.
-    Raises ExtractionBatchError if every batch fails (distinguishes total API
-    failure from a schema that legitimately has zero fields).
+    Raises ExtractionBatchError only if every batch fails AND the retry recovers
+    nothing (distinguishes a total, unrecoverable API failure from a schema that
+    legitimately has zero fields).
     """
     fields = schema.schema_fields
     if not fields:

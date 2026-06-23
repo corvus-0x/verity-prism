@@ -2,6 +2,13 @@ from sqlalchemy.orm import Session
 
 from app.models.document import Document
 from app.models.document_extraction import DocumentExtraction
+from app.models.document_schema import DocumentSchema
+from app.services import audit
+from app.services.extraction_engine import (
+    ExtractionBatchError,
+    extract_fields,
+    save_extractions,
+)
 
 
 def list_documents(db: Session, workspace_id: str) -> list[Document]:
@@ -50,3 +57,84 @@ def list_export_documents(db: Session, workspace_id: str) -> list[Document]:
         )
         .all()
     )
+
+
+def reprocess_document(document_id: str, schema_id: str, db: Session) -> Document:
+    """Re-extract a document against a forced schema, skipping type detection.
+
+    Used after a schema proposal is applied: the operator already knows which
+    schema this document should use, so re-running detection (which could
+    re-classify it as OTHER) is wrong.
+
+    Extraction runs BEFORE anything is destroyed. Only after it succeeds are the
+    prior extractions cleared and the schema pin (schema_id + detected_doc_type)
+    overwritten — so a transient extraction failure (ExtractionBatchError, e.g.
+    the API is down) leaves the document's prior evidence and pin intact, records
+    extraction_status='failed', and re-raises. A genuine zero-match (extraction
+    succeeded but returned no fields for a Claude schema) is the distinct
+    'needs_review' case below.
+    """
+    doc = (
+        db.query(Document)
+        .filter(
+            Document.id == document_id,
+            Document.is_deleted == False,  # noqa: E712
+        )
+        .first()
+    )
+    if not doc:
+        raise ValueError(f"Document {document_id} not found")
+    schema = db.query(DocumentSchema).filter(DocumentSchema.id == schema_id).first()
+    if not schema:
+        raise ValueError(f"Schema {schema_id} not found")
+    if not doc.ocr_text:
+        raise ValueError("Document has no ocr_text — cannot reprocess without source text")
+
+    # Extract FIRST — destroy nothing until we have a successful result. An API
+    # outage must never wipe a document's prior evidence rows.
+    try:
+        raw = extract_fields(doc.ocr_text, schema, doc.id, doc.workspace_id)
+    except ExtractionBatchError as e:
+        # Real extraction failure (not a zero-match): record it distinctly,
+        # leave prior extractions + schema pin untouched, surface to the caller.
+        doc.extraction_status = "failed"
+        doc.extraction_error = str(e)[:500]
+        audit.log(
+            db,
+            action="document_reprocess_failed",
+            user_id=doc.uploaded_by,
+            workspace_id=doc.workspace_id,
+            entity_type="document",
+            entity_id=doc.id,
+            after_state={"schema_id": doc.schema_id, "status": "failed", "error": str(e)[:500]},
+        )
+        raise
+
+    # Extraction succeeded — now it is safe to replace the old data and pin the
+    # forced schema (no type detection ran).
+    db.query(DocumentExtraction).filter(DocumentExtraction.document_id == doc.id).delete()
+    doc.schema_id = schema.id
+    doc.detected_doc_type = schema.document_type
+    doc.extraction_error = None
+    save_extractions(raw, doc.id, doc.workspace_id, schema.id, db)
+
+    # needs_review is reserved for a Claude schema that defined fields but matched
+    # none — distinct from the extraction failure handled above.
+    zero_match = schema.parse_strategy == "claude" and bool(schema.schema_fields) and not raw
+    if zero_match:
+        doc.extraction_status = "needs_review"
+        doc.extraction_error = "Reprocess returned zero fields"
+    else:
+        doc.extraction_status = "complete"
+    db.flush()
+
+    audit.log(
+        db,
+        action="document_reprocessed",
+        user_id=doc.uploaded_by,
+        workspace_id=doc.workspace_id,
+        entity_type="document",
+        entity_id=doc.id,
+        after_state={"schema_id": schema.id, "status": doc.extraction_status, "fields": len(raw)},
+    )
+    return doc
