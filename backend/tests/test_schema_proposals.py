@@ -266,6 +266,153 @@ def test_validate_extension_rejects_field_clashing_with_base(db):
     assert any("duplicate" in e for e in errors)
 
 
+from unittest.mock import patch
+
+from app.models.document import Document
+from app.models.document_extraction import DocumentExtraction
+from app.services import document_service
+
+
+def _doc_with_ocr(db, ws, user, schema_id=None, status="no_schema", ocr="Permit No 12345"):
+    doc = Document(
+        id=str(uuid.uuid4()),
+        workspace_id=ws.id,
+        filename="permit.pdf",
+        original_filename="permit.pdf",
+        file_path="/tmp/permit.pdf",
+        file_type="pdf",
+        sha256_hash=str(uuid.uuid4()),
+        uploaded_by=user.id,
+        extraction_status=status,
+        schema_id=schema_id,
+        ocr_text=ocr,
+    )
+    db.add(doc)
+    db.commit()
+    return doc
+
+
+def test_reprocess_document_forces_schema_without_detection(db):
+    user = _user(db)
+    ws = _workspace(db, user)
+    schema = DocumentSchema(
+        id=str(uuid.uuid4()),
+        document_type="PERMIT",
+        display_name="Permit",
+        vertical="general",
+        schema_fields=[{"name": "permit_no", "type": "id_number", "description": "Permit number"}],
+        version=1,
+        is_active=True,
+        parse_strategy="claude",
+        default_confidence_threshold=0.7,
+    )
+    db.add(schema)
+    db.commit()
+    doc = _doc_with_ocr(db, ws, user)
+
+    fake_rows = [
+        {
+            "field_name": "permit_no",
+            "field_value": "12345",
+            "field_type": "id_number",
+            "confidence": 0.95,
+            "ocr_confidence": 0.95,
+        }
+    ]
+    # detect_document_type must NOT be called; extract_fields is forced on the given schema.
+    # Patch at the SOURCE module (extraction_engine) — reprocess_document never imports
+    # detect_document_type, so there is no name to patch on document_service, and the ruff
+    # --fix hook would strip any unused import anyway.
+    with (
+        patch("app.services.extraction_engine.detect_document_type") as detect,
+        patch("app.services.document_service.extract_fields", return_value=fake_rows),
+    ):
+        result = document_service.reprocess_document(doc.id, schema.id, db)
+
+    detect.assert_not_called()
+    db.refresh(result)
+    assert result.schema_id == schema.id
+    assert result.detected_doc_type == "PERMIT"
+    assert result.extraction_status == "complete"
+    rows = db.query(DocumentExtraction).filter(DocumentExtraction.document_id == doc.id).all()
+    assert len(rows) == 1
+    assert rows[0].field_name == "permit_no"
+    assert rows[0].field_value == "12345"
+
+
+def test_reprocess_document_clears_prior_extractions(db):
+    user = _user(db)
+    ws = _workspace(db, user)
+    schema = DocumentSchema(
+        id=str(uuid.uuid4()),
+        document_type="PERMIT",
+        display_name="Permit",
+        vertical="general",
+        schema_fields=[{"name": "permit_no", "type": "id_number", "description": "Permit number"}],
+        version=1,
+        is_active=True,
+        parse_strategy="claude",
+        default_confidence_threshold=0.7,
+    )
+    db.add(schema)
+    db.commit()
+    doc = _doc_with_ocr(db, ws, user, schema_id=schema.id, status="complete")
+    db.add(
+        DocumentExtraction(
+            id=str(uuid.uuid4()),
+            document_id=doc.id,
+            workspace_id=ws.id,
+            field_name="stale_field",
+            field_value="old",
+            field_type="text",
+            confidence=0.5,
+            schema_id=schema.id,
+            attempt=1,
+        )
+    )
+    db.commit()
+
+    fake_rows = [
+        {
+            "field_name": "permit_no",
+            "field_value": "999",
+            "field_type": "id_number",
+            "confidence": 0.9,
+            "ocr_confidence": 0.9,
+        }
+    ]
+    with patch("app.services.document_service.extract_fields", return_value=fake_rows):
+        document_service.reprocess_document(doc.id, schema.id, db)
+
+    names = [
+        r.field_name
+        for r in db.query(DocumentExtraction).filter(DocumentExtraction.document_id == doc.id).all()
+    ]
+    assert "stale_field" not in names
+    assert "permit_no" in names
+
+
+def test_reprocess_document_requires_ocr_text(db):
+    user = _user(db)
+    ws = _workspace(db, user)
+    schema = DocumentSchema(
+        id=str(uuid.uuid4()),
+        document_type="PERMIT",
+        display_name="Permit",
+        vertical="general",
+        schema_fields=[],
+        version=1,
+        is_active=True,
+        parse_strategy="claude",
+        default_confidence_threshold=0.7,
+    )
+    db.add(schema)
+    db.commit()
+    doc = _doc_with_ocr(db, ws, user, ocr=None)
+    with pytest.raises(ValueError, match="ocr_text"):
+        document_service.reprocess_document(doc.id, schema.id, db)
+
+
 from app.services.schema_proposal_service import supersede_schema
 
 
