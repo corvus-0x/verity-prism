@@ -16,16 +16,20 @@ from app.models.schema_proposal import SchemaChangeProposal
 from app.services import audit
 
 
-class ProposedField(TypedDict, total=False):
-    """Shape of one entry in proposal.proposed_fields (and a schema's schema_fields).
-
-    total=False because only name/type/description are conceptually required;
-    the apply gate (validate_proposal) enforces which keys must be present.
-    """
-
+class _ProposedFieldRequired(TypedDict):
     name: str
     type: str
     description: str
+
+
+class ProposedField(_ProposedFieldRequired, total=False):
+    """Shape of one entry in proposal.proposed_fields (and a schema's schema_fields).
+
+    name/type/description are required; the rest are optional. The apply gate
+    (validate_proposal) still checks these keys at runtime because the payload
+    originates from untrusted JSONB / AI output, not a type-checked caller.
+    """
+
     required: bool
     confidence_threshold: float
     ai_threshold: float
@@ -104,11 +108,16 @@ def validate_proposal(proposal: SchemaChangeProposal, db: Session) -> list[str]:
         else:
             base = (
                 db.query(DocumentSchema)
-                .filter(DocumentSchema.id == proposal.base_schema_id)
+                .filter(
+                    DocumentSchema.id == proposal.base_schema_id,
+                    DocumentSchema.is_active == True,  # noqa: E712
+                )
                 .first()
             )
             if not base:
-                errors.append(f"base_schema_id '{proposal.base_schema_id}' not found")
+                errors.append(
+                    f"base_schema_id '{proposal.base_schema_id}' not found or is no longer active"
+                )
             else:
                 base_names = {f.get("name") for f in (base.schema_fields or [])}
 

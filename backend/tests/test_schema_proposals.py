@@ -567,6 +567,120 @@ def test_reprocess_document_marks_failed_on_extraction_error(db):
     assert "api down" in (reloaded.extraction_error or "")
 
 
+def test_reprocess_document_preserves_prior_extractions_on_failure(db):
+    """A failed reprocess must NOT destroy the document's prior evidence rows."""
+    from app.services.extraction_engine import ExtractionBatchError
+
+    user = _user(db)
+    ws = _workspace(db, user)
+    schema = DocumentSchema(
+        id=str(uuid.uuid4()),
+        document_type="PERMIT",
+        display_name="Permit",
+        vertical="general",
+        schema_fields=[{"name": "permit_no", "type": "id_number", "description": "Permit number"}],
+        version=1,
+        is_active=True,
+        parse_strategy="claude",
+        default_confidence_threshold=0.7,
+    )
+    db.add(schema)
+    db.commit()
+    doc = _doc_with_ocr(db, ws, user, schema_id=schema.id, status="complete")
+    db.add(
+        DocumentExtraction(
+            id=str(uuid.uuid4()),
+            document_id=doc.id,
+            workspace_id=ws.id,
+            field_name="prior_field",
+            field_value="keep me",
+            field_type="text",
+            confidence=0.9,
+            schema_id=schema.id,
+            attempt=1,
+        )
+    )
+    db.commit()
+
+    with patch(
+        "app.services.document_service.extract_fields",
+        side_effect=ExtractionBatchError("api down"),
+    ):
+        with pytest.raises(ExtractionBatchError):
+            document_service.reprocess_document(doc.id, schema.id, db)
+
+    db.expire_all()
+    surviving = [
+        r.field_name
+        for r in db.query(DocumentExtraction).filter(DocumentExtraction.document_id == doc.id).all()
+    ]
+    assert surviving == ["prior_field"]  # prior evidence intact
+    reloaded = db.query(Document).filter(Document.id == doc.id).first()
+    assert reloaded.extraction_status == "failed"
+
+
+def test_supersede_schema_writes_audit_row(db):
+    from app.models.audit import AuditLog
+
+    actor = _user(db)  # audit_log.user_id is a FK to users — use a real id
+    db.commit()
+    base = DocumentSchema(
+        id=str(uuid.uuid4()),
+        document_type="DEED",
+        display_name="Deed",
+        vertical="general",
+        schema_fields=[],
+        version=1,
+        is_active=True,
+        parse_strategy="claude",
+        default_confidence_threshold=0.75,
+    )
+    db.add(base)
+    db.commit()
+    base_id = base.id
+    supersede_schema(
+        db, base, [{"name": "x", "type": "text", "description": "y"}], actor_id=actor.id
+    )
+    row = db.query(AuditLog).filter(AuditLog.action == "schema_superseded").first()
+    assert row is not None
+    assert row.user_id == actor.id
+    assert row.before_state["id"] == base_id
+
+
+def test_vertical_specific_schema_preferred_over_general(db):
+    """When both a vertical-specific and a general schema exist for one doc_type,
+    a workspace in that vertical gets the vertical-specific schema."""
+    from app.services.extraction_engine import get_schema_for_type
+
+    general = DocumentSchema(
+        id=str(uuid.uuid4()),
+        document_type="DEED",
+        display_name="Deed (general)",
+        vertical="general",
+        schema_fields=[],
+        version=1,
+        is_active=True,
+        parse_strategy="claude",
+        default_confidence_threshold=0.7,
+    )
+    fraud_specific = DocumentSchema(
+        id=str(uuid.uuid4()),
+        document_type="DEED",
+        display_name="Deed (fraud)",
+        vertical="fraud",
+        schema_fields=[],
+        version=1,
+        is_active=True,
+        parse_strategy="claude",
+        default_confidence_threshold=0.7,
+    )
+    db.add_all([general, fraud_specific])
+    db.commit()
+    result = get_schema_for_type("DEED", db, workspace_vertical="fraud")
+    assert result is not None
+    assert result.vertical == "fraud"
+
+
 def test_reprocess_document_skips_soft_deleted(db):
     user = _user(db)
     ws = _workspace(db, user)

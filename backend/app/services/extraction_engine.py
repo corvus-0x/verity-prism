@@ -362,8 +362,9 @@ def extract_fields(
     Extract all fields defined in the schema by running batched Claude calls.
     BATCH_SIZE fields per call prevents token-limit truncation on large schemas.
     Results from all batches are merged and returned as a single list.
-    Raises ExtractionBatchError if every batch fails (distinguishes total API
-    failure from a schema that legitimately has zero fields).
+    Raises ExtractionBatchError only if every batch fails AND the retry recovers
+    nothing (distinguishes a total, unrecoverable API failure from a schema that
+    legitimately has zero fields).
     """
     fields = schema.schema_fields
     if not fields:
