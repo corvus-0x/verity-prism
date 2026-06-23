@@ -536,6 +536,37 @@ def test_reprocess_document_zero_rows_marks_needs_review(db):
     assert result.extraction_error == "Reprocess returned zero fields"
 
 
+def test_reprocess_document_marks_failed_on_extraction_error(db):
+    from app.services.extraction_engine import ExtractionBatchError
+
+    user = _user(db)
+    ws = _workspace(db, user)
+    schema = DocumentSchema(
+        id=str(uuid.uuid4()),
+        document_type="PERMIT",
+        display_name="Permit",
+        vertical="general",
+        schema_fields=[{"name": "permit_no", "type": "id_number", "description": "Permit number"}],
+        version=1,
+        is_active=True,
+        parse_strategy="claude",
+        default_confidence_threshold=0.7,
+    )
+    db.add(schema)
+    db.commit()
+    doc = _doc_with_ocr(db, ws, user)
+    with patch(
+        "app.services.document_service.extract_fields",
+        side_effect=ExtractionBatchError("api down"),
+    ):
+        with pytest.raises(ExtractionBatchError):
+            document_service.reprocess_document(doc.id, schema.id, db)
+    db.expire_all()
+    reloaded = db.query(Document).filter(Document.id == doc.id).first()
+    assert reloaded.extraction_status == "failed"
+    assert "api down" in (reloaded.extraction_error or "")
+
+
 def test_reprocess_document_skips_soft_deleted(db):
     user = _user(db)
     ws = _workspace(db, user)

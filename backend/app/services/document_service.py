@@ -4,7 +4,11 @@ from app.models.document import Document
 from app.models.document_extraction import DocumentExtraction
 from app.models.document_schema import DocumentSchema
 from app.services import audit
-from app.services.extraction_engine import extract_fields, save_extractions
+from app.services.extraction_engine import (
+    ExtractionBatchError,
+    extract_fields,
+    save_extractions,
+)
 
 
 def list_documents(db: Session, workspace_id: str) -> list[Document]:
@@ -60,8 +64,14 @@ def reprocess_document(document_id: str, schema_id: str, db: Session) -> Documen
 
     Used after a schema proposal is applied: the operator already knows which
     schema this document should use, so re-running detection (which could
-    re-classify it as OTHER) is wrong. Pins schema_id + detected_doc_type,
-    clears prior extractions, and re-extracts from the stored ocr_text.
+    re-classify it as OTHER) is wrong. Overwrites schema_id + detected_doc_type
+    with the forced schema's values, clears prior extractions, and re-extracts
+    from the stored ocr_text.
+
+    A real extraction failure (ExtractionBatchError — e.g. the API is down) is
+    recorded as extraction_status='failed' and re-raised, so it is never
+    silently conflated with a genuine zero-match result (which becomes
+    'needs_review' below).
     """
     doc = (
         db.query(Document)
@@ -82,13 +92,29 @@ def reprocess_document(document_id: str, schema_id: str, db: Session) -> Documen
     # Clear prior extractions so the document starts clean.
     db.query(DocumentExtraction).filter(DocumentExtraction.document_id == doc.id).delete()
 
-    # Pin the schema; do NOT run detection.
+    # Overwrite the schema pin; do NOT run detection.
     doc.schema_id = schema.id
     doc.detected_doc_type = schema.document_type
     doc.extraction_error = None
 
-    raw = extract_fields(doc.ocr_text, schema, doc.id, doc.workspace_id)
-    save_extractions(raw, doc.id, doc.workspace_id, schema.id, db)
+    try:
+        raw = extract_fields(doc.ocr_text, schema, doc.id, doc.workspace_id)
+        save_extractions(raw, doc.id, doc.workspace_id, schema.id, db)
+    except ExtractionBatchError as e:
+        # The extraction itself failed (not a zero-match) — record it distinctly
+        # and surface it to the caller rather than marking the doc 'complete'.
+        doc.extraction_status = "failed"
+        doc.extraction_error = str(e)[:500]
+        audit.log(
+            db,
+            action="document_reprocess_failed",
+            user_id=doc.uploaded_by,
+            workspace_id=doc.workspace_id,
+            entity_type="document",
+            entity_id=doc.id,
+            after_state={"schema_id": schema.id, "status": "failed", "error": str(e)[:500]},
+        )
+        raise
 
     if schema.parse_strategy == "claude" and schema.schema_fields and not raw:
         doc.extraction_status = "needs_review"

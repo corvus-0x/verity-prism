@@ -7,11 +7,41 @@ transaction so the active-schema invariant is never momentarily violated.
 """
 
 import re
+from typing import TypedDict
 
 from sqlalchemy.orm import Session
 
 from app.models.document_schema import DocumentSchema
 from app.models.schema_proposal import SchemaChangeProposal
+from app.services import audit
+
+
+class ProposedField(TypedDict, total=False):
+    """Shape of one entry in proposal.proposed_fields (and a schema's schema_fields).
+
+    total=False because only name/type/description are conceptually required;
+    the apply gate (validate_proposal) enforces which keys must be present.
+    """
+
+    name: str
+    type: str
+    description: str
+    required: bool
+    confidence_threshold: float
+    ai_threshold: float
+    ocr_threshold: float
+
+
+class ProposedSchemaMeta(TypedDict, total=False):
+    """Shape of proposal.proposed_schema — the new-schema metadata block."""
+
+    document_type: str
+    display_name: str
+    vertical: str
+    parse_strategy: str
+    default_confidence_threshold: float
+    extraction_prompt: str
+
 
 VALID_FIELD_TYPES = {"name", "date", "currency", "address", "id_number", "text", "boolean"}
 RESERVED_FIELD_NAMES = {
@@ -39,8 +69,8 @@ def validate_proposal(proposal: SchemaChangeProposal, db: Session) -> list[str]:
     a normalized document_type with no active collision.
     """
     errors: list[str] = []
-    meta = proposal.proposed_schema or {}
-    fields = proposal.proposed_fields or []
+    meta: ProposedSchemaMeta = proposal.proposed_schema or {}
+    fields: list[ProposedField] = proposal.proposed_fields or []
 
     if proposal.proposal_type == "new_schema":
         doc_type = meta.get("document_type") or ""
@@ -116,13 +146,23 @@ def validate_proposal(proposal: SchemaChangeProposal, db: Session) -> list[str]:
     return errors
 
 
-def supersede_schema(db: Session, base: DocumentSchema, new_fields: list[dict]) -> DocumentSchema:
+def supersede_schema(
+    db: Session,
+    base: DocumentSchema,
+    new_fields: list[ProposedField],
+    actor_id: str | None = None,
+) -> DocumentSchema:
     """Deactivate `base` and insert its successor (version+1) in one transaction.
 
     Why one transaction: the partial unique index forbids two active schemas for
-    the same (document_type, vertical). Deactivating the base and inserting the
-    successor must commit together, or the insert would either collide (if base
-    stays active) or leave a window with no active schema.
+    the same (document_type, vertical). The base must be deactivated and flushed
+    before the successor INSERT, or the (non-deferrable) index rejects the insert
+    immediately; the single commit then persists both rows plus the audit entry
+    together, so there is never a window with zero or two active schemas.
+
+    actor_id is the user applying the change, recorded on the audit row. It is
+    optional so the helper can be exercised directly; the Phase 2 apply endpoint
+    passes the authenticated user.
     """
     base.is_active = False
     db.flush()  # release the active slot before inserting the successor
@@ -138,6 +178,29 @@ def supersede_schema(db: Session, base: DocumentSchema, new_fields: list[dict]) 
         default_confidence_threshold=base.default_confidence_threshold,
     )
     db.add(successor)
-    db.commit()
+    db.flush()
     db.refresh(successor)
+
+    # Schema changes are engine-contract changes — leave a trail. audit.log()
+    # commits, persisting the deactivation, the successor, and this row together.
+    audit.log(
+        db,
+        action="schema_superseded",
+        user_id=actor_id,
+        workspace_id=None,  # schemas are global engine contract, not workspace-scoped
+        entity_type="document_schema",
+        entity_id=successor.id,
+        before_state={
+            "id": base.id,
+            "document_type": base.document_type,
+            "vertical": base.vertical,
+            "version": base.version,
+            "field_count": len(base.schema_fields or []),
+        },
+        after_state={
+            "id": successor.id,
+            "version": successor.version,
+            "field_count": len(new_fields),
+        },
+    )
     return successor
