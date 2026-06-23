@@ -443,9 +443,39 @@ Decisions made before any vertical work could start. These were flagged in princ
 
 ---
 
+## AI Schema Proposals — Phase 1 (Proposal Backbone) (2026-06-23, PR #13)
+
+| Task | What It Builds | Why |
+|------|---------------|-----|
+| Proposal backbone + DB-enforced uniqueness | `schema_change_proposals` table (`draft → rejected / applied / failed` lifecycle, AI provenance, soft-delete) plus a Postgres **partial unique index** `UNIQUE(document_type, vertical) WHERE is_active=true`. | The feature lets operators grow document coverage in-app instead of via seed-code + redeploy, riding the existing call-time schema-loading rail (ADR 0002). Grounding the design in the code surfaced a latent bug: `get_schema_for_type().first()` had no ordering and nothing ever superseded a schema — two active schemas for one (type, vertical) would silently pick whichever row Postgres returned. The fix had to live at the database, not in code or a test, so no future path (bulk import, careless seed, raw SQL) can recreate the ambiguity. |
+| `validate_proposal` apply gate | Server-side validation: snake_case/unique/non-reserved field names, known types, thresholds in `[0,1]`, descriptions, normalized + collision-checked `document_type`, resolvable-and-**active** base for extensions, and guards for null/non-dict field entries. | Human review is necessary but not sufficient for an engine-contract change — apply must validate regardless of who edited the draft. Every guard (null name, non-numeric threshold, non-dict entry, inactive base) defends the same blind spot: the payload originates from untrusted AI output, not a typed caller. Four independent review passes each found one more facet of that assumption. |
+| Atomic supersession | `supersede_schema` deactivates v1, flushes to vacate the active slot, inserts v2, and audits — in one transaction. | Full supersession (v2 replaces v1) was chosen over in-place field append to avoid schema drift and keep clean lineage; old docs stay pinned to v1's `schema_id` until reprocessed. The flush ordering is load-bearing: the partial unique index is **non-deferrable**, so Postgres rejects the successor INSERT at statement time unless the base is already deactivated — a reviewer who claimed the comment was wrong about this was overruled on the Postgres semantics. |
+| Forced-schema reprocess | `reprocess_document` re-extracts a doc against a chosen schema, **skipping type detection**, and extracts *before* destroying prior data. | The existing reprocess seed nulls `detected_doc_type` and re-runs detection — which would re-classify a freshly-schema'd doc as OTHER and dead-end it again. Forcing the schema is the whole point. The extract-before-delete ordering was the session's hardest-won correction: an earlier "robustness" fix placed an `audit.log()` (which commits) on the failure path *after* a `delete()`, turning a transient API outage into permanent loss of a document's prior extractions. The second review pass caught it; the test now asserts prior evidence survives a failed reprocess. |
+| Phase boundary held | Phase 1 ships the substrate only — no AI proposers, no HTTP endpoints. | Build and prove the correctness machinery (DB index, validation, atomic swap, forced reprocess) with tests before the noisy half — an LLM emitting schema fields — ever runs against it. The riskiest code meets a fully-tested gate, not a bare table. |
+
+**How the code got this shape:** five feature commits became eight after four independent review passes (three in-session multi-agent, one CodeRabbit). The second pass caught a Critical data-loss bug that the *first fix round had introduced* — a single review would have shipped it. Equal discipline went the other way: type-design polish (`ValidationResult`, `StrEnum`) and markdown nits were reasoned-skipped because they only pay off with a Phase 2 consumer; handling a finding includes justifying a skip.
+
+**Tests passing:** full backend suite 327/327 (excl. `tests/evals`); new file `backend/tests/test_schema_proposals.py`.
+
+**Migration:** `e1ca59dae292` — creates `schema_change_proposals` (with `proposal_type` / `proposal_status` enums) and the partial unique index on `document_schemas`. Requires `alembic upgrade head` on deploy before the app starts.
+
+---
+
 ## Deferred & Relocated Work
 
 Things that were planned for one phase and moved, or explicitly punted. Captured here with the reasoning so when we reach that phase we're not starting from scratch.
+
+---
+
+### AI Schema Proposals — Phase 2 (proposers + endpoints)
+
+**Deferred from Phase 1 (2026-06-23, PR #13):**
+- The AI proposers `propose_schema_for_document` / `propose_schema_extensions`, plus the OCR precondition on proposal *generation* (Phase 1 enforced the OCR guard only on reprocess).
+- `apply_schema_proposal` + create/apply/reject endpoints on the `schemas` router, with **owner-only apply** gating (apply mutates global engine contract — reversed an earlier owner-or-analyst choice).
+- Type-design items with no Phase 1 consumer: `ValidationResult` return type (replacing `list[str]`), `StrEnum` status constants, `Mapped[list[ProposedField]]` on the model, and making `supersede_schema(actor_id=...)` **required** once a router passes the authenticated user.
+- **Org-tier governance gate:** an owner in one workspace inserts a *global* schema visible to all workspaces. Needs an org-admin gate (or org-scoped schema visibility) before multiple teams use the platform.
+
+**Why deferred:** the type-design items and required-actor change have no caller in Phase 1 — building them now is speculative scaffolding (reshaping interfaces nothing invokes). They land cleanly alongside the Phase 2 router that gives them a purpose. The governance gate is a real pre-GA decision, not an MVP blocker while single-team. PRD: `.claude/PRPs/prds/ai-schema-proposals.prd.md`.
 
 ---
 
