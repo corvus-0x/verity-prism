@@ -263,7 +263,7 @@ def test_validate_extension_rejects_field_clashing_with_base(db):
         ],
     )
     errors = validate_proposal(p, db)
-    assert any("duplicate" in e for e in errors)
+    assert any("already exists in the base schema" in e for e in errors)
 
 
 from unittest.mock import patch
@@ -457,3 +457,103 @@ def test_supersede_schema_swaps_active_version_atomically(db):
     )
     assert len(active) == 1
     assert active[0].id == new_schema.id
+
+
+# ── Review-hardening tests (PR #13 review findings) ──────────────────────────
+
+
+def test_validate_rejects_empty_fields(db):
+    p = _new_schema_proposal()
+    p.proposed_fields = []
+    errors = validate_proposal(p, db)
+    assert any("at least one field" in e for e in errors)
+
+
+def test_validate_rejects_missing_display_name(db):
+    errors = validate_proposal(_new_schema_proposal(display_name=""), db)
+    assert any("display_name" in e for e in errors)
+
+
+def test_validate_rejects_field_with_null_name(db):
+    p = _new_schema_proposal()
+    p.proposed_fields = [{"name": None, "type": "text", "description": "x"}]
+    errors = validate_proposal(p, db)
+    assert any("missing or empty name" in e for e in errors)
+
+
+def test_validate_rejects_trailing_or_double_underscore_name(db):
+    p = _new_schema_proposal()
+    p.proposed_fields = [{"name": "bad__name_", "type": "text", "description": "x"}]
+    errors = validate_proposal(p, db)
+    assert any("snake_case" in e for e in errors)
+
+
+def test_validate_extension_requires_base_schema_id(db):
+    p = SchemaChangeProposal(
+        workspace_id="ws",
+        proposal_type="schema_extension",
+        base_schema_id=None,
+        proposed_schema={},
+        proposed_fields=[{"name": "x", "type": "text", "description": "y"}],
+    )
+    errors = validate_proposal(p, db)
+    assert any("base_schema_id" in e for e in errors)
+
+
+def test_validate_extension_rejects_nonexistent_base_schema(db):
+    p = SchemaChangeProposal(
+        workspace_id="ws",
+        proposal_type="schema_extension",
+        base_schema_id="does-not-exist",
+        proposed_schema={},
+        proposed_fields=[{"name": "x", "type": "text", "description": "y"}],
+    )
+    errors = validate_proposal(p, db)
+    assert any("not found" in e for e in errors)
+
+
+def test_reprocess_document_zero_rows_marks_needs_review(db):
+    user = _user(db)
+    ws = _workspace(db, user)
+    schema = DocumentSchema(
+        id=str(uuid.uuid4()),
+        document_type="PERMIT",
+        display_name="Permit",
+        vertical="general",
+        schema_fields=[{"name": "permit_no", "type": "id_number", "description": "Permit number"}],
+        version=1,
+        is_active=True,
+        parse_strategy="claude",
+        default_confidence_threshold=0.7,
+    )
+    db.add(schema)
+    db.commit()
+    doc = _doc_with_ocr(db, ws, user)
+    with patch("app.services.document_service.extract_fields", return_value=[]):
+        result = document_service.reprocess_document(doc.id, schema.id, db)
+    db.refresh(result)
+    assert result.extraction_status == "needs_review"
+    assert result.extraction_error == "Reprocess returned zero fields"
+
+
+def test_reprocess_document_skips_soft_deleted(db):
+    user = _user(db)
+    ws = _workspace(db, user)
+    schema = DocumentSchema(
+        id=str(uuid.uuid4()),
+        document_type="PERMIT",
+        display_name="Permit",
+        vertical="general",
+        schema_fields=[{"name": "permit_no", "type": "id_number", "description": "Permit number"}],
+        version=1,
+        is_active=True,
+        parse_strategy="claude",
+        default_confidence_threshold=0.7,
+    )
+    db.add(schema)
+    db.commit()
+    doc = _doc_with_ocr(db, ws, user)
+    doc.is_deleted = True
+    db.commit()
+    with pytest.raises(ValueError, match="not found"):
+        document_service.reprocess_document(doc.id, schema.id, db)

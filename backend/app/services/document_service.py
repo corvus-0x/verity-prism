@@ -63,7 +63,14 @@ def reprocess_document(document_id: str, schema_id: str, db: Session) -> Documen
     re-classify it as OTHER) is wrong. Pins schema_id + detected_doc_type,
     clears prior extractions, and re-extracts from the stored ocr_text.
     """
-    doc = db.query(Document).filter(Document.id == document_id).first()
+    doc = (
+        db.query(Document)
+        .filter(
+            Document.id == document_id,
+            Document.is_deleted == False,  # noqa: E712
+        )
+        .first()
+    )
     if not doc:
         raise ValueError(f"Document {document_id} not found")
     schema = db.query(DocumentSchema).filter(DocumentSchema.id == schema_id).first()

@@ -26,7 +26,7 @@ RESERVED_FIELD_NAMES = {
     "ocr_confidence",
     "attempt",
 }
-_SNAKE_CASE = re.compile(r"^[a-z][a-z0-9_]*$")
+_SNAKE_CASE = re.compile(r"^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$")
 _DOC_TYPE = re.compile(r"^[A-Z0-9]+(-[A-Z0-9]+)*$")
 _THRESHOLD_KEYS = ("confidence_threshold", "ai_threshold", "ocr_threshold")
 
@@ -47,9 +47,9 @@ def validate_proposal(proposal: SchemaChangeProposal, db: Session) -> list[str]:
         vertical = meta.get("vertical") or "general"
         if not _DOC_TYPE.match(doc_type):
             errors.append(f"document_type '{doc_type}' must be UPPER-KEBAB (e.g. PARCEL-RECORD)")
-        if not (meta.get("display_name") or "").strip():
-            errors.append("display_name is required")
-        if doc_type:
+        else:
+            # Only check for a collision once the document_type is structurally valid —
+            # a malformed type is already an error and never reaches a live schema.
             existing = (
                 db.query(DocumentSchema)
                 .filter(
@@ -64,25 +64,41 @@ def validate_proposal(proposal: SchemaChangeProposal, db: Session) -> list[str]:
                     f"an active schema already exists for ({doc_type}, {vertical}) — "
                     "use a schema_extension instead"
                 )
+        if not (meta.get("display_name") or "").strip():
+            errors.append("display_name is required")
 
     base_names: set[str] = set()
-    if proposal.proposal_type == "schema_extension" and proposal.base_schema_id:
-        base = db.query(DocumentSchema).filter(DocumentSchema.id == proposal.base_schema_id).first()
-        if base:
-            base_names = {f.get("name") for f in (base.schema_fields or [])}
+    if proposal.proposal_type == "schema_extension":
+        if not proposal.base_schema_id:
+            errors.append("schema_extension requires a base_schema_id")
+        else:
+            base = (
+                db.query(DocumentSchema)
+                .filter(DocumentSchema.id == proposal.base_schema_id)
+                .first()
+            )
+            if not base:
+                errors.append(f"base_schema_id '{proposal.base_schema_id}' not found")
+            else:
+                base_names = {f.get("name") for f in (base.schema_fields or [])}
 
     if not fields:
         errors.append("proposal must contain at least one field")
 
     seen: set[str] = set()
-    for f in fields:
+    for idx, f in enumerate(fields):
         name = f.get("name") or ""
+        if not name:
+            errors.append(f"field at index {idx} has a missing or empty name")
+            continue
         if not _SNAKE_CASE.match(name):
             errors.append(f"field '{name}' must be snake_case")
         if name in RESERVED_FIELD_NAMES:
             errors.append(f"field '{name}' is a reserved name")
-        if name in seen or name in base_names:
-            errors.append(f"duplicate field name '{name}'")
+        if name in seen:
+            errors.append(f"duplicate field name '{name}' within this proposal")
+        elif name in base_names:
+            errors.append(f"field '{name}' already exists in the base schema")
         seen.add(name)
         if f.get("type") not in VALID_FIELD_TYPES:
             errors.append(
