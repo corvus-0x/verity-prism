@@ -80,7 +80,7 @@ When **a document arrives that the engine can't fully capture (no schema, or mis
 
 | Priority | Capability | Rationale |
 |----------|------------|-----------|
-| Must | `schema_change_proposals` table + lifecycle (`draft → rejected | applied | failed`) | Backbone for both features. |
+| Must | `schema_change_proposals` table + lifecycle (`draft → rejected \| applied \| failed`) | Backbone for both features. |
 | Must | `propose_schema_for_document(document_id)` — AI drafts a full schema from `ocr_text` + metadata | Feature 1 core. |
 | Must | `apply_schema_proposal(proposal_id)` — insert schema (with atomic supersession for extensions) | Turns approval into live engine contract. |
 | Must | `reprocess_document(document_id, schema_id)` service (promote from the existing seed) | Re-runs pipeline so the doc actually extracts. |
@@ -102,7 +102,7 @@ Feature 1, end to end: upload unknown doc → `no_schema` + lead (already exists
 
 ### User Flow (critical path)
 
-```
+```text
 no_schema doc ──▶ "Generate Schema Draft"
      │                     │
      │           propose_schema_for_document()  (AI reads ocr_text + filename/source)

@@ -488,6 +488,13 @@ def test_validate_rejects_trailing_or_double_underscore_name(db):
     assert any("snake_case" in e for e in errors)
 
 
+def test_validate_rejects_non_dict_field_entry(db):
+    p = _new_schema_proposal()
+    p.proposed_fields = ["not_a_dict", 42]
+    errors = validate_proposal(p, db)
+    assert any("must be an object" in e for e in errors)
+
+
 def test_validate_extension_requires_base_schema_id(db):
     p = SchemaChangeProposal(
         workspace_id="ws",

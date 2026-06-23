@@ -119,13 +119,18 @@ def validate_proposal(proposal: SchemaChangeProposal, db: Session) -> list[str]:
                     f"base_schema_id '{proposal.base_schema_id}' not found or is no longer active"
                 )
             else:
-                base_names = {f.get("name") for f in (base.schema_fields or [])}
+                base_names = {
+                    f.get("name") for f in (base.schema_fields or []) if isinstance(f, dict)
+                }
 
     if not fields:
         errors.append("proposal must contain at least one field")
 
     seen: set[str] = set()
     for idx, f in enumerate(fields):
+        if not isinstance(f, dict):
+            errors.append(f"field at index {idx} must be an object")
+            continue
         name = f.get("name") or ""
         if not name:
             errors.append(f"field at index {idx} has a missing or empty name")
