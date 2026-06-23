@@ -119,8 +119,9 @@ def _get_schema_for_vertical(
             .filter(
                 DocumentSchema.document_type == doc_type,
                 DocumentSchema.vertical == workspace_vertical,
-                DocumentSchema.is_active == True,
+                DocumentSchema.is_active == True,  # noqa: E712
             )
+            .order_by(DocumentSchema.version.desc())
             .first()
         )
         if schema:
@@ -130,8 +131,9 @@ def _get_schema_for_vertical(
         .filter(
             DocumentSchema.document_type == doc_type,
             DocumentSchema.vertical == "general",
-            DocumentSchema.is_active == True,
+            DocumentSchema.is_active == True,  # noqa: E712
         )
+        .order_by(DocumentSchema.version.desc())
         .first()
     )
 
