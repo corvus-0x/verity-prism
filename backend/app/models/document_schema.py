@@ -1,7 +1,7 @@
 import uuid
 from datetime import UTC, datetime
 
-from sqlalchemy import Boolean, DateTime, Float, Integer, String, Text
+from sqlalchemy import Boolean, DateTime, Float, Index, Integer, String, Text, text
 from sqlalchemy import Enum as SAEnum
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
@@ -11,6 +11,15 @@ from app.database import Base
 
 class DocumentSchema(Base):
     __tablename__ = "document_schemas"
+    __table_args__ = (
+        Index(
+            "uq_active_schema_type_vertical",
+            "document_type",
+            "vertical",
+            unique=True,
+            postgresql_where=text("is_active = true"),
+        ),
+    )
 
     id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
     document_type: Mapped[str] = mapped_column(String, nullable=False)
@@ -25,9 +34,7 @@ class DocumentSchema(Base):
         default="claude",
         nullable=False,
     )
-    default_confidence_threshold: Mapped[float] = mapped_column(
-        Float, default=0.7, nullable=False
-    )
+    default_confidence_threshold: Mapped[float] = mapped_column(Float, default=0.7, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(UTC)
     )
