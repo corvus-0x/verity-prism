@@ -146,3 +146,121 @@ def test_get_schema_for_type_prefers_active_highest_version(db):
     assert result is not None
     assert result.id == new.id
     assert result.version == 2
+
+
+from app.services.schema_proposal_service import validate_proposal
+
+
+def _new_schema_proposal(**meta_over):
+    meta = {"document_type": "PERMIT", "display_name": "Permit", "vertical": "general"}
+    meta.update(meta_over)
+    return SchemaChangeProposal(
+        workspace_id="ws",
+        proposal_type="new_schema",
+        proposed_schema=meta,
+        proposed_fields=[
+            {"name": "permit_no", "type": "id_number", "description": "Permit number"}
+        ],
+    )
+
+
+def test_validate_passes_clean_new_schema(db):
+    assert validate_proposal(_new_schema_proposal(), db) == []
+
+
+def test_validate_rejects_non_snake_case_field(db):
+    p = _new_schema_proposal()
+    p.proposed_fields = [{"name": "PermitNo", "type": "text", "description": "x"}]
+    errors = validate_proposal(p, db)
+    assert any("snake_case" in e for e in errors)
+
+
+def test_validate_rejects_unknown_field_type(db):
+    p = _new_schema_proposal()
+    p.proposed_fields = [{"name": "permit_no", "type": "guid", "description": "x"}]
+    errors = validate_proposal(p, db)
+    assert any("field_type" in e for e in errors)
+
+
+def test_validate_rejects_reserved_name(db):
+    p = _new_schema_proposal()
+    p.proposed_fields = [{"name": "document_id", "type": "text", "description": "x"}]
+    errors = validate_proposal(p, db)
+    assert any("reserved" in e for e in errors)
+
+
+def test_validate_rejects_duplicate_field_names(db):
+    p = _new_schema_proposal()
+    p.proposed_fields = [
+        {"name": "permit_no", "type": "text", "description": "a"},
+        {"name": "permit_no", "type": "text", "description": "b"},
+    ]
+    errors = validate_proposal(p, db)
+    assert any("duplicate" in e for e in errors)
+
+
+def test_validate_rejects_threshold_out_of_range(db):
+    p = _new_schema_proposal()
+    p.proposed_fields = [
+        {"name": "permit_no", "type": "text", "description": "x", "confidence_threshold": 1.5}
+    ]
+    errors = validate_proposal(p, db)
+    assert any("threshold" in e for e in errors)
+
+
+def test_validate_rejects_missing_description(db):
+    p = _new_schema_proposal()
+    p.proposed_fields = [{"name": "permit_no", "type": "text", "description": "  "}]
+    errors = validate_proposal(p, db)
+    assert any("description" in e for e in errors)
+
+
+def test_validate_rejects_bad_document_type(db):
+    errors = validate_proposal(_new_schema_proposal(document_type="permit record"), db)
+    assert any("document_type" in e for e in errors)
+
+
+def test_validate_rejects_collision_with_active_schema(db):
+    db.add(
+        DocumentSchema(
+            id=str(uuid.uuid4()),
+            document_type="PERMIT",
+            display_name="Permit",
+            vertical="general",
+            schema_fields=[],
+            version=1,
+            is_active=True,
+            parse_strategy="claude",
+            default_confidence_threshold=0.7,
+        )
+    )
+    db.commit()
+    errors = validate_proposal(_new_schema_proposal(), db)
+    assert any("already" in e for e in errors)
+
+
+def test_validate_extension_rejects_field_clashing_with_base(db):
+    base = DocumentSchema(
+        id=str(uuid.uuid4()),
+        document_type="DEED",
+        display_name="Deed",
+        vertical="general",
+        schema_fields=[{"name": "grantor_name", "type": "name", "description": "g"}],
+        version=1,
+        is_active=True,
+        parse_strategy="claude",
+        default_confidence_threshold=0.7,
+    )
+    db.add(base)
+    db.commit()
+    p = SchemaChangeProposal(
+        workspace_id="ws",
+        proposal_type="schema_extension",
+        base_schema_id=base.id,
+        proposed_schema={},
+        proposed_fields=[
+            {"name": "grantor_name", "type": "name", "description": "dup of base"},
+        ],
+    )
+    errors = validate_proposal(p, db)
+    assert any("duplicate" in e for e in errors)
