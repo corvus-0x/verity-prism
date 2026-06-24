@@ -315,11 +315,9 @@ def downgrade() -> None:
     bind = op.get_bind()
 
     # 1. OBITUARY back to the general vertical
-    op.execute("""
-        UPDATE document_schemas
-        SET vertical = 'general'
-        WHERE document_type = 'OBITUARY';
-    """)
+    bind.execute(
+        sa.text("UPDATE document_schemas SET vertical = 'general' WHERE document_type = 'OBITUARY'")
+    )
 
     # 2. Restore full original extraction_prompts (canonical pre-cleanup text)
     for dtype, prompt in _ORIGINAL_PROMPTS.items():
