@@ -195,6 +195,20 @@ Never commit code directly to `main` during active implementation work. Main rec
 
 ---
 
+## Tickets & Workflow
+
+Work is organized as **tickets** in `docs/tickets/` (`VP-NNN`), written by the **tech-lead** conversation. The implementation flow mirrors a real team:
+
+1. **Plan approval first.** For non-trivial work, build the implementation plan, then bring it to the tech-lead conversation for approval *before* executing. Don't start coding a large change on your own authority.
+2. **Branch per ticket:** `feat/vp-NNN-<slug>` (this is the concrete form of "branch per plan" above).
+3. **Reference the ticket ID** in every commit message and the PR title — e.g. `feat: durable job table (VP-003)`. This is the traceability link from ticket → commits → PR; it is not optional.
+4. **Move the ticket's status** as work progresses (edit the frontmatter): `In Progress` when you start the branch (also set `branch:`), `In Review` when the PR opens (set `pr:`). The tech-lead moves it to `Merged` after review.
+5. **WIP limit = 1.** One ticket in progress at a time. Finish (merge) before starting the next. Don't accumulate half-done branches.
+
+The **Definition of Done** for every ticket is in `docs/tickets/README.md` — meet it before requesting review. See that file for the board, ID scheme, and lifecycle.
+
+---
+
 ## Development System
 
 The system that produces the code is itself maintained. Invest in it, not just features.
