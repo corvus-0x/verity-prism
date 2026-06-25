@@ -17,6 +17,7 @@ import os
 
 from alembic.config import Config
 from sqlalchemy import bindparam, create_engine, text
+from sqlalchemy.engine import make_url
 
 from alembic import command
 
@@ -58,11 +59,11 @@ def _orphan_enum_count(url):
 
 
 def test_initial_schema_downgrade_drops_enum_types():
-    base_url = os.environ["TEST_DATABASE_URL"]
-    prefix, _, _ = base_url.rpartition("/")
+    base = make_url(os.environ["TEST_DATABASE_URL"])
     tmp_db = "catalyst_initschema_rt"
-    admin_url = f"{prefix}/postgres"
-    tmp_url = f"{prefix}/{tmp_db}"
+    # Replace only the database name, preserving host/credentials/query options.
+    admin_url = base.set(database="postgres")
+    tmp_url = base.set(database=tmp_db).render_as_string(hide_password=False)
 
     admin = create_engine(admin_url, isolation_level="AUTOCOMMIT")
     with admin.connect() as conn:
