@@ -461,6 +461,23 @@ Decisions made before any vertical work could start. These were flagged in princ
 
 ---
 
+## Migration Downgrade Reversibility + Enum-Orphan Sweep (2026-06-25, PRs #14/#15/#16/#17)
+
+| Task | What It Builds | Why |
+|------|---------------|-----|
+| `c8dd75f9d15c` downgrade made lossless | `downgrade()` now restores OBITUARY's vertical **and** the 3 scrubbed extraction prompts + 5 field descriptions to their canonical pre-cleanup values, recovered verbatim from git `6f655fa^` and embedded as constants. | The original downgrade only reverted the vertical — the prompt/description scrubs were permanent, so a rollback left half-cleaned data. The shaping constraint: the migration **already shipped**, so a snapshot added to `upgrade()` would never run on already-migrated DBs. Fix is therefore downgrade-only (upgrade untouched), and it restores to the *known canonical seed state*, **not** a per-DB exact prior state — without an upgrade-time snapshot, arbitrary per-DB reconstruction is mathematically impossible. The first plan rested on an unverified "hasn't shipped yet" assumption; review against git + `build-inventory.md` proved it false and forced the canonical-restore approach. |
+| Enum-orphan class discovered + fixed (`e1ca59dae292`, `5a4ff7266708`) | `DROP TYPE IF EXISTS` added to both downgrades — 2 enums for e1ca59 (`proposal_type`, `proposal_status`), 19 for the initial schema. | Found by accident: c8dd's round-trip test did a full-chain `downgrade base`, which tripped over `e1ca59`'s downgrade orphaning `proposal_type` (`type already exists` on re-upgrade). A grep of every migration then found the initial schema orphaned **19** enums. Root cause is an Alembic footgun: `op.create_table()` with a named `sa.Enum` column auto-creates the type, but `drop_table` never drops it and `--autogenerate` emits the CREATE without the DROP. `d4e9f2a83b17` was the only enum-creating migration already correct (someone had hand-fixed it). |
+| Migration test harness patterns | Two reusable test shapes: in-transaction monkeypatch of the migration's `op` (c8dd, e1ca59) and throwaway-DB scoped to one revision (initial schema). | The monkeypatch-in-rolled-back-transaction trick can't test the initial schema — at head its base tables carry FK deps from later migrations, so its `downgrade()` fails on those, not on the enum bug. The throwaway-DB test (`upgrade 5a4ff → downgrade base → upgrade 5a4ff`) isolates the bug and is independent of later migrations' (unfixed-on-branch) state. Each test was proven red→green by reverting the fix. |
+| Enum-orphan guard encoded (#17) | PostToolUse hook `check_migration_enum_drop.py` — warns when an `alembic/versions/*.py` creates a named enum but its downgrade has no `DROP TYPE`. | The same bug shipped three times; that's a category, not a one-off. Encoding it as a hook (strongest fitting surface) means a future migration can't silently reintroduce the gap. Verified: fires on the bad pattern, silent on all 20 existing migrations. Logged in `docs/correction-log.md`. |
+
+**How this came about:** none of it was planned. It started as a *learning exercise* — running the ECC PRP workflow (`/prp-plan` → `/prp-implement`) end-to-end on the c8dd downgrade — and the rigor of actually testing the result surfaced a real, shipped, systemic bug. The lesson recorded across the session: PRP's dossier-building is strong at plan time but can't self-check a fact about the world (deploy state); that gap was closed by review and by *running* the test, not by more planning.
+
+**Tests passing:** full backend suite 328/328 (excl. `tests/evals`); new files `test_migration_c8dd75f9d15c.py`, `test_migration_e1ca59dae292.py`, `test_migration_5a4ff7266708.py`.
+
+**Migrations:** no new revisions — `downgrade()` repaired in place on `5a4ff7266708`, `e1ca59dae292`, `c8dd75f9d15c` (all `upgrade()` paths byte-unchanged, the deliberate shipped-migration carve-out).
+
+---
+
 ## Deferred & Relocated Work
 
 Things that were planned for one phase and moved, or explicitly punted. Captured here with the reasoning so when we reach that phase we're not starting from scratch.
