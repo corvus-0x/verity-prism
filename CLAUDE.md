@@ -212,6 +212,9 @@ These run automatically on every edit — see `.claude/settings.local.json`:
 
 - **`check_soft_delete.py`** — flags a service that queries a soft-deletable model (Document, Entity, Brief, Note, etc.) without referencing `is_deleted`.
 - **`check_thin_routers.py`** — flags any `db.`/`session.` data call in `app/routers/`. Routers stay thin: validate input → call a service → return. All DB logic lives in `app/services/` (one `*_service.py` per router).
+- **`check_migration_enum_drop.py`** — flags a migration in `alembic/versions/` that creates a named enum (`sa.Enum(name=…)` / `CREATE TYPE`) but whose `downgrade()` has no `DROP TYPE`. `drop_table` never drops the enum, so the orphan breaks a later re-upgrade.
 - **ruff** — auto-formats and `--fix`es every `.py` on save.
 
 **Editing gotcha:** when adding a new import, include its first usage in the *same* edit. The ruff `--fix` hook strips imports that are still unused at write time, so adding an import in a separate earlier edit silently removes it.
+
+**Adding a guard gotcha:** `.claude/settings.local.json` is gitignored, so it's *branch-independent* — it persists across `git checkout`. The hook *script* it points to is branch-tracked. Registering a hook whose script is committed only to a feature branch leaves a dangling reference the moment you switch to `main`: the script vanishes from the working tree, the registration stays, and the hook errors on every edit. Land the script on `main` (or keep it untracked in the working tree) **before/when** you register it.
